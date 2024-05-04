@@ -1,0 +1,7 @@
+{
+  "name": "fibbelous",
+  "private": true,
+  "workspaces": [
+    "web"
+  ]
+}
