@@ -1,0 +1,25 @@
+{
+  "name": "@fibbelous/server",
+  "private": true,
+  "version": "0.0.0",
+  "description": "",
+  "main": "dist/index.js",
+  "scripts": {
+    "watch": "tsx --watch src/index.ts",
+    "build": "rollup --config",
+    "start": "node ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "GPL-3.0",
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "@rollup/plugin-typescript": "^11.1.6",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.12.8",
+    "rollup": "^4.17.2",
+    "tsx": "^4.9.1"
+  }
+}
