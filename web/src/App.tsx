@@ -4,6 +4,7 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "./components/ui/resizable";
+import PageEditorView from "./views/PageEditorView";
 
 function App() {
   return (
@@ -13,7 +14,9 @@ function App() {
           <Navigator />
         </ResizablePanel>
         <ResizableHandle />
-        <ResizablePanel>Two</ResizablePanel>
+        <ResizablePanel>
+          <PageEditorView />
+        </ResizablePanel>
       </ResizablePanelGroup>
     </div>
   );
