@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { PageMeta } from "@/types/pages";
+import { PageMeta } from "@fibbelous/server/models";
 import {
   ChevronRightIcon,
   DotsHorizontalIcon,
@@ -10,10 +10,18 @@ import { useState } from "react";
 type Props = {
   level: number;
   page: PageMeta;
-  onCreateSubPage?(parent?: PageMeta): any;
+  activeId?: string;
+  onPageSelect?(page: PageMeta): any;
+  onCreateSubPage?(parent: PageMeta): any;
 };
 
-export function NavigatorPageItem({ page, level, onCreateSubPage }: Props) {
+export function NavigatorPageItem({
+  page,
+  level,
+  activeId,
+  onPageSelect,
+  onCreateSubPage,
+}: Props) {
   const [open, setOpen] = useState(false);
 
   const hasChildren = !!page.children?.length;
@@ -25,15 +33,21 @@ export function NavigatorPageItem({ page, level, onCreateSubPage }: Props) {
 
   function createSubPage(event: React.MouseEvent<Element>) {
     event.stopPropagation();
-    onCreateSubPage?.();
+    onCreateSubPage?.(page);
     setOpen(true);
   }
 
   return (
     <li className="select-none">
       <button
-        className="flex items-center bg-black bg-opacity-0 hover:bg-opacity-5 w-full p-1 gap-1 rounded-md group"
+        className={cn(
+          "flex items-center bg-black bg-opacity-0 hover:bg-opacity-10 w-full p-1 gap-1 rounded-md group my-1",
+          {
+            "bg-opacity-5": activeId == page.id,
+          }
+        )}
         style={{ paddingLeft: level * 10 + 4 }}
+        onClick={() => onPageSelect?.(page)}
       >
         <div
           className={cn(
@@ -85,7 +99,9 @@ export function NavigatorPageItem({ page, level, onCreateSubPage }: Props) {
               key={child.id}
               page={child}
               level={level + 1}
-              onCreateSubPage={(parent) => onCreateSubPage?.(parent ?? child)}
+              activeId={activeId}
+              onPageSelect={onPageSelect}
+              onCreateSubPage={onCreateSubPage}
             />
           ))}
         </ul>

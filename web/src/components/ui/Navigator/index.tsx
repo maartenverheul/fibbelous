@@ -1,79 +1,23 @@
-import { PageTree, PageMeta } from "@/types/pages";
 import NavigatorPageTree from "./PageTree";
 import { useEffect, useMemo, useState } from "react";
 import arrayToTree from "array-to-tree";
+import { trpc } from "@/utils/trpc";
+import type { PageMeta, PageTree } from "@fibbelous/server/models";
+import { usePageEditor } from "@/hooks";
 
 export default function Navigator() {
-  const [pages, setPages] = useState<PageMeta[]>([
-    {
-      id: "1",
-      created: Date.now(),
-      icon: "🤗",
-      title: "Page 1",
-      parent: null,
+  const pagesQuery = trpc.getPages.useQuery<PageMeta[]>();
+  const createPageMutation = trpc.createPage.useMutation();
+
+  const pageEditor = usePageEditor();
+
+  const [pages, setPages] = useState<PageMeta[]>([]);
+
+  trpc.onPageAdd.useSubscription(undefined, {
+    onData(data: PageMeta) {
+      setPages([...pages, data]);
     },
-    {
-      id: "1.1",
-      created: Date.now(),
-      icon: "🤗",
-      title: "Page 1.1",
-      parent: "1",
-    },
-    {
-      id: "1.1.1",
-      created: Date.now(),
-      icon: "🤗",
-      title: "Page 1.1.1",
-      parent: "1.1",
-    },
-    {
-      id: "1.1.1.1",
-      created: Date.now(),
-      title: "Page 1.1.1.1mmmmmmmmmmmmmmmmmmmm",
-      icon: "🤗",
-      parent: "1.1.1",
-    },
-    {
-      id: "1.2",
-      created: Date.now(),
-      title: "Page 1.2",
-      parent: "1",
-    },
-    {
-      id: "2",
-      created: Date.now(),
-      icon: "🤗",
-      title: "Page 2",
-      parent: null,
-    },
-    {
-      id: "2.1",
-      created: Date.now(),
-      icon: "🤗",
-      title: "Page 2.1",
-      parent: "2",
-    },
-    {
-      id: "2.1.1",
-      created: Date.now(),
-      icon: "🤗",
-      title: "Page 2.1.1",
-      parent: "2.1",
-    },
-    {
-      id: "2.1.1.1",
-      created: Date.now(),
-      title: "Page 2.1.1.1mmmmmmmmmmmmmmmmmmmm",
-      icon: "🤗",
-      parent: "2.1.1",
-    },
-    {
-      id: "2.2",
-      created: Date.now(),
-      title: "Page 2.2",
-      parent: "2",
-    },
-  ]);
+  });
 
   const pageTree = useMemo<PageTree>(
     () =>
@@ -85,25 +29,34 @@ export default function Navigator() {
   );
 
   useEffect(() => {
-    console.log("update");
-  }, [pages]);
+    setPages(pagesQuery.data ?? []);
+  }, [pagesQuery.data]);
 
-  function createSubPage(parent: PageMeta) {
-    console.log(parent);
+  function onPageSelect(page: PageMeta) {
+    pageEditor.open(page);
+  }
 
-    const newPage: PageMeta = {
-      id: Math.round(Math.random() * 1000000).toString(16),
+  async function createSubPage(parent: PageMeta): Promise<PageMeta> {
+    let newPage: PageMeta = {
+      id: "",
       created: Date.now(),
       parent: parent.id,
       title: "New page",
     };
 
-    setPages([...pages, newPage]);
+    newPage = await createPageMutation.mutateAsync(newPage);
+    pageEditor.open(newPage);
+    return newPage;
   }
 
   return (
     <div className="Navigator bg-gray-100 h-full w-full">
-      <NavigatorPageTree pages={pageTree} onCreateSubPage={createSubPage} />
+      <NavigatorPageTree
+        pages={pageTree}
+        activeId={pageEditor.openPage?.id}
+        onPageSelect={onPageSelect}
+        onCreateSubPage={createSubPage}
+      />
     </div>
   );
 }
