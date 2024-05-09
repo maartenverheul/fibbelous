@@ -1,83 +1,36 @@
-import fs from "fs";
 import __dirname from "@/dirname";
-import path from "path";
-import { globby } from "globby";
-import { Page } from "@/models";
-import matter from "gray-matter";
+import { DirectoryJSON, Volume, vol } from "memfs";
 
 export default class StorageService {
-  public static readonly dataPath = path.join(__dirname, "../.data");
-  public static readonly pagesPath = path.join(
-    StorageService.dataPath,
-    "pages/"
-  );
-  public static readonly databasesPath = path.join(
-    StorageService.dataPath,
-    "databases/"
-  );
+  public volume: typeof vol;
 
-  private pages: Page[] = [];
+  constructor() {
+    const json: DirectoryJSON = {
+      "./pages": null,
+      "./databases": null,
+      "./pages/page-1-849274a8.mdx": `---
+id: 849274a8
+title: Page 1
+created: 2024-05-07T17:28:18.005Z
+icon: 👍
+---
+# Page 1
 
-  private parseFrontmatterData(
-    pageFilePath: string,
-    data: matter.GrayMatterFile<string>
-  ): Page {
-    return {
-      id: pageFilePath.match(/(?:-)[a-z0-9]{8}/g)?.[0] ?? "",
-      content: data.content,
-      created: new Date(data.data.created).valueOf(),
-      title: data.data.title,
-      icon: data.data.icon,
-      parent: null,
+Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.`,
+      "./pages/849274a8/page-1-1-583a7667.mdx": `---
+id: 583a7667
+title: Page 1.1
+created: 2024-05-07T17:28:33.015Z
+icon: 😁
+---
+# Page 1.1
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.`,
     };
+    this.volume = Volume.fromJSON(json, "/");
   }
 
-  async init() {
-    await fs.promises.mkdir(StorageService.pagesPath, { recursive: true });
-    await fs.promises.mkdir(StorageService.databasesPath, { recursive: true });
-
-    await this.getAllPages();
-  }
-
-  async getAllPages(): Promise<Page[]> {
-    if (this.pages.length) return this.pages;
-
-    console.log("Reading all page files in data folder..");
-
-    // Get list of all pages files in the data folder
-    const allPages = await globby("**/*\\.mdx", {
-      cwd: StorageService.pagesPath,
-      absolute: true,
-    });
-
-    // Process each file async
-    const allPagesDataPromises = allPages.map((pageFilePath) =>
-      fs.promises
-        .readFile(pageFilePath, { encoding: "utf-8" })
-        .then((data) => matter(data))
-        .then((frontmatter) =>
-          this.parseFrontmatterData(pageFilePath, frontmatter)
-        )
-    );
-
-    // Wait until all files are processed
-    const allPagesData = await Promise.allSettled(allPagesDataPromises);
-
-    // Map all promises to result list
-    const result = allPagesData
-      .filter((item) => item.status == "fulfilled")
-      .map((pageContentPromise: any) => pageContentPromise.value);
-
-    console.log("Reading all page files in data folder..DONE");
-
-    this.pages = result;
-
-    return result;
-  }
-
-  savePage(newPage: Page) {
-    throw new Error("Method not implemented.");
-  }
+  async init() {}
 }
 
 export const storageService = new StorageService();

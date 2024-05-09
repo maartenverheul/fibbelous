@@ -3,6 +3,7 @@ import cors from "cors";
 import RestApiRouter from "@/routers/rest";
 import { start as startWSS } from "./routers/trpc";
 import { storageService } from "./services/StorageService";
+import { pageService } from "./services/PageService";
 
 class Server {
   private app: Express;
@@ -14,6 +15,7 @@ class Server {
 
   private async init() {
     await storageService.init();
+    await pageService.init();
 
     this.app.use(cors());
 
