@@ -2,9 +2,9 @@ import EventEmitter from "events";
 import z from "zod";
 import { t } from "./trpc";
 import { Page, PageMeta, pageMetaSchema } from "@/models";
-import { pages } from "@/temp/pages";
 import { observable } from "@trpc/server/observable";
 import { TRPCError } from "@trpc/server";
+import { storageService } from "@/services/StorageService";
 
 const ee = new EventEmitter();
 
@@ -15,8 +15,10 @@ export const appRouter = t.router({
         id: z.string(),
       })
     )
-    .query<Page>(({ input }) => {
-      const target = pages.find((page) => page.id == input.id);
+    .query<Page>(async ({ input }) => {
+      const target = (await storageService.getAllPages()).find(
+        (page) => page.id == input.id
+      );
       if (!target)
         throw new TRPCError({
           message: "Requested page does not exists",
@@ -24,8 +26,8 @@ export const appRouter = t.router({
         });
       return target;
     }),
-  getPages: t.procedure.query<PageMeta[]>(() => {
-    return pages;
+  getPages: t.procedure.query<PageMeta[]>(async () => {
+    return storageService.getAllPages();
   }),
   createPage: t.procedure.input(pageMetaSchema).mutation(({ input }) => {
     const newPage: Page = {
@@ -34,7 +36,7 @@ export const appRouter = t.router({
       title: "New Page",
       content: "# New Page",
     };
-    pages.push(newPage);
+    storageService.savePage(newPage);
 
     console.log("Created new page");
 

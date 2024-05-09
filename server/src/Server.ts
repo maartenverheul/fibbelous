@@ -2,6 +2,7 @@ import express, { Express } from "express";
 import cors from "cors";
 import RestApiRouter from "@/routers/rest";
 import { start as startWSS } from "./routers/trpc";
+import { storageService } from "./services/StorageService";
 
 class Server {
   private app: Express;
@@ -9,16 +10,19 @@ class Server {
 
   constructor() {
     this.app = express();
-    this.init();
   }
 
-  private init() {
+  private async init() {
+    await storageService.init();
+
     this.app.use(cors());
 
     this.app.use("/api", RestApiRouter);
   }
 
   async start() {
+    await this.init();
+
     startWSS();
 
     return new Promise<void>((resolve) => {
