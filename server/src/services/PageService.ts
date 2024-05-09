@@ -12,12 +12,16 @@ export default class PageService {
     data: matter.GrayMatterFile<string>
   ): Page {
     return {
-      id: pageFilePath.match(/(?:-)[a-z0-9]{8}/g)?.[0] ?? "",
+      id: pageFilePath.match(/(?:-)[a-z0-9]{8}/g)?.[0].substring(1) ?? "",
       content: data.content,
       created: new Date(data.data.created).valueOf(),
       title: data.data.title,
       icon: data.data.icon,
-      parent: null,
+      parent:
+        pageFilePath
+          .match(/(?:\/)[a-z0-9]{8}/g)
+          ?.at(-1)
+          ?.substring(1) ?? null,
     };
   }
 
@@ -47,8 +51,6 @@ export default class PageService {
       const matterData = matter(strData);
       return this.parseFrontmatterData(pageFilePath, matterData);
     });
-
-    // console.log(result);
 
     return result;
   }

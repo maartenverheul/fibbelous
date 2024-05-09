@@ -23,9 +23,11 @@
     "@rollup/plugin-alias": "^5.1.0",
     "@trpc/server": "^11.0.0-rc.364",
     "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "globby": "^14.0.1",
     "gray-matter": "^4.0.3",
+    "isomorphic-git": "^1.25.9",
     "memfs": "^4.9.2",
     "ws": "^8.17.0",
     "zod": "^3.23.6"

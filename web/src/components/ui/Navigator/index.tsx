@@ -21,10 +21,15 @@ export default function Navigator() {
 
   const pageTree = useMemo<PageTree>(
     () =>
+      // Convert list of pages to tree based and
+      // based on the 'parent' property.
       arrayToTree(pages, {
         parentProperty: "parent",
         childrenProperty: "children",
-      }),
+      })
+        // Don't display the pages that have a non-existing parent.
+        // Should not happen unless tampered with.
+        .filter((item) => item.parent == null),
     [pages]
   );
 
