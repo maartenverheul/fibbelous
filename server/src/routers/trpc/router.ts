@@ -5,7 +5,9 @@ import { Page, PageMeta, pageMetaSchema } from "@/models";
 import { observable } from "@trpc/server/observable";
 import { TRPCError } from "@trpc/server";
 import { pageService } from "@/services/PageService";
+import getLogger from "@/logger";
 
+const logger = getLogger("router");
 const ee = new EventEmitter();
 
 export const appRouter = t.router({
@@ -36,7 +38,7 @@ export const appRouter = t.router({
     };
     pageService.save(newPage);
 
-    console.log("Created new page");
+    logger.info("Created new page");
 
     // Notify subscriptions
     ee.emit("addPage", newPage);
