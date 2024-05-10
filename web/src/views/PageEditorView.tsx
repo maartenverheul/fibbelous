@@ -1,3 +1,4 @@
+import TopBar from "@/components/PageEditor/TopBar";
 import { usePageEditor } from "@/hooks";
 import {
   BoldItalicUnderlineToggles,
@@ -25,8 +26,9 @@ export default function PageEditorView() {
   }, [pageEditor.openPage]);
 
   return (
-    <div className="PageEditorView markdown">
-      <div className="max-w-screen-md mx-auto p-4">
+    <div className="PageEditorView">
+      <TopBar />
+      <div className="max-w-screen-md mx-auto p-4 markdown">
         {pageEditor.openPage && (
           <MDXEditor
             ref={markdownRef}
