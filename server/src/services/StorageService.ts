@@ -12,7 +12,9 @@ const logger = getLogger("StorageService");
 
 export default class StorageService {
   public volume: typeof vol;
-  private git: GitClient;
+
+  private readonly localRepoDir = path.join(__dirname, "../.data");
+  private readonly git: GitClient;
 
   constructor() {
     this.volume = new Volume();
@@ -28,15 +30,9 @@ export default class StorageService {
   }
 
   async init() {
-    const localRepoDir = path.join(__dirname, "../.data");
-    if (environment.dev && realfs.existsSync(localRepoDir)) {
+    if (environment.dev && realfs.existsSync(this.localRepoDir)) {
       logger.info("Restoring from physical fs...");
-      const snap = snapshot.toSnapshotSync({
-        fs: realfs as any,
-        path: localRepoDir,
-      });
-
-      snapshot.fromSnapshotSync(snap, { fs: this.volume, path: "/" });
+      this.fromPhysical();
     } else {
       logger.info("Cloning repository...");
       await this.git.clone({
@@ -83,6 +79,26 @@ export default class StorageService {
     // });
 
     logger.info("Done");
+  }
+
+  fromPhysical() {
+    const snap = snapshot.toSnapshotSync({
+      fs: realfs as any,
+      path: this.localRepoDir,
+    });
+
+    snapshot.fromSnapshotSync(snap, { fs: this.volume, path: "/" });
+  }
+  toPhysical() {
+    const snap = snapshot.toSnapshotSync({
+      fs: this.volume,
+      path: "/",
+    }) as any;
+
+    // Saving the git folder may not be permitted
+    snap[2][".git"] = undefined;
+
+    snapshot.fromSnapshotSync(snap, { fs: realfs as any, path: this.localRepoDir });
   }
 }
 

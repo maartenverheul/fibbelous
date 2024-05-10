@@ -8,7 +8,6 @@ import { pageService } from "@/services/PageService";
 import getLogger from "@/logger";
 
 const logger = getLogger("router");
-const ee = new EventEmitter();
 
 export const appRouter = t.router({
   getPage: t.procedure
@@ -26,31 +25,21 @@ export const appRouter = t.router({
         });
       return target;
     }),
+
   getPages: t.procedure.query<PageMeta[]>(async () => {
     return pageService.getAll();
   }),
+
   createPage: t.procedure.input(pageMetaSchema).mutation(({ input }) => {
-    const newPage: Page = {
-      ...input,
-      id: Math.round(Math.random() * 1000000).toString(16),
-      title: "New Page",
-      content: "# New Page",
-    };
-    pageService.save(newPage);
-
-    logger.info("Created new page");
-
-    // Notify subscriptions
-    ee.emit("addPage", newPage);
-    return newPage;
+    return pageService.createEmpty(input);
   }),
+
   onPageAdd: t.procedure.subscription(() => {
     return observable<Page>((emit) => {
-      const onAdd = (data: Page) => {
-        emit.next(data);
-      };
-      ee.on("addPage", onAdd);
-      return () => ee.off("addPage", onAdd);
+      const onAdd = (data: Page) => emit.next(data);
+
+      pageService.events.on("pageAdded", onAdd);
+      return () => pageService.events.off("pageAdded", onAdd);
     });
   }),
 });
