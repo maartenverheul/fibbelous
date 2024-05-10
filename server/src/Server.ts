@@ -4,6 +4,9 @@ import RestApiRouter from "@/routers/rest";
 import { start as startWSS } from "./routers/trpc";
 import { storageService } from "./services/StorageService";
 import { pageService } from "./services/PageService";
+import getLogger from "./logger";
+
+const logger = getLogger("Server");
 
 class Server {
   private app: Express;
@@ -29,7 +32,7 @@ class Server {
 
     return new Promise<void>((resolve) => {
       this.app.listen(this.port, () => {
-        console.log(`Http server listening on http://localhost:${this.port}`);
+        logger.info(`Http server listening on http://localhost:${this.port}`);
         resolve();
       });
     });

@@ -3,15 +3,16 @@ dotenv.config();
 
 import { default as realfs } from "fs";
 import __dirname from "@/dirname";
-import { IFs, Volume, fs, vol } from "memfs";
+import { Volume, vol } from "memfs";
 import * as snapshot from "memfs/lib/snapshot";
-import git, { GitAuth } from "isomorphic-git";
-import http from "isomorphic-git/http/node";
+import { GitAuth } from "isomorphic-git";
 import { EnvironmentSettings } from "@/models/app";
 import { GitClient } from "@/modules/GitClient";
 import path from "path";
+import getLogger from "@/logger";
 
 const dev = process.env.NODE_ENV != "production";
+const logger = getLogger("StorageService");
 
 export default class StorageService {
   public volume: typeof vol;
@@ -21,8 +22,7 @@ export default class StorageService {
   constructor() {
     this.volume = new Volume();
 
-    if (!process.env.GIT_REPOSTORY)
-      throw new Error("GIT_REPO evironment variable is missing.");
+    if (!process.env.GIT_REPOSTORY) throw new Error("GIT_REPO evironment variable is missing.");
 
     this.settings = {
       repository: process.env.GIT_REPOSTORY,
@@ -43,7 +43,7 @@ export default class StorageService {
   async init() {
     const localRepoDir = path.join(__dirname, "../.data");
     if (dev && realfs.existsSync(localRepoDir)) {
-      console.log("Restoring from physical fs...");
+      logger.info("Restoring from physical fs...");
       const snap = snapshot.toSnapshotSync({
         fs: realfs as any,
         path: localRepoDir,
@@ -51,7 +51,7 @@ export default class StorageService {
 
       snapshot.fromSnapshotSync(snap, { fs: this.volume, path: "/" });
     } else {
-      console.log("Cloning repository...");
+      logger.info("Cloning repository...");
       await this.git.clone({
         url: this.settings.repository,
         onAuth: () => this.onGitAuth(),
@@ -95,7 +95,7 @@ export default class StorageService {
     //   onAuth: () => this.onGitAuth(),
     // });
 
-    console.log("Done");
+    logger.info("Done");
   }
 }
 

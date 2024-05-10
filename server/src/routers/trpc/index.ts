@@ -1,6 +1,9 @@
 import { applyWSSHandler } from "@trpc/server/adapters/ws";
 import { WebSocketServer } from "ws";
 import { appRouter } from "./router";
+import getLogger from "@/logger";
+
+const logger = getLogger("trcp");
 
 export function start() {
   const wss = new WebSocketServer({
@@ -10,20 +13,20 @@ export function start() {
   const handler = applyWSSHandler({ wss, router: appRouter });
 
   wss.on("connection", (ws) => {
-    console.log(`➕ Connection (${wss.clients.size})`);
+    logger.info(`➕ Connection (${wss.clients.size})`);
     ws.once("close", () => {
-      console.log(`➖ Connection (${wss.clients.size})`);
+      logger.info(`➖ Connection (${wss.clients.size})`);
     });
   });
-  console.log("WebSocket server listening on ws://localhost:3001");
+  logger.info("WebSocket server listening on ws://localhost:3001");
 
   function stop() {
-    console.log("Stop signal received, gracefully closing websockets..");
+    logger.info("Stop signal received, gracefully closing websockets..");
 
     handler.broadcastReconnectNotification();
     wss.close();
 
-    console.log("Bye");
+    logger.info("Bye");
     process.exit();
   }
 
