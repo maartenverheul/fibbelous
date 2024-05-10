@@ -1,7 +1,6 @@
-import EventEmitter from "events";
 import z from "zod";
 import { t } from "./trpc";
-import { Page, PageMeta, pageMetaSchema } from "@/models";
+import { Page, PageMeta, pageContentSaveChangesSchema, pageMetaSchema } from "@/models";
 import { observable } from "@trpc/server/observable";
 import { TRPCError } from "@trpc/server";
 import { pageService } from "@/services/PageService";
@@ -32,6 +31,16 @@ export const appRouter = t.router({
 
   createPage: t.procedure.input(pageMetaSchema).mutation(({ input }) => {
     return pageService.createEmpty(input);
+  }),
+
+  saveChange: t.procedure.input(pageContentSaveChangesSchema).mutation(({ input }) => {
+    console.log(input);
+    // TODO
+    // - Hash original on the server
+    // - Compare hashes to make sure that the changes are applied to the correct original
+    // - Apply changes
+    // - Save file
+    return true;
   }),
 
   onPageAdd: t.procedure.subscription(() => {

@@ -1,3 +1,4 @@
+import { Change } from "textdiff-patch";
 import z from "zod";
 
 export type PageMeta = {
@@ -18,8 +19,6 @@ export const pageMetaSchema: z.ZodType<PageMeta> = z.object({
   children: z.array(z.lazy(() => pageMetaSchema)).optional(),
 });
 
-type t = z.infer<typeof pageMetaSchema>;
-
 export type PageTree = PageMeta[];
 
 export const pageTreeSchema: z.ZodType<PageTree> = z.array(pageMetaSchema);
@@ -33,3 +32,17 @@ export const pageSchema: z.ZodType<Page> = pageMetaSchema.and(
     content: z.string(),
   })
 );
+
+export const pageContentChangeSchema: z.ZodType<Change> = z.union([
+  z.tuple([z.literal(-1), z.number()]),
+  z.tuple([z.literal(0), z.number()]),
+  z.tuple([z.literal(1), z.string()]),
+]);
+
+export const pageContentChangesSchema: z.ZodType<Change[]> = z.array(pageContentChangeSchema);
+
+export const pageContentSaveChangesSchema = z.object({
+  pageId: z.string(),
+  change: pageContentChangesSchema,
+  originalHash: z.string(),
+});

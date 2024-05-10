@@ -25,12 +25,17 @@
     "react-dom": "^18.2.0",
     "react-resizable-panels": "^2.0.19",
     "tailwind-merge": "^2.3.0",
-    "tailwindcss-animate": "^1.0.7"
+    "tailwindcss-animate": "^1.0.7",
+    "textdiff-create": "^1.1.11",
+    "textdiff-patch": "^1.1.10",
+    "use-debounce": "^10.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.12.8",
     "@types/react": "^18.2.66",
     "@types/react-dom": "^18.2.22",
+    "@types/textdiff-create": "^1.0.2",
+    "@types/textdiff-patch": "^1.0.2",
     "@typescript-eslint/eslint-plugin": "^7.2.0",
     "@typescript-eslint/parser": "^7.2.0",
     "@vitejs/plugin-react-swc": "^3.5.0",
