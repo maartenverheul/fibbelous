@@ -14,8 +14,8 @@ const logger = getLogger("PageService");
 
 type Events = {
   pageAdded: Page;
-  pageMetaChanged: Page;
   pageRemoved: string;
+  pageUpdated: PageMeta;
 };
 
 export default class PageService {
@@ -28,10 +28,10 @@ export default class PageService {
       created: new Date(data.data.created).valueOf(),
       title: data.data.title,
       icon: data.data.icon,
-      parent: pageFilePath.split("/").at(-2) ?? null,
+      parent: pageFilePath.split("/").at(-2) ?? undefined,
     };
 
-    if (page.parent == "pages") page.parent = null;
+    if (page.parent == "pages") page.parent = undefined;
 
     return page;
   }
@@ -40,7 +40,7 @@ export default class PageService {
     await this.getAll();
   }
 
-  async getAll(): Promise<Page[]> {
+  getAll(): Page[] {
     const allPageFiles = globbySync("/pages/**/*\\.mdx", {
       absolute: true,
 
@@ -74,9 +74,9 @@ export default class PageService {
     return `${slug}-${page.id}.mdx`;
   }
 
-  async getAncestors(page: Page): Promise<Page[]> {
+  getAncestors(page: Page): Page[] {
     let output = [];
-    const pagesDict = this.toRecord(await this.getAll());
+    const pagesDict = this.toRecord(this.getAll());
 
     output.push(page);
     let current: Page = page;
@@ -90,20 +90,23 @@ export default class PageService {
     return output.toReversed();
   }
 
-  async find(id: string | null): Promise<Page | undefined> {
-    if (id == null) return undefined;
-    const pages = await pageService.getAll();
+  getFilePath(page: Page) {
+    const ancestors = this.getAncestors(page);
+    const folders = ancestors.slice(0, -1).map((page) => page.id);
+
+    return path.join("/pages/", ...folders, this.getPageFileName(page));
+  }
+
+  find(id: string | undefined): Page | undefined {
+    if (id == undefined) return undefined;
+    const pages = pageService.getAll();
     return pages.find((page) => page.id == id);
   }
 
-  async save(page: Page) {
-    const ancestors = await this.getAncestors(page);
-    const folders = ancestors.slice(0, -1).map((page) => page.id);
+  save(page: Page): void {
+    const filePath = this.getFilePath(page);
 
-    const fileDir = path.join("/pages/", ...folders);
-    const filePath = path.join(fileDir, this.getPageFileName(page));
-
-    await storageService.volume.promises.mkdir(fileDir, { recursive: true });
+    storageService.volume.mkdirSync(path.dirname(filePath), { recursive: true });
 
     const data: Record<string, any> = {
       id: page.id,
@@ -116,20 +119,21 @@ export default class PageService {
       language: "yaml",
     });
 
-    await storageService.volume.promises.writeFile(filePath, content, { encoding: "utf-8" });
+    storageService.volume.writeFileSync(filePath, content, { encoding: "utf-8" });
 
     storageService.toPhysical();
   }
 
-  async create(page: Page) {
+  create(page: Page): Page {
     logger.info("Creating new page");
     page.id = createId();
-    await this.save(page);
+    this.save(page);
 
     this.events.emit("pageAdded", page);
+    return page;
   }
 
-  async createEmpty(page: PageMeta) {
+  createEmpty(page: PageMeta): Page {
     const newPage: Page = {
       ...page,
       title: "New Page",
@@ -138,9 +142,33 @@ export default class PageService {
     return this.create(newPage);
   }
 
-  delete(id: string) {
+  update(updatedPage: Partial<Page>): Page {
+    if (!updatedPage.id) throw new Error("Id is missing in object");
+    logger.info(`Updating page ${updatedPage.id}`);
+
+    const page = this.find(updatedPage.id);
+    if (!page) throw new PageNotFoundError(updatedPage.id);
+
+    Object.assign(page, updatedPage);
+
+    this.save(page);
+    this.events.emit("pageUpdated", page);
+    return page;
+  }
+
+  delete(id: string): void {
+    const page = this.find(id);
+    if (!page) throw new PageNotFoundError(id);
+    const filePath = this.getFilePath(page);
+    storageService.volume.rmSync(filePath), storageService.toPhysical();
     this.events.emit("pageRemoved", id);
   }
 }
 
 export const pageService = new PageService();
+
+export class PageNotFoundError extends Error {
+  constructor(id: string) {
+    super(`Page "${id}" does not exist`);
+  }
+}

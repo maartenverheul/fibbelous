@@ -20,6 +20,7 @@ export default function PageEditorProvider({ children }: PropsWithChildren) {
   >();
   const [lastSyncedHash, setLastSyncedHash] = useState<string | undefined>();
 
+  const updatePageMutation = trpc.updatePage.useMutation();
   const saveChangesMutation = trpc.saveChange.useMutation();
 
   const utils = trpc.useUtils();
@@ -85,6 +86,10 @@ export default function PageEditorProvider({ children }: PropsWithChildren) {
     return { deltas: mergedChanges, content: current };
   }
 
+  async function update(page: Partial<PageMeta>) {
+    await updatePageMutation.mutateAsync(page);
+  }
+
   return (
     <PageEditorContext.Provider
       value={{
@@ -93,6 +98,7 @@ export default function PageEditorProvider({ children }: PropsWithChildren) {
         changes: pendingChanges,
         open,
         makeChange,
+        update,
       }}
     >
       {children}

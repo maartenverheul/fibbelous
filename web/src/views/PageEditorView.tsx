@@ -45,6 +45,17 @@ export default function PageEditorView() {
     <div className="PageEditorView">
       <TopBar />
       <div className="max-w-screen-md mx-auto p-4 markdown">
+        <input
+          type="text"
+          className="text-[2.8rem] font-bold mb-6 mt-6 h-[60px] focus:outline-none pl-2 w-full truncate"
+          value={pageEditor.openPage.title}
+          onChange={(e) =>
+            pageEditor.update({
+              ...pageEditor.openPage!,
+              title: e.target.value,
+            })
+          }
+        />
         <MDXEditor
           ref={markdownRef}
           markdown={oldContent}

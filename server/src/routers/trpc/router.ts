@@ -33,6 +33,10 @@ export const appRouter = t.router({
     return pageService.createEmpty(input);
   }),
 
+  updatePage: t.procedure.input(pageMetaSchema).mutation(({ input }) => {
+    return pageService.update(input);
+  }),
+
   saveChange: t.procedure.input(pageContentSaveChangesSchema).mutation(({ input }) => {
     console.log(input);
     // TODO

@@ -6,7 +6,7 @@ export type PageMeta = {
   icon?: string;
   created: number;
   title: string;
-  parent: string | null;
+  parent?: string;
   children?: PageMeta[];
 };
 
@@ -15,7 +15,7 @@ export const pageMetaSchema: z.ZodType<PageMeta> = z.object({
   icon: z.string().optional(),
   created: z.number(),
   title: z.string(),
-  parent: z.string().nullable(),
+  parent: z.string().optional(),
   children: z.array(z.lazy(() => pageMetaSchema)).optional(),
 });
 

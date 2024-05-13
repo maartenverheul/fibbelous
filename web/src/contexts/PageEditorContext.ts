@@ -9,6 +9,7 @@ export type PageEditorContextType = {
   syncStatus: SyncStatus;
   makeChange(change: Change[]): void;
   changes: Change[][];
+  update(page: PageMeta): Promise<void>;
 };
 
 export const PageEditorContext = createContext<PageEditorContextType>(null!);
