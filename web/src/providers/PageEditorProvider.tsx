@@ -1,65 +1,77 @@
 import { PageEditorContext } from "@/contexts/PageEditorContext";
-import { PropsWithChildren, useEffect, useState } from "react";
-import { Page } from "@fibbelous/server/models";
+import { PropsWithChildren, useState } from "react";
+import { Page, PageMeta } from "@fibbelous/server/models";
 import { trpc } from "@/utils/trpc";
 import { SyncStatus } from "@/types/sync";
 import { Change } from "textdiff-create";
 import { useDebouncedCallback } from "use-debounce";
 import create from "textdiff-create";
 import patch from "textdiff-patch";
+import { getStringHash } from "@/utils/hash";
 
 export default function PageEditorProvider({ children }: PropsWithChildren) {
   const [openPage, setOpenPage] = useState<Page | undefined>();
 
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("synced");
-  const [changes, setChanges] = useState<Change[][]>([]);
+  const [pendingChanges, setPendingChanges] = useState<Change[][]>([]);
 
   const [lastSyncedContent, setLastSyncedContent] = useState<
     string | undefined
   >();
-  const [lastSyncedHash, setLastSyncedHash] = useState<string | undefined>(
-    "none"
-  );
+  const [lastSyncedHash, setLastSyncedHash] = useState<string | undefined>();
 
   const saveChangesMutation = trpc.saveChange.useMutation();
 
-  useEffect(() => {
-    setLastSyncedContent(openPage?.content);
-  }, [openPage]);
-
   const utils = trpc.useUtils();
 
-  const sync = useDebouncedCallback(
-    async () => {
-      const { deltas, content } = applyChanges(lastSyncedContent!, changes);
+  async function open(pageMeta: PageMeta) {
+    console.debug("Opening page");
+    const page = await utils.getPage.fetch({ id: pageMeta.id });
+    const contentHash = await getStringHash(page.content);
+    setOpenPage(page);
+    setLastSyncedContent(page.content);
+    setLastSyncedHash(contentHash);
+  }
 
-      console.log("Save to server: ", deltas);
-      try {
-        await saveChangesMutation.mutateAsync({
-          pageId: openPage!.id,
-          change: deltas,
-          originalHash: lastSyncedHash,
-        });
+  function makeChange(change: Change[]) {
+    console.log("Pending change..");
 
-        const encoder = new TextEncoder();
-        const data = encoder.encode(content);
-        const newHashBuffer = await crypto.subtle.digest("SHA-1", data);
-        const newHash = [...new Uint8Array(newHashBuffer)]
-          .map((t) => t.toString(16))
-          .join("");
+    setPendingChanges([...pendingChanges, change]);
+    setSyncStatus("syncing");
+    flushPendingChangesDebounced();
+  }
 
-        // Reset
-        setChanges([]);
-        setLastSyncedContent(content);
-        setLastSyncedHash(newHash);
-        setSyncStatus("synced");
-      } catch (e) {
-        setSyncStatus("error");
-      }
-    },
-    3000,
+  const flushPendingChangesDebounced = useDebouncedCallback(
+    flushPendingChanges,
+    100,
     {}
   );
+
+  async function flushPendingChanges() {
+    const { deltas, content } = applyChanges(
+      lastSyncedContent!,
+      pendingChanges
+    );
+
+    console.log("Save to server: ", deltas);
+    try {
+      await saveChangesMutation.mutateAsync({
+        pageId: openPage!.id,
+        change: deltas,
+        originalHash: lastSyncedHash,
+      });
+
+      const newHash = await getStringHash(content);
+
+      // Reset
+      setPendingChanges([]);
+      setLastSyncedContent(content);
+      setLastSyncedHash(newHash);
+      setSyncStatus("synced");
+    } catch (e) {
+      setSyncStatus("error");
+    }
+  }
 
   function applyChanges(
     original: string,
@@ -78,20 +90,9 @@ export default function PageEditorProvider({ children }: PropsWithChildren) {
       value={{
         openPage,
         syncStatus,
-        async open(pageMeta) {
-          console.debug("Opening page");
-          return utils.getPage
-            .fetch({ id: pageMeta.id })
-            .then((page: Page) => setOpenPage(page));
-        },
-        changes,
-        makeChange(change) {
-          console.log("Pending change..");
-
-          setChanges([...changes, change]);
-          setSyncStatus("syncing");
-          sync();
-        },
+        changes: pendingChanges,
+        open,
+        makeChange,
       }}
     >
       {children}
