@@ -28,10 +28,10 @@ export default class PageService {
       created: new Date(data.data.created).valueOf(),
       title: data.data.title,
       icon: data.data.icon,
-      parent: pageFilePath.split("/").at(-2) ?? undefined,
+      parent: pageFilePath.split("/").at(-2) ?? null,
     };
 
-    if (page.parent == "pages") page.parent = undefined;
+    if (page.parent == "pages") page.parent = null;
 
     return page;
   }
