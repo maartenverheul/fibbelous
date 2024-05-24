@@ -13,6 +13,7 @@ import { AppRouter } from "@fibbelous/server/trpc";
 import PageEditorProvider from "./providers/PageEditorProvider";
 import { PageEditorContext } from "./contexts/PageEditorContext";
 import HomeView from "./views/HomeView";
+import TRPCInspector from "./components/_debug/TRPCInspector";
 
 function App() {
   const [queryClient] = useState(() => new QueryClient());
@@ -28,33 +29,40 @@ function App() {
   );
 
   return (
-    <trpc.Provider client={trpcClient} queryClient={queryClient}>
-      <QueryClientProvider client={queryClient}>
-        <PageEditorProvider>
-          <PageEditorContext.Consumer>
-            {(pageEditor) => (
-              <>
-                <div className="w-screen h-screen">
-                  <ResizablePanelGroup direction="horizontal">
-                    <ResizablePanel minSize={10} defaultSize={15} maxSize={30}>
-                      <Navigator />
-                    </ResizablePanel>
-                    <ResizableHandle />
-                    <ResizablePanel>
-                      {pageEditor.openPage != undefined ? (
-                        <PageEditorView />
-                      ) : (
-                        <HomeView />
-                      )}
-                    </ResizablePanel>
-                  </ResizablePanelGroup>
-                </div>
-              </>
-            )}
-          </PageEditorContext.Consumer>
-        </PageEditorProvider>
-      </QueryClientProvider>
-    </trpc.Provider>
+    <>
+      <TRPCInspector client={wsClient} />
+      <trpc.Provider client={trpcClient} queryClient={queryClient}>
+        <QueryClientProvider client={queryClient}>
+          <PageEditorProvider>
+            <PageEditorContext.Consumer>
+              {(pageEditor) => (
+                <>
+                  <div className="w-screen h-screen">
+                    <ResizablePanelGroup direction="horizontal">
+                      <ResizablePanel
+                        minSize={10}
+                        defaultSize={15}
+                        maxSize={30}
+                      >
+                        <Navigator />
+                      </ResizablePanel>
+                      <ResizableHandle />
+                      <ResizablePanel>
+                        {pageEditor.openPage != undefined ? (
+                          <PageEditorView />
+                        ) : (
+                          <HomeView />
+                        )}
+                      </ResizablePanel>
+                    </ResizablePanelGroup>
+                  </div>
+                </>
+              )}
+            </PageEditorContext.Consumer>
+          </PageEditorProvider>
+        </QueryClientProvider>
+      </trpc.Provider>
+    </>
   );
 }
 
