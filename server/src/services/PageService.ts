@@ -1,6 +1,6 @@
+import fs from "fs";
 import __dirname from "@/dirname";
-import { globbySync } from "globby";
-import type { ReaddirSynchronousMethod } from "@nodelib/fs.scandir";
+import { globby } from "globby";
 import { Page, PageMeta } from "@/models";
 import matter from "gray-matter";
 import { storageService } from "./StorageService";
@@ -9,6 +9,7 @@ import getLogger from "@/logger";
 import path from "path";
 import slugify from "slugify";
 import createId from "@/utils/uid";
+import normalizePath from "normalize-path";
 
 const logger = getLogger("PageService");
 
@@ -20,6 +21,8 @@ type Events = {
 
 export default class PageService {
   public readonly events = mitt<Events>();
+
+  private pages: Record<string, Page> = {};
 
   private parseFrontmatterData(pageFilePath: string, data: matter.GrayMatterFile<string>): Page {
     const page: Page = {
@@ -37,22 +40,20 @@ export default class PageService {
   }
 
   async init() {
-    await this.getAll();
+    await this.loadAll();
   }
 
-  getAll(): Page[] {
-    const allPageFiles = globbySync("/pages/**/*\\.mdx", {
-      absolute: true,
+  private async loadAll(): Promise<void> {
+    logger.info("Reading all pages from fs..");
+    const pagesQuery = normalizePath(path.posix.join(storageService.localRepoDir, "/pages/**/*.mdx"));
 
-      fs: {
-        readdirSync: ((filepath, options) =>
-          storageService.volume.readdirSync(filepath, options)) as ReaddirSynchronousMethod,
-      },
+    const allPageFiles = await globby(pagesQuery, {
+      absolute: true,
     });
 
     // Process each file
-    const result = allPageFiles.map((pageFilePath: string) => {
-      const strData = storageService.volume.readFileSync(pageFilePath, {
+    const list = allPageFiles.map((pageFilePath: string) => {
+      const strData = fs.readFileSync(pageFilePath, {
         encoding: "utf-8",
       }) as string;
 
@@ -60,11 +61,15 @@ export default class PageService {
       return this.parseFrontmatterData(pageFilePath, matterData);
     });
 
-    return result;
+    const dict = Object.fromEntries(list.map((page) => [page.id, page]));
+
+    this.pages = dict;
+
+    logger.info(`Loaded ${list.length} pages.`);
   }
 
-  toRecord(list: Page[]): Record<string, Page> {
-    return list.reduce((a, v) => ({ ...a, [v.id]: v }), {});
+  getAll(): Page[] {
+    return Object.values(this.pages);
   }
 
   getPageFileName(page: Page) {
@@ -76,13 +81,11 @@ export default class PageService {
 
   getAncestors(page: Page): Page[] {
     let output = [];
-    const pagesDict = this.toRecord(this.getAll());
 
-    output.push(page);
     let current: Page = page;
 
     while (current.parent != null) {
-      const parent = pagesDict[current.parent];
+      const parent = this.pages[current.parent];
       output.push(parent);
       current = parent;
     }
@@ -92,9 +95,9 @@ export default class PageService {
 
   getFilePath(page: Page) {
     const ancestors = this.getAncestors(page);
-    const folders = ancestors.slice(0, -1).map((page) => page.id);
+    const folders = ancestors.map((page) => page.id);
 
-    return path.join("/pages/", ...folders, this.getPageFileName(page));
+    return path.join(storageService.localRepoDir, "/pages/", ...folders, this.getPageFileName(page));
   }
 
   find(id: string | undefined): Page | undefined {
@@ -106,7 +109,7 @@ export default class PageService {
   save(page: Page): void {
     const filePath = this.getFilePath(page);
 
-    storageService.volume.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
 
     const data: Record<string, any> = {
       id: page.id,
@@ -119,9 +122,9 @@ export default class PageService {
       language: "yaml",
     });
 
-    storageService.volume.writeFileSync(filePath, content, { encoding: "utf-8" });
+    fs.writeFileSync(filePath, content, { encoding: "utf-8" });
 
-    storageService.toPhysical();
+    this.pages[page.id] = page;
   }
 
   create(page: Page): Page {
@@ -160,7 +163,7 @@ export default class PageService {
     const page = this.find(id);
     if (!page) throw new PageNotFoundError(id);
     const filePath = this.getFilePath(page);
-    storageService.volume.rmSync(filePath), storageService.toPhysical();
+    fs.rmSync(filePath);
     this.events.emit("pageRemoved", id);
   }
 }

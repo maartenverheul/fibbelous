@@ -1,7 +1,5 @@
-import { default as realfs } from "fs";
+import fs from "fs";
 import __dirname from "@/dirname";
-import { Volume, vol } from "memfs";
-import * as snapshot from "memfs/lib/snapshot";
 import { GitAuth } from "isomorphic-git";
 import { GitClient } from "@/modules/GitClient";
 import path from "path";
@@ -11,16 +9,8 @@ import environment from "@/environment";
 const logger = getLogger("StorageService");
 
 export default class StorageService {
-  public volume: typeof vol;
-
-  private readonly localRepoDir = path.join(__dirname, "../.data");
-  private readonly git: GitClient;
-
-  constructor() {
-    this.volume = new Volume();
-
-    this.git = new GitClient(this.volume as any, "/");
-  }
+  public readonly localRepoDir = path.join(__dirname, "../.data");
+  private git: GitClient = null!;
 
   private onGitAuth(url?: string, auth?: GitAuth) {
     return {
@@ -30,16 +20,16 @@ export default class StorageService {
   }
 
   async init() {
-    if (environment.dev && realfs.existsSync(this.localRepoDir)) {
-      logger.info("Restoring from physical fs...");
-      this.fromPhysical();
-    } else {
+    logger.info(`Using data dir: ${this.localRepoDir}`);
+    if (!fs.existsSync(this.localRepoDir)) {
       logger.info("Cloning repository...");
       await this.git.clone({
         url: environment.repository,
         onAuth: () => this.onGitAuth(),
       });
     }
+
+    this.git = new GitClient(fs, "/");
 
     await this.git.setConfig({
       path: "user.name",
@@ -79,26 +69,6 @@ export default class StorageService {
     // });
 
     logger.info("Done");
-  }
-
-  fromPhysical() {
-    const snap = snapshot.toSnapshotSync({
-      fs: realfs as any,
-      path: this.localRepoDir,
-    });
-
-    snapshot.fromSnapshotSync(snap, { fs: this.volume, path: "/" });
-  }
-  toPhysical() {
-    const snap = snapshot.toSnapshotSync({
-      fs: this.volume,
-      path: "/",
-    }) as any;
-
-    // Saving the git folder may not be permitted
-    snap[2][".git"] = undefined;
-
-    snapshot.fromSnapshotSync(snap, { fs: realfs as any, path: this.localRepoDir });
   }
 }
 
