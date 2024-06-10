@@ -3,10 +3,7 @@ import { t } from "./trpc";
 import { Page, PageMeta, pageContentSaveChangesSchema, pageMetaSchema } from "@/models";
 import { observable } from "@trpc/server/observable";
 import { TRPCError } from "@trpc/server";
-import { pageService } from "@/services/PageService";
-import getLogger from "@/logger";
-
-const logger = getLogger("router");
+import { pageService } from "@/services/PageService.js";
 
 export const appRouter = t.router({
   getPage: t.procedure
