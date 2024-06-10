@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import { createWSClient } from "@trpc/client";
 import { useEffect, useState } from "react";
 
@@ -20,6 +21,9 @@ type Props = {
 };
 
 export default function TRPCInspector({ client }: Props) {
+  const [open, setOpen] = useState(
+    localStorage.getItem("TRPCInspector-open") == "true"
+  );
   const [events, setEvents] = useState<Event[]>([]);
 
   useEffect(() => {
@@ -48,16 +52,44 @@ export default function TRPCInspector({ client }: Props) {
     };
   });
 
+  function toggle() {
+    localStorage.setItem("TRPCInspector-open", !open ? "true" : "false");
+    setOpen(!open);
+  }
+
   return (
-    <div className="fixed border right-5 bottom-5 w-[300px] h-[300px] overflow-y-scroll rounded-sm shadow-lg hover:shadow-gray-500 p-2">
-      {events.map((event, i) => (
-        <div key={i} className="flex">
-          <span className="font-mono mr-2">
-            {event.direction == Direction.IN ? "<-" : "->"}
-          </span>
-          <span>{event?.params?.path}</span>
-        </div>
-      ))}
+    <div
+      onClick={toggle}
+      className={cn(
+        "fixed border right-5 bottom-5 rounded-sm p-2 cursor-pointer transition-all duration-300",
+        {
+          "h-[300px] w-[300px] overflow-y-scroll shadow-lg hover:shadow-gray-500":
+            open,
+          "h-[40px] w-[100px] opacity-25 hover:opacity-100": !open,
+        }
+      )}
+    >
+      <p
+        className={cn("text-sm text-center", {
+          "opacity-0": open,
+        })}
+      >
+        TRPC
+      </p>
+      <div
+        className={cn("text-sm", {
+          "opacity-0": !open,
+        })}
+      >
+        {events.map((event, i) => (
+          <div key={i} className="flex">
+            <span className="font-mono mr-2">
+              {event.direction == Direction.IN ? "<-" : "->"}
+            </span>
+            <span>{event?.params?.path}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

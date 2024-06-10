@@ -1,5 +1,5 @@
 import { PageEditorContext } from "@/contexts/PageEditorContext";
-import { PropsWithChildren, useState } from "react";
+import { PropsWithChildren, useEffect, useState } from "react";
 import { Page, PageMeta } from "@fibbelous/server/models";
 import { trpc } from "@/utils/trpc";
 import { SyncStatus } from "@/types/sync";
@@ -8,6 +8,7 @@ import { useDebouncedCallback } from "use-debounce";
 import create from "textdiff-create";
 import patch from "textdiff-patch";
 import { getStringHash } from "@/utils/hash";
+import useLocalStorageState from "use-local-storage-state";
 
 export default function PageEditorProvider({ children }: PropsWithChildren) {
   const [openPage, setOpenPage] = useState<Page | undefined>();
@@ -20,18 +21,23 @@ export default function PageEditorProvider({ children }: PropsWithChildren) {
   >();
   const [lastSyncedHash, setLastSyncedHash] = useState<string | undefined>();
 
+  const [lastOpenedPage, setLastOpenedPage] = useLocalStorageState<
+    string | undefined
+  >("last-openend-page");
+
   const updatePageMutation = trpc.updatePage.useMutation();
   const saveChangesMutation = trpc.saveChange.useMutation();
 
   const utils = trpc.useUtils();
 
-  async function open(pageMeta: PageMeta) {
+  async function open(pageId: string) {
     console.debug("Opening page");
-    const page = await utils.getPage.fetch({ id: pageMeta.id });
+    const page: Page = await utils.getPage.fetch({ id: pageId });
     const contentHash = await getStringHash(page.content);
     setOpenPage(page);
     setLastSyncedContent(page.content);
     setLastSyncedHash(contentHash);
+    setLastOpenedPage(page.id);
   }
 
   function makeChange(change: Change[]) {
@@ -89,6 +95,11 @@ export default function PageEditorProvider({ children }: PropsWithChildren) {
   async function update(page: Partial<PageMeta>) {
     await updatePageMutation.mutateAsync(page);
   }
+
+  useEffect(() => {
+    // Open the last opened page on load
+    if (lastOpenedPage != undefined) open(lastOpenedPage);
+  }, []);
 
   return (
     <PageEditorContext.Provider

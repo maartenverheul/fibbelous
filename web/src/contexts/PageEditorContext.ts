@@ -4,7 +4,7 @@ import { SyncStatus } from "@/types/sync";
 import { Change } from "textdiff-create";
 
 export type PageEditorContextType = {
-  open(page: PageMeta): Promise<void>;
+  open(pageId: string): Promise<void>;
   openPage: Page | undefined;
   syncStatus: SyncStatus;
   makeChange(change: Change[]): void;

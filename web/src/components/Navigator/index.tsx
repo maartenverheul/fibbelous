@@ -38,7 +38,7 @@ export default function Navigator() {
   }, [pagesQuery.data]);
 
   function onPageSelect(page: PageMeta) {
-    pageEditor.open(page);
+    pageEditor.open(page.id);
   }
 
   async function createSubPage(parent: PageMeta): Promise<PageMeta> {
@@ -50,7 +50,7 @@ export default function Navigator() {
     };
 
     newPage = await createPageMutation.mutateAsync(newPage);
-    pageEditor.open(newPage);
+    pageEditor.open(newPage.id);
     return newPage;
   }
 

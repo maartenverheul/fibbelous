@@ -28,7 +28,8 @@
     "tailwindcss-animate": "^1.0.7",
     "textdiff-create": "^1.1.11",
     "textdiff-patch": "^1.1.10",
-    "use-debounce": "^10.0.0"
+    "use-debounce": "^10.0.0",
+    "use-local-storage-state": "^19.3.0"
   },
   "devDependencies": {
     "@types/node": "^20.12.8",
