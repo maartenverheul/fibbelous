@@ -76,6 +76,12 @@ const pagesRouter = t.router({
       return openPage.page;
     }),
 
+  close: t.procedure.mutation(async ({ ctx }) => {
+    if (!ctx.openPage) return;
+    ctx.openPage[Symbol.dispose]();
+    ctx.openPage = undefined;
+  }),
+
   saveChange: t.procedure.input(pageContentSaveChangesSchema).mutation(({ input }) => {
     console.log(input);
     // TODO

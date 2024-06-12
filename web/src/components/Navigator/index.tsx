@@ -8,8 +8,12 @@ import type {
   PageTree,
 } from "@fibbelous/server/models";
 import { usePageEditor } from "@/hooks";
+import { useToast } from "../ui/use-toast";
+import getErrorMessage from "@/i18n/errors";
 
 export default function Navigator() {
+  const { toast } = useToast();
+
   const pagesQuery = trpc.pages.getAll.useQuery<PageMeta[]>();
   const createPageMutation = trpc.pages.create.useMutation();
 
@@ -78,7 +82,14 @@ export default function Navigator() {
   }
 
   async function deletePageDelete(page: PageMeta) {
-    await deletePageMutation.mutateAsync(page.id);
+    if (pageEditor.openPage?.id == page.id) await pageEditor.close();
+    await deletePageMutation.mutateAsync(page.id).catch((e) =>
+      toast({
+        title: "Error",
+        description: getErrorMessage(e.message),
+        variant: "destructive",
+      })
+    );
   }
 
   function favouritePage() {

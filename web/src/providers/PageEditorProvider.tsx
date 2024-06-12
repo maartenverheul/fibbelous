@@ -29,6 +29,7 @@ export default function PageEditorProvider({ children }: PropsWithChildren) {
   const updatePageMutation = trpc.pages.update.useMutation();
   const saveChangesMutation = trpc.pages.saveChange.useMutation();
   const openPageMutation = trpc.pages.open.useMutation();
+  const closePageMutation = trpc.pages.close.useMutation();
 
   // Open a page, fetch the content and set it as the last synced content.
   // If the page is already open, don't do anything.
@@ -38,12 +39,23 @@ export default function PageEditorProvider({ children }: PropsWithChildren) {
 
     // Open the page
     console.debug("Opening page");
-    const page: Page = await openPageMutation.mutateAsync({ id: pageId });
+    const page: Page | undefined = await openPageMutation
+      .mutateAsync({ id: pageId })
+      .catch((e) => {
+        if (e.message === "EPAGENOTFOUND") return null;
+        throw e;
+      });
+    if (!page) return;
     const contentHash = await getStringHash(page.content);
     setOpenPage(page);
     setLastSyncedContent(page.content);
     setLastSyncedHash(contentHash);
     setLastOpenedPage(page.id);
+  }
+
+  async function close() {
+    await closePageMutation.mutateAsync();
+    setOpenPage(undefined);
   }
 
   // Make a change to the content
@@ -119,6 +131,7 @@ export default function PageEditorProvider({ children }: PropsWithChildren) {
         syncStatus,
         changes: pendingChanges,
         open,
+        close,
         makeChange,
         update,
       }}
