@@ -2,7 +2,7 @@ import z from "zod";
 import { Page, PageMeta, pageContentSaveChangesSchema, pageMetaSchema } from "@/models";
 import { observable } from "@trpc/server/observable";
 import { TRPCError } from "@trpc/server";
-import { OpenPage, PageNotFoundError, pageService } from "@/services/PageService.js";
+import { OpenPage, PageLockedError, PageNotFoundError, pageService } from "@/services/PageService.js";
 import { t } from "../trpc";
 import getLogger from "@/logger";
 import { TRPCPageLockedError, TRPCPageNotFoundError, TRPCServerError } from "../errors";
@@ -35,7 +35,11 @@ const pagesRouter = t.router({
   }),
 
   delete: t.procedure.input(z.string()).mutation(({ input }) => {
-    return pageService.delete(input);
+    return pageService.delete(input).catch((e) => {
+      if (e instanceof PageNotFoundError) throw new TRPCPageNotFoundError();
+      if (e instanceof PageLockedError) throw new TRPCPageLockedError();
+      throw new TRPCServerError();
+    });
   }),
 
   open: t.procedure
