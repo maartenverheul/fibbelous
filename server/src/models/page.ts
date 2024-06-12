@@ -1,3 +1,4 @@
+import { FileHandle } from "fs/promises";
 import { Change } from "textdiff-patch";
 import z from "zod";
 

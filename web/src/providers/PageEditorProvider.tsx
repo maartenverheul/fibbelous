@@ -16,6 +16,7 @@ export default function PageEditorProvider({ children }: PropsWithChildren) {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("synced");
   const [pendingChanges, setPendingChanges] = useState<Change[][]>([]);
 
+  //
   const [lastSyncedContent, setLastSyncedContent] = useState<
     string | undefined
   >();
@@ -25,14 +26,19 @@ export default function PageEditorProvider({ children }: PropsWithChildren) {
     string | undefined
   >("last-openend-page");
 
-  const updatePageMutation = trpc.updatePage.useMutation();
-  const saveChangesMutation = trpc.saveChange.useMutation();
+  const updatePageMutation = trpc.pages.update.useMutation();
+  const saveChangesMutation = trpc.pages.saveChange.useMutation();
+  const openPageMutation = trpc.pages.open.useMutation();
 
-  const utils = trpc.useUtils();
-
+  // Open a page, fetch the content and set it as the last synced content.
+  // If the page is already open, don't do anything.
   async function open(pageId: string) {
+    // Don't open the same page
+    if (pageId === openPage?.id) return;
+
+    // Open the page
     console.debug("Opening page");
-    const page: Page = await utils.getPage.fetch({ id: pageId });
+    const page: Page = await openPageMutation.mutateAsync({ id: pageId });
     const contentHash = await getStringHash(page.content);
     setOpenPage(page);
     setLastSyncedContent(page.content);
@@ -40,6 +46,7 @@ export default function PageEditorProvider({ children }: PropsWithChildren) {
     setLastOpenedPage(page.id);
   }
 
+  // Make a change to the content
   function makeChange(change: Change[]) {
     console.log("Pending change..");
 
@@ -48,12 +55,14 @@ export default function PageEditorProvider({ children }: PropsWithChildren) {
     flushPendingChangesDebounced();
   }
 
+  // Debounce the flushPendingChanges function
   const flushPendingChangesDebounced = useDebouncedCallback(
     flushPendingChanges,
     100,
     {}
   );
 
+  // Flush the pending changes to the server
   async function flushPendingChanges() {
     const { deltas, content } = applyChanges(
       lastSyncedContent!,
@@ -80,6 +89,7 @@ export default function PageEditorProvider({ children }: PropsWithChildren) {
     }
   }
 
+  // Apply changes to a string
   function applyChanges(
     original: string,
     changes: Change[][]
@@ -92,12 +102,13 @@ export default function PageEditorProvider({ children }: PropsWithChildren) {
     return { deltas: mergedChanges, content: current };
   }
 
+  // Update the page meta
   async function update(page: Partial<PageMeta>) {
     await updatePageMutation.mutateAsync(page);
   }
 
   useEffect(() => {
-    // Open the last opened page on load
+    // Open the last opened page on mount
     if (lastOpenedPage != undefined) open(lastOpenedPage);
   }, []);
 

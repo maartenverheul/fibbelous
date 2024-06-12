@@ -1,0 +1,1 @@
+Git <-> Physical <-> Server memory <-> Client state <-> Client mutated

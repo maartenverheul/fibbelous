@@ -6,6 +6,12 @@ import {
   PlusIcon,
 } from "@radix-ui/react-icons";
 import { useState } from "react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 
 type Props = {
   level: number;
@@ -13,6 +19,8 @@ type Props = {
   activeId?: string;
   onPageSelect?(page: PageMeta): any;
   onCreateSubPage?(parent: PageMeta): any;
+  onPageFavourite?(page: PageMeta): any;
+  onPageDelete?(page: PageMeta): any;
 };
 
 export function NavigatorPageItem({
@@ -21,20 +29,27 @@ export function NavigatorPageItem({
   activeId,
   onPageSelect,
   onCreateSubPage,
+  onPageFavourite,
+  onPageDelete,
 }: Props) {
   const [open, setOpen] = useState(false);
 
   const hasChildren = !!page.children?.length;
 
-  function toggleCollapse(event: React.MouseEvent<Element>) {
-    event.stopPropagation();
+  function toggleCollapse() {
     setOpen(!open);
   }
 
-  function createSubPage(event: React.MouseEvent<Element>) {
-    event.stopPropagation();
+  function createSubPage() {
     onCreateSubPage?.(page);
     setOpen(true);
+  }
+
+  function preventProp(fn: (...args: any) => any) {
+    return (event: React.UIEvent<Element>) => {
+      event.stopPropagation();
+      fn();
+    };
   }
 
   return (
@@ -55,7 +70,7 @@ export function NavigatorPageItem({
           )}
         >
           <span
-            onClick={toggleCollapse}
+            onClick={preventProp(toggleCollapse)}
             className={cn("transition-opacity opacity-100", {
               "group-hover:opacity-0": hasChildren,
             })}
@@ -63,7 +78,7 @@ export function NavigatorPageItem({
             {page.icon ?? "📄"}
           </span>
           <ChevronRightIcon
-            onClick={toggleCollapse}
+            onClick={preventProp(toggleCollapse)}
             className={cn(
               "transition-all opacity-0 absolute top-[4px] left-[4px] w-[16px] h-[16px]",
               {
@@ -75,14 +90,28 @@ export function NavigatorPageItem({
           />
         </div>
         <span className="text-sm truncate mr-auto">{page.title}</span>
-        <div
-          className={cn(
-            "bg-black bg-opacity-0 hover:bg-opacity-5 rounded-md block h-full p-1 opacity-0 group-hover:opacity-100"
-          )}
-          title="More options"
-        >
-          <DotsHorizontalIcon onClick={createSubPage} />
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger>
+            <div
+              className={cn(
+                "bg-black bg-opacity-0 hover:bg-opacity-5 rounded-md block h-full p-1 opacity-0 group-hover:opacity-100"
+              )}
+              title="More options"
+            >
+              <DotsHorizontalIcon />
+            </div>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem
+              onClick={preventProp(() => onPageFavourite?.(page))}
+            >
+              Add favourite
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={preventProp(() => onPageDelete?.(page))}>
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <div
           className={cn(
             "bg-black bg-opacity-0 hover:bg-opacity-5 rounded-md block h-full p-1 opacity-0 group-hover:opacity-100"
@@ -102,6 +131,8 @@ export function NavigatorPageItem({
               activeId={activeId}
               onPageSelect={onPageSelect}
               onCreateSubPage={onCreateSubPage}
+              onPageDelete={onPageDelete}
+              onPageFavourite={onPageFavourite}
             />
           ))}
         </ul>

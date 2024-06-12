@@ -10,14 +10,37 @@ import path from "path";
 import slugify from "slugify";
 import createId from "@/utils/uid";
 import normalizePath from "normalize-path";
+import { FileHandle } from "fs/promises";
 
 const logger = getLogger("PageService");
 
 type Events = {
-  pageAdded: Page;
-  pageRemoved: string;
-  pageUpdated: PageMeta;
+  pagesAdded: PageMeta[];
+  pagesUpdated: PageMeta[];
+  pagesDeleted: string[];
 };
+
+const opLogger = getLogger("OpenPage");
+export class OpenPage implements Disposable {
+  private static openedPages: Record<string, OpenPage> = {};
+
+  static isInUse(...ids: string[]): boolean {
+    if (ids.length == 0) return false;
+    if (ids.length == 1) return ids[0] in OpenPage.openedPages;
+    return Object.keys(OpenPage.openedPages).some((id) => ids.includes(id));
+  }
+
+  [Symbol.dispose](): void {
+    delete OpenPage.openedPages[this.page.id];
+    this.fileHandle.close();
+    opLogger.info(`Closed page. (${Object.keys(OpenPage.openedPages).length})`);
+  }
+
+  constructor(public readonly page: Page, private readonly fileHandle: FileHandle) {
+    OpenPage.openedPages[this.page.id] = this;
+    opLogger.info(`Opened page. (${Object.keys(OpenPage.openedPages).length})`);
+  }
+}
 
 export default class PageService {
   public readonly events = mitt<Events>();
@@ -37,10 +60,6 @@ export default class PageService {
     if (page.parent == "pages") page.parent = null;
 
     return page;
-  }
-
-  async init() {
-    await this.loadAll();
   }
 
   private async loadAll(): Promise<void> {
@@ -68,21 +87,17 @@ export default class PageService {
     logger.info(`Loaded ${list.length} pages.`);
   }
 
-  getAll(): Page[] {
-    return Object.values(this.pages);
-  }
-
-  getPageFileName(page: Page) {
+  private static getPageFileName(page: PageMeta) {
     const slug = slugify(page.title, {
       lower: true,
     });
     return `${slug}-${page.id}.mdx`;
   }
 
-  getAncestors(page: Page): Page[] {
+  private getAncestors(page: PageMeta): Page[] {
     let output = [];
 
-    let current: Page = page;
+    let current: PageMeta = page;
 
     while (current.parent != null) {
       const parent = this.pages[current.parent];
@@ -93,15 +108,37 @@ export default class PageService {
     return output.toReversed();
   }
 
-  getFilePath(page: Page) {
+  private isChildOf(page: PageMeta, parent: PageMeta): boolean {
+    return this.getAncestors(page).some((p) => p.id == parent.id);
+  }
+
+  private getChildren(page: PageMeta): Page[] {
+    return this.getAll().filter((p) => this.isChildOf(p, page));
+  }
+
+  async init() {
+    await this.loadAll();
+  }
+
+  getAll(): Page[] {
+    return Object.values(this.pages);
+  }
+
+  getFilePath(page: PageMeta) {
     const ancestors = this.getAncestors(page);
     const folders = ancestors.map((page) => page.id);
 
-    return path.join(storageService.localRepoDir, "/pages/", ...folders, this.getPageFileName(page));
+    return path.join(storageService.localRepoDir, "/pages/", ...folders, PageService.getPageFileName(page));
   }
 
-  find(id: string | undefined): Page | undefined {
-    if (id == undefined) return undefined;
+  getSubDirPath(page: PageMeta) {
+    const ancestors = this.getAncestors(page);
+    const folders = ancestors.map((page) => page.id);
+
+    return path.join(storageService.localRepoDir, "/pages/", ...folders, page.id);
+  }
+
+  find(id: string): Page | undefined {
     const pages = pageService.getAll();
     return pages.find((page) => page.id == id);
   }
@@ -132,7 +169,7 @@ export default class PageService {
     page.id = createId();
     this.save(page);
 
-    this.events.emit("pageAdded", page);
+    this.events.emit("pagesAdded", [page]);
     return page;
   }
 
@@ -155,16 +192,45 @@ export default class PageService {
     Object.assign(page, updatedPage);
 
     this.save(page);
-    this.events.emit("pageUpdated", page);
+    this.events.emit("pagesUpdated", [page]);
     return page;
   }
 
-  delete(id: string): void {
+  async delete(id: string): Promise<void> {
     const page = this.find(id);
     if (!page) throw new PageNotFoundError(id);
+
+    // Get required data
     const filePath = this.getFilePath(page);
-    fs.rmSync(filePath);
-    this.events.emit("pageRemoved", id);
+    const subdirPath = this.getSubDirPath(page);
+    const subPages = this.getChildren(page).map((p) => p.id);
+
+    const anyInUse = OpenPage.isInUse(id, ...subPages);
+    if (anyInUse) throw new PageLockedError(id);
+
+    logger.info(`Deleting page ${id} and ${subPages.length} sub pages.`);
+
+    // Remove the page itself
+    fs.promises.rm(filePath);
+    // Remove the sub directory
+    fs.promises.rm(subdirPath, { recursive: true, force: true });
+
+    // Update memory
+    delete this.pages[id];
+    for (const subPageId of subPages) {
+      delete this.pages[subPageId];
+    }
+    // Emit event
+    this.events.emit("pagesDeleted", [id, ...subPages]);
+  }
+
+  async open(id: string): Promise<OpenPage> {
+    const file = this.find(id);
+    if (!file) throw new PageNotFoundError(id);
+    const filePath = this.getFilePath(file);
+    const fileHandle = await fs.promises.open(filePath, "r+");
+    const openPage = new OpenPage(file, fileHandle);
+    return openPage;
   }
 }
 
@@ -173,5 +239,10 @@ export const pageService = new PageService();
 export class PageNotFoundError extends Error {
   constructor(id: string) {
     super(`Page "${id}" does not exist`);
+  }
+}
+export class PageLockedError extends Error {
+  constructor(id: string) {
+    super(`Page "${id}" or any of it's subpages is in use and cannot be modified.`);
   }
 }

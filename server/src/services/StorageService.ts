@@ -5,12 +5,20 @@ import { GitClient } from "@/modules/GitClient";
 import path from "path";
 import getLogger from "@/logger";
 import environment from "@/environment";
+import { FileHandle } from "fs/promises";
 
 const logger = getLogger("StorageService");
 
 export default class StorageService {
   public readonly localRepoDir = path.join(__dirname, "../.data");
   private git: GitClient = null!;
+
+  private openFiles: Record<string, FileHandle> = {};
+
+  private async openFile(relativePath: string) {
+    const fileHandle = await fs.promises.open(path.join(this.localRepoDir, relativePath), "r+");
+    this.openFiles[relativePath] = fileHandle;
+  }
 
   private onGitAuth(url?: string, auth?: GitAuth) {
     return {

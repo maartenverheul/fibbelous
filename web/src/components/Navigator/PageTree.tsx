@@ -6,6 +6,8 @@ type Props = {
   activeId?: string;
   onPageSelect?(page: PageMeta): any;
   onCreateSubPage?(parent: PageMeta): any;
+  onPageFavourite?(page: PageMeta): any;
+  onPageDelete?(page: PageMeta): any;
 };
 
 export default function NavigatorPageTree({
@@ -13,6 +15,8 @@ export default function NavigatorPageTree({
   activeId,
   onPageSelect,
   onCreateSubPage,
+  onPageFavourite,
+  onPageDelete,
 }: Props) {
   return (
     <div className="NavigatorPageTree p-2">
@@ -25,6 +29,8 @@ export default function NavigatorPageTree({
             activeId={activeId}
             onPageSelect={onPageSelect}
             onCreateSubPage={onCreateSubPage}
+            onPageDelete={onPageDelete}
+            onPageFavourite={onPageFavourite}
           />
         ))}
       </ul>

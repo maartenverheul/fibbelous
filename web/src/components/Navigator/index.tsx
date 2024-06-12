@@ -2,20 +2,43 @@ import NavigatorPageTree from "./PageTree";
 import { useEffect, useMemo, useState } from "react";
 import arrayToTree from "array-to-tree";
 import { trpc } from "@/utils/trpc";
-import type { PageMeta, PageTree } from "@fibbelous/server/models";
+import type {
+  NavigatorChangeEvent,
+  PageMeta,
+  PageTree,
+} from "@fibbelous/server/models";
 import { usePageEditor } from "@/hooks";
 
 export default function Navigator() {
-  const pagesQuery = trpc.getPages.useQuery<PageMeta[]>();
-  const createPageMutation = trpc.createPage.useMutation();
+  const pagesQuery = trpc.pages.getAll.useQuery<PageMeta[]>();
+  const createPageMutation = trpc.pages.create.useMutation();
 
   const pageEditor = usePageEditor();
 
   const [pages, setPages] = useState<PageMeta[]>([]);
 
-  trpc.onPageAdd.useSubscription(undefined, {
-    onData(data: PageMeta) {
-      setPages([...pages, data]);
+  const deletePageMutation = trpc.pages.delete.useMutation();
+
+  trpc.navigator.onChange.useSubscription(undefined, {
+    onData(data: NavigatorChangeEvent) {
+      let newList = [...pages];
+      // Add new pages to the list
+      if (data.added) {
+        newList.push(...data.added);
+      }
+      // Update existing pages in the list
+      if (data.updated) {
+        for (const page of data.updated) {
+          const index = newList.findIndex((p) => p.id === page.id);
+          if (index == -1) continue; // Should not happen
+          newList[index] = page;
+        }
+      }
+      // Delete pages from the list
+      if (data.deleted) {
+        newList = newList.filter((page) => !data.deleted!.includes(page.id));
+      }
+      setPages(newList);
     },
   });
 
@@ -54,6 +77,14 @@ export default function Navigator() {
     return newPage;
   }
 
+  async function deletePageDelete(page: PageMeta) {
+    await deletePageMutation.mutateAsync(page.id);
+  }
+
+  function favouritePage() {
+    throw new Error("Not implemented");
+  }
+
   return (
     <div className="Navigator bg-gray-100 h-full w-full">
       <NavigatorPageTree
@@ -61,6 +92,8 @@ export default function Navigator() {
         activeId={pageEditor.openPage?.id}
         onPageSelect={onPageSelect}
         onCreateSubPage={createSubPage}
+        onPageDelete={deletePageDelete}
+        onPageFavourite={favouritePage}
       />
     </div>
   );
