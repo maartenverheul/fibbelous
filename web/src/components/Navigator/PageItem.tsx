@@ -117,8 +117,9 @@ export function NavigatorPageItem({
             "bg-black bg-opacity-0 hover:bg-opacity-5 rounded-md block h-full p-1 opacity-0 group-hover:opacity-100"
           )}
           title="Create page"
+          onClick={createSubPage}
         >
-          <PlusIcon onClick={createSubPage} />
+          <PlusIcon />
         </div>
       </button>
       {hasChildren && open && (

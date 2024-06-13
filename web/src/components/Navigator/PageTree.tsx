@@ -19,7 +19,7 @@ export default function NavigatorPageTree({
   onPageDelete,
 }: Props) {
   return (
-    <div className="NavigatorPageTree p-2">
+    <div className="NavigatorPageTree">
       <ul>
         {pages.map((page) => (
           <NavigatorPageItem

@@ -10,6 +10,7 @@ import type {
 import { usePageEditor } from "@/hooks";
 import { useToast } from "../ui/use-toast";
 import getErrorMessage from "@/i18n/errors";
+import { NavigatorCategoryItem } from "./CategoryItem";
 
 export default function Navigator() {
   const { toast } = useToast();
@@ -68,11 +69,11 @@ export default function Navigator() {
     pageEditor.open(page.id);
   }
 
-  async function createSubPage(parent: PageMeta): Promise<PageMeta> {
+  async function createPage(parent?: PageMeta): Promise<PageMeta> {
     let newPage: PageMeta = {
       id: "",
       created: Date.now(),
-      parent: parent.id,
+      parent: parent?.id ?? null,
       title: "New page",
     };
 
@@ -81,7 +82,7 @@ export default function Navigator() {
     return newPage;
   }
 
-  async function deletePageDelete(page: PageMeta) {
+  async function deletePage(page: PageMeta) {
     await deletePageMutation.mutateAsync(page.id).catch((e) =>
       toast({
         title: "Error",
@@ -96,15 +97,31 @@ export default function Navigator() {
   }
 
   return (
-    <div className="Navigator bg-gray-100 h-full w-full">
-      <NavigatorPageTree
-        pages={pageTree}
-        activeId={pageEditor.openPage?.id}
-        onPageSelect={onPageSelect}
-        onCreateSubPage={createSubPage}
-        onPageDelete={deletePageDelete}
-        onPageFavourite={favouritePage}
-      />
+    <div className="Navigator bg-gray-100 h-full w-full p-2">
+      <NavigatorCategoryItem title="Favorites" collapsable>
+        <NavigatorPageTree
+          pages={pageTree}
+          activeId={pageEditor.openPage?.id}
+          onPageSelect={onPageSelect}
+          onCreateSubPage={createPage}
+          onPageDelete={deletePage}
+          onPageFavourite={favouritePage}
+        />
+      </NavigatorCategoryItem>
+      <NavigatorCategoryItem
+        title="Pages"
+        collapsable
+        onCreatePage={() => createPage()}
+      >
+        <NavigatorPageTree
+          pages={pageTree}
+          activeId={pageEditor.openPage?.id}
+          onPageSelect={onPageSelect}
+          onCreateSubPage={createPage}
+          onPageDelete={deletePage}
+          onPageFavourite={favouritePage}
+        />
+      </NavigatorCategoryItem>
     </div>
   );
 }
