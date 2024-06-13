@@ -28,6 +28,7 @@ export default class PageService {
     const page: Page = {
       id: data.data.id,
       content: data.content,
+      favorite: data.data.favorite ?? false,
       created: new Date(data.data.created).valueOf(),
       title: data.data.title,
       icon: data.data.icon,
@@ -130,6 +131,7 @@ export default class PageService {
     const data: Record<string, any> = {
       id: page.id,
       title: page.title,
+      favorite: page.favorite,
       created: page.created,
     };
     if (page.icon) data.icon = page.icon;

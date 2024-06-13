@@ -19,7 +19,7 @@ type Props = {
   activeId?: string;
   onPageSelect?(page: PageMeta): any;
   onCreateSubPage?(parent: PageMeta): any;
-  onPageFavourite?(page: PageMeta): any;
+  onPageFavoriteChange?(page: PageMeta, favorite: boolean): any;
   onPageDelete?(page: PageMeta): any;
 };
 
@@ -29,7 +29,7 @@ export function NavigatorPageItem({
   activeId,
   onPageSelect,
   onCreateSubPage,
-  onPageFavourite,
+  onPageFavoriteChange,
   onPageDelete,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -103,9 +103,11 @@ export function NavigatorPageItem({
           </DropdownMenuTrigger>
           <DropdownMenuContent>
             <DropdownMenuItem
-              onClick={preventProp(() => onPageFavourite?.(page))}
+              onClick={preventProp(() =>
+                onPageFavoriteChange?.(page, !page.favorite)
+              )}
             >
-              Add favourite
+              {page.favorite ? "Remove favorite" : "Add favorite"}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={preventProp(() => onPageDelete?.(page))}>
               Delete
@@ -133,7 +135,7 @@ export function NavigatorPageItem({
               onPageSelect={onPageSelect}
               onCreateSubPage={onCreateSubPage}
               onPageDelete={onPageDelete}
-              onPageFavourite={onPageFavourite}
+              onPageFavoriteChange={onPageFavoriteChange}
             />
           ))}
         </ul>

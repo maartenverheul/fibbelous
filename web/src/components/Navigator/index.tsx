@@ -17,6 +17,7 @@ export default function Navigator() {
 
   const pagesQuery = trpc.pages.getAll.useQuery<PageMeta[]>();
   const createPageMutation = trpc.pages.create.useMutation();
+  const updatePageMutation = trpc.pages.update.useMutation();
 
   const pageEditor = usePageEditor();
 
@@ -61,6 +62,11 @@ export default function Navigator() {
     [pages]
   );
 
+  const favoritePageTree = useMemo<PageTree>(
+    () => pages.filter((page) => page.favorite),
+    [pageTree]
+  );
+
   useEffect(() => {
     setPages(pagesQuery.data ?? []);
   }, [pagesQuery.data]);
@@ -73,6 +79,7 @@ export default function Navigator() {
     let newPage: PageMeta = {
       id: "",
       created: Date.now(),
+      favorite: false,
       parent: parent?.id ?? null,
       title: "New page",
     };
@@ -92,20 +99,21 @@ export default function Navigator() {
     );
   }
 
-  function favouritePage() {
-    throw new Error("Not implemented");
+  async function changePageFavorite(page: PageMeta, favorite: boolean) {
+    const newPage = { ...page, favorite };
+    await updatePageMutation.mutateAsync(newPage);
   }
 
   return (
     <div className="Navigator bg-gray-100 h-full w-full p-2">
       <NavigatorCategoryItem title="Favorites" collapsable>
         <NavigatorPageTree
-          pages={pageTree}
+          pages={favoritePageTree}
           activeId={pageEditor.openPage?.id}
           onPageSelect={onPageSelect}
           onCreateSubPage={createPage}
           onPageDelete={deletePage}
-          onPageFavourite={favouritePage}
+          onPageFavoriteChange={changePageFavorite}
         />
       </NavigatorCategoryItem>
       <NavigatorCategoryItem
@@ -119,7 +127,7 @@ export default function Navigator() {
           onPageSelect={onPageSelect}
           onCreateSubPage={createPage}
           onPageDelete={deletePage}
-          onPageFavourite={favouritePage}
+          onPageFavoriteChange={changePageFavorite}
         />
       </NavigatorCategoryItem>
     </div>
