@@ -1,3 +1,4 @@
+import PageTitle from "@/components/PageEditor/PageTitle";
 import TopBar from "@/components/PageEditor/TopBar";
 import { usePageEditor } from "@/hooks";
 import {
@@ -41,23 +42,25 @@ export default function PageEditorView() {
 
   if (!pageEditor.openPage) return "";
 
+  function changeTitle(title: string) {
+    pageEditor.update({
+      ...pageEditor.openPage!,
+      title,
+    });
+  }
+
   return (
     <div className="PageEditorView">
       <TopBar />
-      <div className="max-w-screen-md mx-auto p-4 markdown">
-        <input
-          type="text"
-          className="text-[2.8rem] font-bold mb-6 mt-6 h-[60px] focus:outline-none pl-2 w-full truncate"
-          value={pageEditor.openPage.title}
-          onChange={(e) =>
-            pageEditor.update({
-              ...pageEditor.openPage!,
-              title: e.target.value,
-            })
-          }
+      <div className="max-w-screen-md mx-auto p-4">
+        <PageTitle
+          title={pageEditor.openPage.title}
+          editable={true}
+          onChange={changeTitle}
         />
         <MDXEditor
           ref={markdownRef}
+          className="markdown"
           markdown={oldContent}
           onChange={change}
           plugins={[

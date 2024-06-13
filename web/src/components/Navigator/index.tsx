@@ -82,7 +82,6 @@ export default function Navigator() {
   }
 
   async function deletePageDelete(page: PageMeta) {
-    if (pageEditor.openPage?.id == page.id) await pageEditor.close();
     await deletePageMutation.mutateAsync(page.id).catch((e) =>
       toast({
         title: "Error",

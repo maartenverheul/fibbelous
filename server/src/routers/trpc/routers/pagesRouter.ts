@@ -1,13 +1,10 @@
 import z from "zod";
 import { Page, PageMeta, pageContentSaveChangesSchema, pageMetaSchema } from "@/models";
 import { observable } from "@trpc/server/observable";
-import { TRPCError } from "@trpc/server";
-import { OpenPage, PageLockedError, PageNotFoundError, pageService } from "@/services/PageService.js";
+import { PageLockedError, PageNotFoundError, pageService } from "@/services/PageService.js";
 import { t } from "../trpc";
 import getLogger from "@/logger";
 import { TRPCPageLockedError, TRPCPageNotFoundError, TRPCServerError } from "../errors";
-
-const logger = getLogger("trpc/routers/pagesRouter");
 
 const pagesRouter = t.router({
   get: t.procedure
@@ -35,51 +32,11 @@ const pagesRouter = t.router({
   }),
 
   delete: t.procedure.input(z.string()).mutation(({ input }) => {
-    return pageService.delete(input).catch((e) => {
+    return pageService.deletePageAndSubtree(input).catch((e) => {
       if (e instanceof PageNotFoundError) throw new TRPCPageNotFoundError();
       if (e instanceof PageLockedError) throw new TRPCPageLockedError();
       throw new TRPCServerError();
     });
-  }),
-
-  open: t.procedure
-    .input(
-      z.object({
-        id: z.string(),
-      })
-    )
-    .mutation<Page>(async ({ input, ctx }) => {
-      if (ctx.openPage) {
-        if (input.id === ctx.openPage.page.id) {
-          throw new TRPCError({
-            message: "Requested page is already open",
-            code: "BAD_REQUEST",
-          });
-        }
-
-        logger.info(`Session ${ctx.id} has closed page ${ctx.openPage.page.id}`);
-        ctx.openPage[Symbol.dispose]();
-        ctx.openPage = undefined;
-      }
-      let openPage: OpenPage;
-
-      try {
-        openPage = await pageService.open(input.id);
-      } catch (e) {
-        if (e instanceof PageNotFoundError) throw new TRPCPageNotFoundError();
-        else if (e instanceof TRPCPageLockedError) throw new TRPCPageLockedError();
-        else throw new TRPCServerError();
-      }
-
-      logger.info(`Session ${ctx.id} has opened page ${openPage.page.id}`);
-      ctx.openPage = openPage;
-      return openPage.page;
-    }),
-
-  close: t.procedure.mutation(async ({ ctx }) => {
-    if (!ctx.openPage) return;
-    ctx.openPage[Symbol.dispose]();
-    ctx.openPage = undefined;
   }),
 
   saveChange: t.procedure.input(pageContentSaveChangesSchema).mutation(({ input }) => {

@@ -5,7 +5,6 @@ import { Change } from "textdiff-create";
 
 export type PageEditorContextType = {
   open(pageId: string): Promise<void>;
-  close(): Promise<void>;
   openPage: Page | undefined;
   syncStatus: SyncStatus;
   makeChange(change: Change[]): void;

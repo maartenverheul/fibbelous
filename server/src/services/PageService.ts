@@ -10,7 +10,6 @@ import path from "path";
 import slugify from "slugify";
 import createId from "@/utils/uid";
 import normalizePath from "normalize-path";
-import { FileHandle } from "fs/promises";
 
 const logger = getLogger("PageService");
 
@@ -19,28 +18,6 @@ type Events = {
   pagesUpdated: PageMeta[];
   pagesDeleted: string[];
 };
-
-const opLogger = getLogger("OpenPage");
-export class OpenPage implements Disposable {
-  private static openedPages: Record<string, OpenPage> = {};
-
-  static isInUse(...ids: string[]): boolean {
-    if (ids.length == 0) return false;
-    if (ids.length == 1) return ids[0] in OpenPage.openedPages;
-    return Object.keys(OpenPage.openedPages).some((id) => ids.includes(id));
-  }
-
-  [Symbol.dispose](): void {
-    delete OpenPage.openedPages[this.page.id];
-    this.fileHandle.close();
-    opLogger.info(`Closed page. (${Object.keys(OpenPage.openedPages).length})`);
-  }
-
-  constructor(public readonly page: Page, private readonly fileHandle: FileHandle) {
-    OpenPage.openedPages[this.page.id] = this;
-    opLogger.info(`Opened page. (${Object.keys(OpenPage.openedPages).length})`);
-  }
-}
 
 export default class PageService {
   public readonly events = mitt<Events>();
@@ -90,6 +67,8 @@ export default class PageService {
   private static getPageFileName(page: PageMeta) {
     const slug = slugify(page.title, {
       lower: true,
+      strict: true,
+      trim: false,
     });
     return `${slug}-${page.id}.mdx`;
   }
@@ -186,17 +165,26 @@ export default class PageService {
     if (!updatedPage.id) throw new Error("Id is missing in object");
     logger.info(`Updating page ${updatedPage.id}`);
 
-    const page = this.find(updatedPage.id);
-    if (!page) throw new PageNotFoundError(updatedPage.id);
+    const oldPage = this.find(updatedPage.id);
+    if (!oldPage) throw new PageNotFoundError(updatedPage.id);
 
-    Object.assign(page, updatedPage);
+    const newPage = { ...oldPage, ...updatedPage };
 
-    this.save(page);
-    this.events.emit("pagesUpdated", [page]);
-    return page;
+    if (newPage.title != oldPage.title) {
+      this.deletePageFile(oldPage);
+    }
+
+    this.save(newPage);
+    this.events.emit("pagesUpdated", [newPage]);
+    return newPage;
   }
 
-  async delete(id: string): Promise<void> {
+  async deletePageFile(page: Page): Promise<void> {
+    const filePath = this.getFilePath(page);
+    await fs.promises.rm(filePath); // Remove the file
+  }
+
+  async deletePageAndSubtree(id: string): Promise<void> {
     const page = this.find(id);
     if (!page) throw new PageNotFoundError(id);
 
@@ -204,9 +192,6 @@ export default class PageService {
     const filePath = this.getFilePath(page);
     const subdirPath = this.getSubDirPath(page);
     const subPages = this.getChildren(page).map((p) => p.id);
-
-    const anyInUse = OpenPage.isInUse(id, ...subPages);
-    if (anyInUse) throw new PageLockedError(id);
 
     logger.info(`Deleting page ${id} and ${subPages.length} sub pages.`);
 
@@ -222,15 +207,6 @@ export default class PageService {
     }
     // Emit event
     this.events.emit("pagesDeleted", [id, ...subPages]);
-  }
-
-  async open(id: string): Promise<OpenPage> {
-    const file = this.find(id);
-    if (!file) throw new PageNotFoundError(id);
-    const filePath = this.getFilePath(file);
-    const fileHandle = await fs.promises.open(filePath, "r+");
-    const openPage = new OpenPage(file, fileHandle);
-    return openPage;
   }
 }
 

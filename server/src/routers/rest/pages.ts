@@ -26,7 +26,7 @@ pagesRouter.put("/:id", (req, res) => {
 });
 pagesRouter.delete("/:id", (req, res) => {
   res.send("Delete page " + req.params.id);
-  pageService.delete(req.params.id);
+  pageService.deletePageAndSubtree(req.params.id);
 });
 
 export default pagesRouter;
