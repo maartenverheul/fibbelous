@@ -1,0 +1,28 @@
+{
+  "name": "@fibbelous/server",
+  "private": true,
+  "version": "0.0.1",
+  "description": "",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "watch": "tsx --watch src/index.ts",
+    "build": "rollup --config",
+    "start": "node dist/index.mjs"
+  },
+  "keywords": [],
+  "author": "Maarten Verheul",
+  "license": "GPL-3.0-only",
+  "devDependencies": {
+    "@rollup/plugin-typescript": "^12.1.1",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "dependencies": {
+    "express": "^4.21.1",
+    "rollup": "^4.27.4"
+  }
+}
