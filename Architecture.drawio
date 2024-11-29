@@ -1,0 +1,100 @@
+<mxfile host="Electron" modified="2024-11-29T16:27:06.900Z" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/21.3.7 Chrome/112.0.5615.204 Electron/24.5.0 Safari/537.36" etag="fZS0ZsnCqghlKDO_DTGs" version="21.3.7" type="device">
+  <diagram name="Page-1" id="bdnywPkGinK-GsxMEB_Q">
+    <mxGraphModel dx="810" dy="537" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="UnsimLBs_vmqnjGPln54-21" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=default;fillStyle=solid;" vertex="1" parent="1">
+          <mxGeometry x="510" y="310" width="320" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="UnsimLBs_vmqnjGPln54-19" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="UnsimLBs_vmqnjGPln54-5" target="UnsimLBs_vmqnjGPln54-8">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="310" y="430" />
+              <mxPoint x="310" y="380" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="UnsimLBs_vmqnjGPln54-32" value="cloud" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="UnsimLBs_vmqnjGPln54-19">
+          <mxGeometry x="-0.4701" y="1" relative="1" as="geometry">
+            <mxPoint x="-14" y="-9" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="UnsimLBs_vmqnjGPln54-30" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="UnsimLBs_vmqnjGPln54-5" target="UnsimLBs_vmqnjGPln54-11">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="UnsimLBs_vmqnjGPln54-35" value="local" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="UnsimLBs_vmqnjGPln54-30">
+          <mxGeometry x="-0.0235" relative="1" as="geometry">
+            <mxPoint x="-18" y="10" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="UnsimLBs_vmqnjGPln54-5" value="" style="image;html=1;image=img/lib/clip_art/computers/Laptop_128x128.png" vertex="1" parent="1">
+          <mxGeometry x="150" y="410" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="UnsimLBs_vmqnjGPln54-18" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="UnsimLBs_vmqnjGPln54-6" target="UnsimLBs_vmqnjGPln54-8">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="310" y="360" />
+              <mxPoint x="310" y="360" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="UnsimLBs_vmqnjGPln54-34" value="cloud" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="UnsimLBs_vmqnjGPln54-18">
+          <mxGeometry x="0.0894" relative="1" as="geometry">
+            <mxPoint x="-18" y="-10" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="UnsimLBs_vmqnjGPln54-6" value="" style="image;points=[];aspect=fixed;html=1;align=center;shadow=0;dashed=0;image=img/lib/allied_telesis/computer_and_terminals/Smartphone.svg;" vertex="1" parent="1">
+          <mxGeometry x="160" y="310" width="36.67" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="UnsimLBs_vmqnjGPln54-20" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="UnsimLBs_vmqnjGPln54-8" target="UnsimLBs_vmqnjGPln54-11">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="UnsimLBs_vmqnjGPln54-8" value="" style="image;aspect=fixed;perimeter=ellipsePerimeter;html=1;align=center;shadow=0;dashed=0;spacingTop=3;image=img/lib/active_directory/internet_cloud.svg;" vertex="1" parent="1">
+          <mxGeometry x="380" y="340" width="95.24" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="UnsimLBs_vmqnjGPln54-10" value="GIT&lt;br&gt;repo" style="shape=cylinder;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;" vertex="1" parent="1">
+          <mxGeometry x="740" y="320" width="60" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="UnsimLBs_vmqnjGPln54-16" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="UnsimLBs_vmqnjGPln54-11" target="UnsimLBs_vmqnjGPln54-13">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="650" y="380" />
+              <mxPoint x="650" y="490" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="UnsimLBs_vmqnjGPln54-37" value="remote" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="UnsimLBs_vmqnjGPln54-16">
+          <mxGeometry x="0.1896" y="1" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="UnsimLBs_vmqnjGPln54-17" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="UnsimLBs_vmqnjGPln54-11" target="UnsimLBs_vmqnjGPln54-10">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="670" y="360" />
+              <mxPoint x="670" y="360" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="UnsimLBs_vmqnjGPln54-36" value="local" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="UnsimLBs_vmqnjGPln54-17">
+          <mxGeometry x="-0.1679" y="-1" relative="1" as="geometry">
+            <mxPoint x="14" y="-11" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="UnsimLBs_vmqnjGPln54-11" value="Server" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="530" y="350" width="50" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="UnsimLBs_vmqnjGPln54-15" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="UnsimLBs_vmqnjGPln54-13" target="UnsimLBs_vmqnjGPln54-14">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="UnsimLBs_vmqnjGPln54-13" value="" style="image;aspect=fixed;perimeter=ellipsePerimeter;html=1;align=center;shadow=0;dashed=0;spacingTop=3;image=img/lib/active_directory/internet_cloud.svg;" vertex="1" parent="1">
+          <mxGeometry x="722.38" y="460" width="95.24" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="UnsimLBs_vmqnjGPln54-14" value="GIT&lt;br&gt;repo" style="shape=cylinder;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;" vertex="1" parent="1">
+          <mxGeometry x="870" y="450" width="60" height="80" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
