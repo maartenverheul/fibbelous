@@ -13,5 +13,6 @@ export default {
       format: "esm",
     },
   ],
+  external: ["express", "http", "socket.io", "fs", "isomorphic-git", "path"],
   plugins: [typescript()],
 };
