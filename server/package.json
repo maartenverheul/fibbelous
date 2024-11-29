@@ -14,15 +14,27 @@
   "keywords": [],
   "author": "Maarten Verheul",
   "license": "GPL-3.0-only",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./lib": {
+      "import": "./src/lib/index.ts"
+    }
+  },
   "devDependencies": {
     "@rollup/plugin-typescript": "^12.1.1",
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.1",
+    "@types/socket.io": "^3.0.2",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   },
   "dependencies": {
     "express": "^4.21.1",
-    "rollup": "^4.27.4"
+    "isomorphic-git": "^1.27.2",
+    "rollup": "^4.27.4",
+    "socket.io": "^4.8.1"
   }
 }
