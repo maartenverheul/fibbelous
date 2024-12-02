@@ -1,5 +1,12 @@
 import type { AppRouter, Workspace } from "@fibbelous/server/lib";
-import { createTRPCProxyClient, httpBatchLink, loggerLink } from "@trpc/client";
+import {
+  createTRPCClient,
+  createTRPCProxyClient,
+  createWSClient,
+  httpBatchLink,
+  loggerLink,
+  wsLink,
+} from "@trpc/client";
 
 const logger = loggerLink({
   enabled: (opts) =>
@@ -8,7 +15,9 @@ const logger = loggerLink({
 });
 
 export class Server {
-  trpc: ReturnType<typeof createTRPCProxyClient<AppRouter>> | null = null;
+  trpc: ReturnType<typeof createTRPCProxyClient<AppRouter>> = null!;
+
+  private wsClient: ReturnType<typeof createWSClient> | null = null;
 
   private constructor(public readonly url: string) {}
 
@@ -21,13 +30,17 @@ export class Server {
   private _connect() {
     return new Promise<void>((resolve, reject) => {
       const trpcUrl = this.url + "/trpc";
-      const httpLink = httpBatchLink({
-        // url: "http://localhost:3000/trpc",
-        url: trpcUrl,
+      // const httpLink = httpBatchLink({
+      //   // url: "http://localhost:3000/trpc",
+      //   url: trpcUrl,
+      // });
+
+      this.wsClient = createWSClient({
+        url: "ws://localhost:3000",
       });
 
       this.trpc = createTRPCProxyClient<AppRouter>({
-        links: [logger, httpLink],
+        links: [logger, wsLink<AppRouter>({ client: this.wsClient })],
       });
 
       // TODO test connection
@@ -35,6 +48,10 @@ export class Server {
         .then(() => resolve())
         .catch((err) => reject(new Error("Could not connect to server")));
     });
+  }
+
+  public disconnect() {
+    this.wsClient?.close();
   }
 
   public getWorkspaces(): Promise<Workspace[]> {

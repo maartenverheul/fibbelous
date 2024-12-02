@@ -16,10 +16,10 @@
       if (!serverUrl.startsWith("http")) {
         serverUrl = `http://${serverUrl}`;
       }
-      server = await serverStore.connect(serverUrl);
+      await serverStore.connect(serverUrl);
       connected = true;
       error = "";
-      workspaces = await server.getWorkspaces();
+      workspaces = await serverStore.currentServer!.trpc.getWorkspaces.query();
     } catch (err) {
       error = (err as Error).message;
     }

@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import server from "../server.svelte";
+  import workspaceStore from "../workspace.svelte";
 
   let selectedPageId: string | null = $state(null);
 
@@ -10,19 +10,20 @@
 
   function newPage() {
     const pageName = prompt("Enter page name") || undefined;
-    server.trpc!.pages.create.query({
+    server.currentServer!.trpc.workspace.pages.create.query({
       title: pageName,
     });
   }
 
   function deleteSelectedPage() {
     if (!selectedPageId) return;
-    server.trpc!.pages.delete.query(selectedPageId);
+    server.currentServer!.trpc.workspace.pages.delete.query(selectedPageId);
   }
 
   async function loadPage(id: string) {
     if (!id) return;
-    server.activePage = await server.trpc!.pages.load.query(id);
+    server.activePage =
+      await server.currentServer!.trpc.workspace.pages.load.query(id);
   }
 
   async function loadSelectedPage() {
@@ -34,11 +35,11 @@
   <h1 class="text-white text-xl font-bold mb-2">Pages</h1>
   <div class="border border-white full h-[100px] mb-4 overflow-y-auto">
     <ul class="text-white">
-      {#if !server.pages.length}
+      {#if !workspaceStore.pages.length}
         <li class="opacity-50 text-center select-none">No pages</li>
       {/if}
 
-      {#each server.pages as page}
+      {#each workspaceStore.pages as page}
         <li>
           <input
             type="button"

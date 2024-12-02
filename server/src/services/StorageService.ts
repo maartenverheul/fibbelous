@@ -1,10 +1,7 @@
 import git from "isomorphic-git";
 import fs from "fs";
 import path from "path";
-import { LoadedPage, Page } from "../lib";
-import { randomUUID } from "node:crypto";
 import slugify from "slugify";
-import frontmatter from "frontmatter";
 
 export default class StorageService {
   public readonly root: string;
@@ -62,13 +59,8 @@ export default class StorageService {
     });
   }
 
-  private pageExists(id: string): boolean {
-    return fs.existsSync(path.join(this.pagesFolder, `${id}.mdx`));
-  }
-
-  public static getNamedFile(id: string, title: string, extension: string) {
-    title = title.toLowerCase().trim();
-    const slug = slugify(title, {
+  public static getFileSlug(title: string) {
+    return slugify(title, {
       replacement: "-", // replace spaces with replacement character, defaults to `-`
       remove: undefined, // remove characters that match regex, defaults to `undefined`
       lower: false, // convert to lower case, defaults to `false`
@@ -76,74 +68,11 @@ export default class StorageService {
       locale: "vi", // language code of the locale to use
       trim: true, // trim leading and trailing replacement chars, defaults to `true`
     });
+  }
+
+  public static getNamedFile(id: string, title: string, extension: string) {
+    title = title.toLowerCase().trim();
+    const slug = this.getFileSlug(title);
     return `${id}-${slug}.${extension}`;
-  }
-
-  async createPage(title: string): Promise<Page> {
-    const now = new Date().toISOString();
-    const id = randomUUID().split("-")[0];
-    const page: Page = {
-      id: id,
-      title,
-      content: `---
-id: ${id}
-title: ${title}
-createdAt: ${now}
-modifiedAt: ${now}
----
-# ${title}\n\nThis is a new page`,
-      createdAt: now,
-      modifiedAt: now,
-    };
-    const filename = StorageService.getNamedFile(id, title, "mdx");
-    const file = path.join(this.pagesFolder, filename);
-    await fs.promises.writeFile(file, page.content, {
-      encoding: "utf8",
-    });
-    return page;
-  }
-
-  async loadPage(id: string): Promise<LoadedPage> {
-    const file = path.join(this.pagesFolder, `${id}.mdx`);
-    const content = await fs.promises.readFile(file, { encoding: "utf8" });
-    const { data, meta } = frontmatter(content);
-    console.log(meta);
-    const page: LoadedPage = {
-      id: data.id,
-      title: data.title,
-      content,
-      createdAt: data.createdAt,
-      modifiedAt: data.modifiedAt,
-    };
-    return page;
-  }
-  async updatePage(page: Page): Promise<Page> {
-    if (!this.pageExists(page.id))
-      throw new Error(`Page ${page.id} does not exists`);
-    const file = path.join(this.pagesFolder, `${page.id}.mdx`);
-    await fs.promises.writeFile(file, page.content, { encoding: "utf8" });
-    return page;
-  }
-  async deletePage(id: string): Promise<void> {
-    const file = path.join(this.pagesFolder, `${id}.mdx`);
-    if (!this.pageExists(id)) throw new Error(`Page ${id} does not exists`);
-    return fs.promises.rm(file);
-  }
-
-  async listPages(): Promise<Page[]> {
-    const files = await fs.promises
-      .readdir(this.pagesFolder)
-      .then((res) => res.map((file) => file.replace(/\.mdx$/, ""))); // Remove extensions
-
-    return files.map(
-      (id) =>
-        ({
-          id,
-          title: "TODO",
-          content: "TODO",
-          createdAt: "TODO",
-          modifiedAt: "TODO",
-        } satisfies Page)
-    );
   }
 }

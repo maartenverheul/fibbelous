@@ -1,26 +1,33 @@
 import patch from "textdiff-patch";
 import { z } from "zod";
+import EventEmitter from "events";
 import { initTRPC, TRPCError } from "@trpc/server";
 import * as trpcExpress from "@trpc/server/adapters/express";
 import StorageService from "../services/StorageService";
-import { Workspace } from "../lib";
 import { PageService } from "../services/PageService";
 import { WorkspaceService } from "../services/WorkspaceService";
+import { CreateWSSContextFnOptions } from "@trpc/server/adapters/ws";
+import { observable } from "@trpc/server/observable";
+import { Page, Workspace } from "../lib";
 
 export type Context = {
-  workspace?: string;
+  workspace?: Workspace;
 };
 
 export const t = initTRPC.context<Context>().create();
 
 const storage = await StorageService.create("./.workspaces");
-const pageService = new PageService(storage);
+const pageService = await PageService.create(storage);
 const workspaceService = new WorkspaceService(storage);
 
-export const createContext = ({
+export const createHttpContext = ({
   req,
   res,
 }: trpcExpress.CreateExpressContextOptions): Context => ({});
+
+export const createWsContext = (
+  opts: CreateWSSContextFnOptions
+): Context => ({});
 
 // Corresponds to {Change} type in textdiff-patch package
 const zChange = z.array(
@@ -45,11 +52,25 @@ const workspacedProcedure = t.procedure.use(async (opts) => {
   });
 });
 
-const pagesRouter = t.router({
-  list: workspacedProcedure.query(async (opts) => {
-    console.log("LIST", opts);
+const ee = new EventEmitter();
 
-    return await storage.listPages();
+const pagesRouter = t.router({
+  onAdd: workspacedProcedure.subscription((opts) => {
+    return observable<Page>((emit) => {
+      const fn = (data: Page) => emit.next(data);
+      ee.on("add", fn);
+      return () => ee.off("add", fn);
+    });
+  }),
+  onDelete: workspacedProcedure.subscription((opts) => {
+    return observable<string>((emit) => {
+      const fn = (data: string) => emit.next(data);
+      ee.on("delete", fn);
+      return () => ee.off("delete", fn);
+    });
+  }),
+  list: workspacedProcedure.query((opts) => {
+    return pageService.getAll(opts.ctx.workspace);
   }),
   create: workspacedProcedure
     .input(
@@ -59,14 +80,16 @@ const pagesRouter = t.router({
     )
     .query(async (opts) => {
       const title = opts.input.title ?? "New page";
-      const page = await storage.createPage(title);
+      const page = await pageService.create(title);
+      ee.emit("add", page);
       return page;
     }),
-  delete: workspacedProcedure.input(z.string()).query((opts) => {
-    return storage.deletePage(opts.input);
+  delete: workspacedProcedure.input(z.string()).query(async (opts) => {
+    await pageService.delete(opts.input);
+    ee.emit("delete", opts.input);
   }),
   load: workspacedProcedure.input(z.string()).query((opts) => {
-    return storage.loadPage(opts.input);
+    return pageService.get(opts.ctx.workspace, opts.input);
   }),
   edit: workspacedProcedure
     .input(
@@ -78,7 +101,7 @@ const pagesRouter = t.router({
       })
     )
     .mutation(async (opts) => {
-      const page = await storage.loadPage(opts.input.id);
+      const page = await pageService.get(opts.ctx.workspace, opts.input.id);
       if (!page) throw new Error("Page not found");
       if (opts.input.title) page.title = opts.input.title;
       if (opts.input.content) {
@@ -88,7 +111,7 @@ const pagesRouter = t.router({
         const newContent = patch(page.content, opts.input.diff);
         page.content = newContent;
       }
-      return storage.updatePage(page);
+      return pageService.update(page);
     }),
 });
 
@@ -101,7 +124,10 @@ export const appRouter = t.router({
     return workspaceService.getAll();
   }),
   loadWorkspace: publicProcedure.input(z.string()).query(async (opts) => {
-    opts.ctx.workspace = opts.input;
+    opts.ctx.workspace = {
+      id: opts.input,
+      name: "TODO Workspace name",
+    };
   }),
   workspace: workspaceRouter,
 });

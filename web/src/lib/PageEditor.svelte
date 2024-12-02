@@ -24,7 +24,7 @@
   function sync() {
     if (!server.activePage?.id) return;
     const diff = create(lastSyncedContent, content);
-    server.trpc!.workspace.pages.edit.mutate({
+    server.currentServer!.trpc.workspace.pages.edit.mutate({
       id: server.activePage.id,
       diff: diff,
     });

@@ -4,8 +4,10 @@
   import PageManager from "./lib/PageManager.svelte";
   import workspaceStore from "./workspace.svelte";
   import AddConnectionView from "./lib/views/AddConnectionView.svelte";
+  import serverStore from "./server.svelte";
 
   onMount(() => {
+    serverStore.currentServer?.disconnect();
     workspaceStore.init();
   });
 </script>

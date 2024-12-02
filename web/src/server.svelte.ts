@@ -1,5 +1,4 @@
-import type { AppRouter, Page } from "@fibbelous/server/lib";
-import { createTRPCProxyClient, httpBatchLink, loggerLink } from "@trpc/client";
+import type { Page } from "@fibbelous/server/lib";
 import { Server } from "./Server";
 
 export enum SyncStatus {
@@ -10,20 +9,13 @@ export enum SyncStatus {
 }
 
 export class ServerStore {
-  pages: Page[] = $state([]);
+  currentServer: Server | null = $state(null);
   workspaces: Page[] = $state([]);
   activePage: Page | null = $state(null);
   syncStatus: SyncStatus = $state(SyncStatus.Idle);
 
-  trpc: ReturnType<typeof createTRPCProxyClient<AppRouter>> | null = null;
-
-  connect(url: string): Promise<Server> {
-    return Server.connect(url);
-  }
-
-  async init() {
-    if (!this.trpc) throw new Error("Not connected to server");
-    this.pages = await this.trpc.workspace.pages.list.query();
+  async connect(url: string): Promise<void> {
+    this.currentServer = await Server.connect(url);
   }
 }
 

@@ -2,7 +2,7 @@ export type Page = {
   id: string;
   icon?: string;
   title: string;
-  content: string;
+  slug: string;
   createdAt: string;
   modifiedAt: string;
   deletedAt?: string;
