@@ -1,5 +1,32 @@
 <script lang="ts">
   import server from "../server.svelte";
+  import create from "textdiff-create";
+  import { debounce } from "throttle-debounce";
+
+  let lastSynced = "";
+  let content = $state("");
+
+  const delayedSync = debounce(1000, sync, {
+    atBegin: false,
+  });
+
+  $effect(() => {
+    if (server.state.activePage != null) {
+      content = server.state.activePage;
+      lastSynced = server.state.activePage;
+    }
+  });
+
+  function oninput(event: Event) {
+    delayedSync();
+  }
+
+  function sync() {
+    if (!server.state.activePageId) return;
+    const diff = create(lastSynced, content);
+    server.editPage(server.state.activePageId, diff);
+    lastSynced = content;
+  }
 
   function closePage() {
     server.state.activePage = null;
@@ -10,7 +37,8 @@
   <p class="text-white mb-2">Status: {server.state.syncStatus}</p>
   <textarea
     disabled={server.state.activePage === null}
-    bind:value={server.state.activePage}
+    bind:value={content}
+    {oninput}
     class="border border-white disabled:border-slate-500 text-white w-full max-w-screen-md min-h-[300px]"
     placeholder="Empty page"
   ></textarea>
@@ -21,4 +49,6 @@
       onclick={closePage}>Close</button
     >
   </div>
+  {content}
+  {server.state.activePage}
 </div>

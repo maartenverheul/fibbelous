@@ -4,6 +4,7 @@ import StorageService from "./services/StorageService";
 import { Server as SocketIOServer } from "socket.io";
 import { ClientCommandHandler } from "./lib";
 import cors, { CorsOptions } from "cors";
+import patch, { Change } from "textdiff-patch";
 
 const corsOptions: CorsOptions = {
   origin(requestOrigin, callback) {
@@ -54,7 +55,14 @@ io.on("connection", (socket) => {
     async loadPage(id: string) {
       console.log(`Loading page ${id}`);
       const content = await storage.loadPage(id);
-      socket.emit("pageLoaded", content);
+      socket.emit("pageLoaded", id, content);
+    },
+    async editPage(id: string, diff: Change[]) {
+      console.log(`Editing page ${id}`);
+      const oldContent = await storage.loadPage(id);
+      const newContent = patch(oldContent, diff);
+      await storage.updatePage(id, newContent);
+      socket.emit("pageUpdated", id, newContent);
     },
   };
 

@@ -14,6 +14,7 @@ export enum SyncStatus {
 export class ServerState {
   pages: string[] = $state([]);
   activePage: string | null = $state(null);
+  activePageId: string | null = $state(null);
   syncStatus: SyncStatus = $state(SyncStatus.Idle);
 }
 
@@ -44,7 +45,11 @@ const serverHandler: ServerCommandHandler = {
     const index = state.pages.indexOf(id);
     state.pages.splice(index, 1);
   },
-  pageLoaded(content) {
+  pageLoaded(id, content) {
+    state.activePage = content;
+    state.activePageId = id;
+  },
+  pageUpdated(id, content) {
     state.activePage = content;
   },
 };
@@ -65,6 +70,9 @@ const actions: ClientCommandHandler & CustomActions = {
   },
   loadPage(id: string) {
     emit("loadPage", id);
+  },
+  editPage(id, diff) {
+    emit("editPage", id, diff);
   },
   disconnect() {
     socket.disconnect();

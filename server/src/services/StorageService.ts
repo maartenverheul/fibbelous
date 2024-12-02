@@ -56,6 +56,11 @@ export default class StorageService {
     const file = path.join(this.pagesFolder, `${id}.mdx`);
     return fs.promises.readFile(file, { encoding: "utf8" });
   }
+  async updatePage(id: string, content: string) {
+    if (!this.pageExists(id)) throw new Error(`Page ${id} does not exists`);
+    const file = path.join(this.pagesFolder, `${id}.mdx`);
+    return fs.promises.writeFile(file, content, { encoding: "utf8" });
+  }
   async deletePage(id: string) {
     const file = path.join(this.pagesFolder, `${id}.mdx`);
     return fs.promises.rm(file);
