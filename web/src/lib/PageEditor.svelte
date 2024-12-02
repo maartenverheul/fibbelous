@@ -11,9 +11,9 @@
   });
 
   $effect(() => {
-    if (server.state.activePage != null) {
-      content = server.state.activePage.content;
-      lastSyncedContent = server.state.activePage.content;
+    if (server.activePage != null) {
+      content = server.activePage.content;
+      lastSyncedContent = server.activePage.content;
     }
   });
 
@@ -22,24 +22,24 @@
   }
 
   function sync() {
-    if (!server.state.activePage?.id) return;
+    if (!server.activePage?.id) return;
     const diff = create(lastSyncedContent, content);
-    server.trpc.pages.edit.mutate({
-      id: server.state.activePage.id,
+    server.trpc!.workspace.pages.edit.mutate({
+      id: server.activePage.id,
       diff: diff,
     });
     lastSyncedContent = content;
   }
 
   function closePage() {
-    server.state.activePage = null;
+    server.activePage = null;
   }
 </script>
 
 <div class="PageEditor m-4">
-  <p class="text-white mb-2">Status: {server.state.syncStatus}</p>
+  <p class="text-white mb-2">Status: {server.syncStatus}</p>
   <textarea
-    disabled={server.state.activePage === null}
+    disabled={server.activePage === null}
     bind:value={content}
     {oninput}
     class="border border-white disabled:border-slate-500 text-white w-full max-w-screen-md min-h-[300px]"
@@ -47,11 +47,11 @@
   ></textarea>
   <div class="flex gap-4">
     <button
-      disabled={server.state.activePage === null}
+      disabled={server.activePage === null}
       class="text-white bg-slate-500 rounded-md disabled:opacity-50 cursor-pointer px-3 py-1"
       onclick={closePage}>Close</button
     >
   </div>
-  {server.state.activePage?.content}
+  {server.activePage?.content}
   {content}
 </div>

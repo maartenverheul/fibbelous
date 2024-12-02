@@ -15,6 +15,7 @@
     "@sveltejs/vite-plugin-svelte": "^5.0.0",
     "@tailwindcss/vite": "^4.0.0-beta.3",
     "@tsconfig/svelte": "^5.0.4",
+    "@types/localforage": "^0.0.33",
     "@types/textdiff-create": "^1.0.2",
     "@types/throttle-debounce": "^5.0.2",
     "svelte": "^5.2.7",
@@ -27,6 +28,7 @@
   },
   "dependencies": {
     "@trpc/client": "^10.45.2",
+    "localforage": "^1.10.0",
     "socket.io-client": "^4.8.1",
     "textdiff-create": "^1.1.11",
     "throttle-debounce": "^5.0.2"

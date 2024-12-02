@@ -1,9 +1,6 @@
-import type {
-  ServerCommandHandler,
-  AppRouter,
-  Page,
-} from "@fibbelous/server/lib";
+import type { AppRouter, Page } from "@fibbelous/server/lib";
 import { createTRPCProxyClient, httpBatchLink, loggerLink } from "@trpc/client";
+import { Server } from "./Server";
 
 export enum SyncStatus {
   Idle = "idle",
@@ -12,33 +9,23 @@ export enum SyncStatus {
   Error = "error",
 }
 
-const httpLink = httpBatchLink({
-  url: "http://localhost:3000/trpc",
-});
-
-const logger = loggerLink({
-  enabled: (opts) =>
-    (process.env.NODE_ENV === "development" && typeof window !== "undefined") ||
-    (opts.direction === "down" && opts.result instanceof Error),
-});
-
-const trpc = createTRPCProxyClient<AppRouter>({
-  links: [logger, httpLink],
-});
-
-export class ServerState {
+export class ServerStore {
   pages: Page[] = $state([]);
+  workspaces: Page[] = $state([]);
   activePage: Page | null = $state(null);
   syncStatus: SyncStatus = $state(SyncStatus.Idle);
 
+  trpc: ReturnType<typeof createTRPCProxyClient<AppRouter>> | null = null;
+
+  connect(url: string): Promise<Server> {
+    return Server.connect(url);
+  }
+
   async init() {
-    this.pages = await trpc.pages.list.query();
+    if (!this.trpc) throw new Error("Not connected to server");
+    this.pages = await this.trpc.workspace.pages.list.query();
   }
 }
 
-const state = new ServerState();
-
-export default {
-  trpc,
-  state,
-};
+const serverStore = new ServerStore();
+export default serverStore;

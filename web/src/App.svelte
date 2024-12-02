@@ -2,16 +2,21 @@
   import { onMount } from "svelte";
   import PageEditor from "./lib/PageEditor.svelte";
   import PageManager from "./lib/PageManager.svelte";
-  import server from "./server.svelte";
+  import workspaceStore from "./workspace.svelte";
+  import AddConnectionView from "./lib/views/AddConnectionView.svelte";
 
   onMount(() => {
-    server.state.init();
+    workspaceStore.init();
   });
 </script>
 
-<main>
-  <PageManager />
-  <PageEditor />
+<main class="w-full h-full">
+  {#if workspaceStore.currentWorkspace == null}
+    <AddConnectionView />
+  {:else}
+    <PageManager />
+    <PageEditor />
+  {/if}
 </main>
 
 <style>
