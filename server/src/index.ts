@@ -3,13 +3,26 @@ import http from "http";
 import StorageService from "./services/StorageService";
 import { Server as SocketIOServer } from "socket.io";
 import { ClientCommandHandler } from "./lib";
+import cors, { CorsOptions } from "cors";
+
+const corsOptions: CorsOptions = {
+  origin(requestOrigin, callback) {
+    const allowedOrigins = ["http://localhost:5173"];
+    const isAllowed = requestOrigin && allowedOrigins.includes(requestOrigin);
+    callback(null, isAllowed);
+  },
+};
 
 const app = express();
 const server = http.createServer(app);
-const io = new SocketIOServer(server);
+const io = new SocketIOServer(server, {
+  cors: corsOptions,
+});
 const port = 3000;
 
 const storage = new StorageService("./.data");
+
+app.use(cors(corsOptions));
 
 app.get("/", (req, res) => {
   res.send("Hello World!");
