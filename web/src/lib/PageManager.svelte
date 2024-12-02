@@ -1,25 +1,32 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import server from "../server.svelte";
 
-  let selectedPage: string | null = $state("Page 1");
+  let selectedPageId: string | null = $state(null);
 
   function selectPage(id: string) {
-    selectedPage = id;
+    selectedPageId = id;
   }
 
   function newPage() {
-    const pageName = prompt("Enter page name");
-    if (pageName) server.createPage(pageName);
+    const pageName = prompt("Enter page name") || undefined;
+    server.trpc.pages.create.query({
+      title: pageName,
+    });
   }
 
   function deleteSelectedPage() {
-    if (!selectedPage) return;
-    server.deletePage(selectedPage);
+    if (!selectedPageId) return;
+    server.trpc.pages.delete.query(selectedPageId);
   }
 
-  function loadSelectedPage() {
-    if (!selectedPage) return;
-    server.loadPage(selectedPage);
+  async function loadPage(id: string) {
+    if (!id) return;
+    server.state.activePage = await server.trpc.pages.load.query(id);
+  }
+
+  async function loadSelectedPage() {
+    if (selectedPageId) loadPage(selectedPageId);
   }
 </script>
 
@@ -35,11 +42,11 @@
         <li>
           <input
             type="button"
-            value={page}
+            value={page.title}
             class="text-white p-1 hover:bg-slate-600 [&.selected]:hidden w-full text-left cursor-pointer"
-            class:selected={selectedPage === page}
-            onclick={() => selectPage(page)}
-            ondblclick={() => server.loadPage(page)}
+            class:selected={selectedPageId === page.id}
+            onclick={() => selectPage(page.id)}
+            ondblclick={() => loadPage(page.id)}
           />
         </li>
       {/each}

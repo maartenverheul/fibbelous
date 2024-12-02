@@ -3,7 +3,7 @@
   import create from "textdiff-create";
   import { debounce } from "throttle-debounce";
 
-  let lastSynced = "";
+  let lastSyncedContent = "";
   let content = $state("");
 
   const delayedSync = debounce(1000, sync, {
@@ -12,8 +12,8 @@
 
   $effect(() => {
     if (server.state.activePage != null) {
-      content = server.state.activePage;
-      lastSynced = server.state.activePage;
+      content = server.state.activePage.content;
+      lastSyncedContent = server.state.activePage.content;
     }
   });
 
@@ -22,10 +22,13 @@
   }
 
   function sync() {
-    if (!server.state.activePageId) return;
-    const diff = create(lastSynced, content);
-    server.editPage(server.state.activePageId, diff);
-    lastSynced = content;
+    if (!server.state.activePage?.id) return;
+    const diff = create(lastSyncedContent, content);
+    server.trpc.pages.edit.mutate({
+      id: server.state.activePage.id,
+      diff: diff,
+    });
+    lastSyncedContent = content;
   }
 
   function closePage() {
@@ -49,6 +52,6 @@
       onclick={closePage}>Close</button
     >
   </div>
+  {server.state.activePage?.content}
   {content}
-  {server.state.activePage}
 </div>

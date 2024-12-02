@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { onDestroy, onMount, setContext } from "svelte";
+  import { onMount } from "svelte";
   import PageEditor from "./lib/PageEditor.svelte";
   import PageManager from "./lib/PageManager.svelte";
   import server from "./server.svelte";
 
-  onDestroy(() => {
-    server.disconnect();
+  onMount(() => {
+    server.state.init();
   });
 </script>
 
