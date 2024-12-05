@@ -31,9 +31,9 @@
 </script>
 
 <div
-  class="AddConnectionView text-white h-full flex items-center justify-center"
+  class="AddConnectionView text-black h-full flex items-center justify-center"
 >
-  <div class="card border border-white p-10 rounded-md">
+  <div class="card border border-black p-10 rounded-md">
     <h1 class="text-3xl text-center mb-4">Connect to server</h1>
 
     {#if error}
@@ -46,7 +46,7 @@
           bind:value={serverUrl}
           type="text"
           name="url"
-          class="border border-white px-2"
+          class="border border-black px-2"
           placeholder="url"
         />
 
@@ -60,7 +60,7 @@
     </div>
   </div>
   {#if connected}
-    <div class="card border border-white p-10 rounded-md">
+    <div class="card border border-black p-10 rounded-md">
       <h1 class="text-3xl text-center mb-4">Add workspace</h1>
 
       <div class="flex">

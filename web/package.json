@@ -28,8 +28,10 @@
   },
   "dependencies": {
     "@trpc/client": "^10.45.2",
+    "frontmatter": "^0.0.3",
     "localforage": "^1.10.0",
     "socket.io-client": "^4.8.1",
+    "svelte-icons-pack": "^3.1.3",
     "textdiff-create": "^1.1.11",
     "throttle-debounce": "^5.0.2"
   }

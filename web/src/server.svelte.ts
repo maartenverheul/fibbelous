@@ -1,4 +1,4 @@
-import type { Page } from "@fibbelous/server/lib";
+import type { LoadedPage, Page } from "@fibbelous/server/lib";
 import { Server } from "./Server";
 
 export enum SyncStatus {
@@ -11,7 +11,7 @@ export enum SyncStatus {
 export class ServerStore {
   currentServer: Server | null = $state(null);
   workspaces: Page[] = $state([]);
-  activePage: Page | null = $state(null);
+  activePage: LoadedPage | null = $state(null);
   syncStatus: SyncStatus = $state(SyncStatus.Idle);
 
   async connect(url: string): Promise<void> {

@@ -1,10 +1,13 @@
 <script lang="ts">
-  import server from "../server.svelte";
   import create from "textdiff-create";
+  import frontmatter from "frontmatter";
   import { debounce } from "throttle-debounce";
+  import server from "../server.svelte";
 
   let lastSyncedContent = "";
   let content = $state("");
+
+  let pageTitle = $state("Title");
 
   const delayedSync = debounce(1000, sync, {
     atBegin: false,
@@ -12,8 +15,13 @@
 
   $effect(() => {
     if (server.activePage != null) {
-      content = server.activePage.content;
-      lastSyncedContent = server.activePage.content;
+      const { data, content: pageContent } = frontmatter(
+        server.activePage.content
+      );
+      content = pageContent;
+      lastSyncedContent = pageContent;
+      console.log(data);
+      pageTitle = data.title;
     }
   });
 
@@ -30,28 +38,24 @@
     });
     lastSyncedContent = content;
   }
-
-  function closePage() {
-    server.activePage = null;
-  }
 </script>
 
-<div class="PageEditor m-4">
-  <p class="text-white mb-2">Status: {server.syncStatus}</p>
-  <textarea
-    disabled={server.activePage === null}
-    bind:value={content}
-    {oninput}
-    class="border border-white disabled:border-slate-500 text-white w-full max-w-screen-md min-h-[300px]"
-    placeholder="Empty page"
-  ></textarea>
-  <div class="flex gap-4">
-    <button
+<div
+  class="PageEditor w-full h-full p-4 flex items-stretch justify-center relative"
+>
+  <div id="content" class="w-full h-full max-w-screen-xl flex flex-col">
+    <input
+      type="text"
+      autocomplete="off"
+      spellcheck="false"
+      class="border border-black text-black w-full text-5xl font-bold border-none focus:outline-0"
+      bind:value={pageTitle}
+    />
+    <textarea
       disabled={server.activePage === null}
-      class="text-white bg-slate-500 rounded-md disabled:opacity-50 cursor-pointer px-3 py-1"
-      onclick={closePage}>Close</button
-    >
+      bind:value={content}
+      {oninput}
+      class="border border-black disabled:border-slate-500 text-black w-full border-none focus:outline-0 resize-none h-full"
+    ></textarea>
   </div>
-  {server.activePage?.content}
-  {content}
 </div>
