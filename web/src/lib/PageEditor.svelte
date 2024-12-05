@@ -2,7 +2,15 @@
   import create from "textdiff-create";
   import frontmatter from "frontmatter";
   import { debounce } from "throttle-debounce";
+
+  import remarkParse from "remark-parse";
+  import remarkMdx from "remark-mdx";
+  import remarkStringify from "remark-stringify";
+  import remarkFrontmatter from "remark-frontmatter";
+  import { unified } from "unified";
+
   import server from "../server.svelte";
+  import { untrack } from "svelte";
 
   let lastSyncedContent = "";
   let content = $state("");
@@ -14,16 +22,31 @@
   });
 
   $effect(() => {
-    if (server.activePage != null) {
-      const { data, content: pageContent } = frontmatter(
-        server.activePage.content
-      );
-      content = pageContent;
-      lastSyncedContent = pageContent;
-      console.log(data);
-      pageTitle = data.title;
-    }
+    if (server.activePage != null) go();
   });
+
+  function go() {
+    const { data, content: pageContent } = frontmatter(
+      server.activePage!.content
+    );
+    content = pageContent;
+    lastSyncedContent = pageContent;
+    pageTitle = data.title;
+
+    unified()
+      .use(remarkParse)
+      .use(remarkStringify)
+      .use(remarkFrontmatter)
+      .use(remarkMdx)
+      .use(() => (tree: any, list, done) => {
+        list.data.mdx = tree;
+        done();
+      })
+      .process(server.activePage!.content)
+      .then((result) => {
+        console.log(result);
+      });
+  }
 
   function oninput(event: Event) {
     delayedSync();
