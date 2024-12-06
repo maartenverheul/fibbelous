@@ -5,7 +5,6 @@
   import type { Server } from "../../Server";
 
   let serverUrl = $state("");
-  let server: Server | null = $state(null);
   let connected = $state(false);
   let workspaces: Workspace[] = $state([]);
   let error = $state("");
@@ -26,15 +25,15 @@
   }
 
   async function addWorkspace(workspace: Workspace) {
-    await workspaceStore.open(server!, workspace);
+    await workspaceStore.open(serverStore.currentServer!, workspace);
   }
 </script>
 
 <div
-  class="AddConnectionView text-black h-full flex items-center justify-center"
+  class="AddConnectionView text-black h-full flex flex-col gap-4 items-center justify-center"
 >
-  <div class="card border border-black p-10 rounded-md">
-    <h1 class="text-3xl text-center mb-4">Connect to server</h1>
+  <div class="card border border-black p-10 w-full max-w-screen-sm rounded-md">
+    <h1 class="text-3xl mb-4 select-none">Connect to server</h1>
 
     {#if error}
       <p class="text-red-400 mb-2">{error}</p>
@@ -54,14 +53,16 @@
           disabled={!serverUrl}
           type="submit"
           value="Load"
-          class="bg-slate-700 px-2 py-1 rounded-md cursor-pointer"
+          class="bg-gray-200 px-2 py-1 rounded-md cursor-pointer"
         />
       </form>
     </div>
   </div>
   {#if connected}
-    <div class="card border border-black p-10 rounded-md">
-      <h1 class="text-3xl text-center mb-4">Add workspace</h1>
+    <div
+      class="card border border-black p-10 w-full max-w-screen-sm rounded-md"
+    >
+      <h1 class="text-3xl mb-4">Add workspace</h1>
 
       <div class="flex">
         {#each workspaces as workspace}

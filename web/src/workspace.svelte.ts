@@ -63,7 +63,16 @@ export class WorkspaceStore {
     await store.setItem("saved", $state.snapshot(this.savedWorkspaces));
 
     // Set current workspace
-    this.currentWorkspace = this.currentWorkspace;
+    await store.setItem("open", $state.snapshot(this.currentWorkspace));
+  }
+
+  async openSaved(workspace: RemoteWorkspace) {
+    this.currentWorkspace = {
+      id: workspace.id,
+      url: workspace.url,
+      name: workspace.name,
+    };
+
     await store.setItem("open", $state.snapshot(this.currentWorkspace));
   }
 }

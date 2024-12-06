@@ -9,7 +9,7 @@
   import remarkFrontmatter from "remark-frontmatter";
   import { unified } from "unified";
 
-  import server from "../server.svelte";
+  import server from "../../server.svelte";
   import { untrack } from "svelte";
 
   let lastSyncedContent = "";

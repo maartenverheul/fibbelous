@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { link } from "../router.svelte";
-  import workspaceStore from "../workspace.svelte";
-  import server from "../server.svelte";
+  import { link } from "../../router.svelte";
+  import workspaceStore from "../../workspace.svelte";
+  import server from "../../server.svelte";
   import { Icon } from "svelte-icons-pack";
   import { BsTrash, BsPlus } from "svelte-icons-pack/bs";
+  import WorkspaceSelector from "./WorkspaceSelector.svelte";
 
   let selectedPageId: string | null = $state(null);
 
@@ -26,7 +27,10 @@
   }
 </script>
 
-<div class="Sidebar w-full h-full bg-gray-100 border-r border-black py-2">
+<div class="Sidebar w-full h-full bg-gray-100 border-r border-black">
+  <div class="mb-2 border-b border-gray-300">
+    <WorkspaceSelector />
+  </div>
   <div class="flex group pl-4 px-2">
     <p class="text-sm select-none font-medium">Pages</p>
     <div class="ml-auto">
