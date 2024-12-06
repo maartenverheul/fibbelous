@@ -8,8 +8,11 @@ import {
   createTRPCProxyClient,
   createWSClient,
   loggerLink,
+  TRPCClientError,
   wsLink,
+  type TRPCLink,
 } from "@trpc/client";
+import { show, Toast } from "./lib/components/ToastManager.svelte";
 
 export enum SyncStatus {
   Idle = "idle",
@@ -22,6 +25,15 @@ const logger = loggerLink({
   enabled: (opts) =>
     (process.env.NODE_ENV === "development" && typeof window !== "undefined") ||
     (opts.direction === "down" && opts.result instanceof Error),
+});
+
+const errorLogger = loggerLink({
+  enabled: (opts) => opts.direction === "down" && opts.result instanceof Error,
+  logger(opts) {
+    if (opts.direction == "down" && opts.result instanceof TRPCClientError) {
+      show(new Toast("error", opts.result.shape.message, "Server error", 8000));
+    }
+  },
 });
 
 export class ServerStore {
@@ -49,7 +61,11 @@ export class ServerStore {
     });
 
     this.trpc = createTRPCProxyClient<AppRouter>({
-      links: [logger, wsLink<AppRouter>({ client: this.wsClient })],
+      links: [
+        logger,
+        errorLogger,
+        wsLink<AppRouter>({ client: this.wsClient }),
+      ],
     });
 
     // Test connection

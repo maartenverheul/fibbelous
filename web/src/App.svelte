@@ -9,6 +9,7 @@
   import EditorLayout from "./lib/layouts/EditorLayout.svelte";
   import FullscreenLayout from "./lib/layouts/FullscreenLayout.svelte";
   import ConnectingView from "./lib/views/ConnectingView.svelte";
+  import ToastManager from "./lib/components/ToastManager.svelte";
 
   onMount(() => {
     serverStore.disconnect();
@@ -37,6 +38,7 @@
       <ConnectingView />
     </div>
   {/if}
+  <ToastManager />
   {#if workspaceStore.currentWorkspace != null}
     <div class="w-full h-full">
       <EditorLayout>
