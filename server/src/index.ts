@@ -4,6 +4,7 @@ import * as trpcExpress from "@trpc/server/adapters/express";
 import { appRouter, createHttpContext, createWsContext } from "./trpc";
 import { WebSocketServer } from "ws";
 import { applyWSSHandler } from "@trpc/server/adapters/ws";
+import { getLogger } from "./logger";
 
 const corsOptions: CorsOptions = {
   origin(requestOrigin, callback) {
@@ -16,6 +17,8 @@ const corsOptions: CorsOptions = {
 const app = express();
 const port = 3000;
 
+const logger = getLogger("Server");
+
 const wss = new WebSocketServer({ noServer: true });
 
 const handler = applyWSSHandler({
@@ -25,9 +28,9 @@ const handler = applyWSSHandler({
 });
 
 wss.on("connection", (ws) => {
-  console.log(`➕➕ Connection (${wss.clients.size})`);
+  logger.info(`➕➕ Connection (${wss.clients.size})`);
   ws.once("close", () => {
-    console.log(`➖➖ Connection (${wss.clients.size})`);
+    logger.info(`➖➖ Connection (${wss.clients.size})`);
   });
 });
 
@@ -46,7 +49,7 @@ app.use(
 );
 
 const server = app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`);
+  logger.info(`Fibbelous server listening on port ${port}`);
 });
 
 server.on("upgrade", (request, socket, head) => {
@@ -56,7 +59,7 @@ server.on("upgrade", (request, socket, head) => {
 });
 
 process.on("SIGTERM", () => {
-  console.log("SIGTERM");
+  logger.info("SIGTERM");
   handler.broadcastReconnectNotification();
   wss.close();
 });

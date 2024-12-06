@@ -9,10 +9,13 @@ import { WorkspaceService } from "../services/WorkspaceService";
 import { CreateWSSContextFnOptions } from "@trpc/server/adapters/ws";
 import { observable } from "@trpc/server/observable";
 import { Page, Workspace } from "../lib";
+import { getLogger } from "../logger";
 
 export type Context = {
   workspace?: Workspace;
 };
+
+const logger = getLogger("TRPC");
 
 export const t = initTRPC.context<Context>().create();
 
@@ -101,7 +104,7 @@ const pagesRouter = t.router({
       })
     )
     .mutation(async (opts) => {
-      console.log("Updating page");
+      logger.info("Updating page");
 
       const page = await pageService.get(opts.ctx.workspace, opts.input.id);
       if (!page) throw new Error("Page not found");

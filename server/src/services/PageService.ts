@@ -4,6 +4,9 @@ import StorageService from "./StorageService";
 import { randomUUID } from "crypto";
 import frontmatter from "frontmatter";
 import path from "path";
+import { getLogger } from "../logger";
+
+const logger = getLogger("PageService");
 
 export class PageService {
   private constructor(private readonly storage: StorageService) {}
@@ -17,7 +20,7 @@ export class PageService {
   }
 
   private async init() {
-    console.log("Initializing PageService");
+    logger.info("Initializing PageService");
 
     const files = await fs.promises.readdir(this.storage.pagesFolder);
 
@@ -47,8 +50,13 @@ export class PageService {
       acc[page.id] = page;
       return acc;
     }, {});
+  }
 
-    console.log(this.cache);
+  private getFrontmatterData() {
+    return frontmatter(content, { data: data }) + content;
+  }
+  private setFrontmatterData(content: string, data: Page) {
+    return frontmatter(content, { data: data }) + content;
   }
 
   public getNamedPage(id: string, title: string): string {
@@ -58,7 +66,29 @@ export class PageService {
     );
   }
 
+  async get(workspace: Workspace, id: string): Promise<LoadedPage> {
+    logger.debug(`Retrieving page ${id}`);
+
+    const file = this.cache[id];
+    const filename = this.getNamedPage(id, file.title);
+    const fileContent = await fs.promises.readFile(filename, {
+      encoding: "utf8",
+    });
+    const { data, content } = frontmatter(fileContent);
+    const page: LoadedPage = {
+      id: data.id,
+      slug: data.slug,
+      title: data.title,
+      createdAt: data.createdAt,
+      modifiedAt: data.modifiedAt,
+      content,
+    };
+
+    return page;
+  }
+
   async getAll(workspace: Workspace): Promise<Page[]> {
+    logger.debug("Getting all pages");
     return Object.values(this.cache);
   }
 
@@ -88,33 +118,31 @@ modifiedAt: ${now}
     });
     const { content, ...partialPage } = page;
     this.cache[id] = partialPage;
-    return page;
-  }
 
-  async get(workspace: Workspace, id: string): Promise<LoadedPage> {
-    const file = this.cache[id];
-    const filename = this.getNamedPage(id, file.title);
-    const content = await fs.promises.readFile(filename, { encoding: "utf8" });
-    const { data } = frontmatter(content);
-    const page: LoadedPage = {
-      id: data.id,
-      slug: data.slug,
-      title: data.title,
-      content,
-      createdAt: data.createdAt,
-      modifiedAt: data.modifiedAt,
-    };
+    logger.info(`Created page ${id} with title "${title}"`);
+
     return page;
   }
 
   async update(workspace: Workspace, page: LoadedPage): Promise<Page> {
-    const oldFile = await this.get(workspace, page.id);
-    if (!oldFile) throw new Error(`Page ${page.id} does not exists`);
+    const oldPage = await this.get(workspace, page.id);
 
+    const oldPageFile = this.getNamedPage(page.id, oldPage.title);
     const newFilename = this.getNamedPage(page.id, page.title);
-    await fs.promises.writeFile(newFilename, page.content, {
-      encoding: "utf8",
-    });
+
+    if (!oldPage) throw new Error(`Page ${page.id} does not exists`);
+    if (oldPageFile !== newFilename) {
+      fs.promises.rm(oldPageFile);
+    }
+
+    page.modifiedAt = new Date().toISOString();
+    logger.info(`Updating page ${page.id} with title ${page.title}`);
+
+    console.log(page.content);
+
+    // await fs.promises.writeFile(newFilename, page.content, {
+    //   encoding: "utf8",
+    // });
 
     // Update cache
     const { content, ...partialPage } = page;
@@ -126,6 +154,8 @@ modifiedAt: ${now}
     if (!file) throw new Error(`Page ${id} does not exists`);
     const filename = this.getNamedPage(id, file.title);
     await fs.promises.rm(filename);
+
+    logger.info(`Deleted page ${id}`);
 
     // Update cache
     delete this.cache[id];

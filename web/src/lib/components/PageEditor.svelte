@@ -1,23 +1,18 @@
 <script lang="ts">
-  import { untrack } from "svelte";
   import create from "textdiff-create";
-  import frontmatter from "frontmatter";
   import { debounce } from "throttle-debounce";
 
   import remarkParse from "remark-parse";
   import remarkMdx from "remark-mdx";
   import remarkStringify from "remark-stringify";
-  import remarkFrontmatter from "remark-frontmatter";
   import { unified } from "unified";
 
   import type { LoadedPage } from "@fibbelous/server/lib";
   import server from "../../server.svelte";
-  import workspaceStore from "../../workspace.svelte";
 
   let lastSyncedContent = "";
   let content = $state("");
-
-  let pageTitle = $state("Title");
+  let pageTitle = $state("");
 
   $effect(() => {
     if (server.activePage != null) loadPage(server.activePage);
@@ -31,17 +26,13 @@
   });
 
   function loadPage(page: LoadedPage) {
-    const { data, content: pageContent } = frontmatter(
-      server.activePage!.content
-    );
-    content = pageContent;
-    lastSyncedContent = pageContent;
-    pageTitle = data.title;
+    content = page.content;
+    lastSyncedContent = page.content;
+    pageTitle = page.title;
 
     unified()
       .use(remarkParse)
       .use(remarkStringify)
-      .use(remarkFrontmatter)
       .use(remarkMdx)
       .use(() => (tree: any, list, done) => {
         list.data.mdx = tree;

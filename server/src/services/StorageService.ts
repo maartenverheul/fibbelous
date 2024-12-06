@@ -2,6 +2,9 @@ import git from "isomorphic-git";
 import fs from "fs";
 import path from "path";
 import slugify from "slugify";
+import { getLogger } from "../logger";
+
+const logger = getLogger("StorageService");
 
 export default class StorageService {
   public readonly root: string;
@@ -10,7 +13,7 @@ export default class StorageService {
 
   private constructor(location: string) {
     this.root = path.resolve(location);
-    console.log(`Using repository at ${this.root}`);
+    logger.info(`Using repository at ${this.root}`);
 
     this.workspaceFile = path.join(this.root, "workspace.json");
     this.pagesFolder = path.join(this.root, "pages");
@@ -24,7 +27,7 @@ export default class StorageService {
 
   public async init() {
     if (!this.repoExisits()) await this.initRepository();
-    else console.log(`Repository already exists.`);
+    else logger.info(`Repository already exists.`);
     return true;
   }
 
@@ -34,7 +37,7 @@ export default class StorageService {
   }
 
   private async initRepository(): Promise<void> {
-    console.log(`Does not exist yet, initalizing repository..`);
+    logger.info(`Does not exist yet, initalizing repository..`);
     fs.promises.mkdir(this.root, { recursive: true });
 
     await git.init({ fs, dir: this.root });
