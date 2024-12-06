@@ -36,7 +36,7 @@
         <li class="">
           <button
             class="flex gap-2 cursor-pointer hover:bg-gray-200 transition-colors duration-100 w-full px-4 py-2"
-            onclick={() => workspaceStore.openSaved(workspace)}
+            onclick={() => workspaceStore.open(workspace)}
           >
             <span class="w-[22px]">{workspace.icon ?? "😎"}</span><span
               >{workspace.name}</span

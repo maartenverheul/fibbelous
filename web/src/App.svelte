@@ -9,7 +9,7 @@
   import FullscreenLayout from "./lib/layouts/FullscreenLayout.svelte";
 
   onMount(() => {
-    serverStore.currentServer?.disconnect();
+    serverStore.disconnect();
     workspaceStore.init();
   });
 </script>

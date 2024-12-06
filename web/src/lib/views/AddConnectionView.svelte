@@ -2,11 +2,11 @@
   import type { Workspace } from "@fibbelous/server/lib";
   import serverStore from "../../server.svelte";
   import workspaceStore from "../../workspace.svelte";
-  import type { Server } from "../../Server";
+  import type { RemoteWorkspace } from "../../types/RemoteWorkspace";
 
   let serverUrl = $state("");
   let connected = $state(false);
-  let workspaces: Workspace[] = $state([]);
+  let workspaces: RemoteWorkspace[] = $state([]);
   let error = $state("");
 
   async function loadServer(event: SubmitEvent) {
@@ -18,14 +18,17 @@
       await serverStore.connect(serverUrl);
       connected = true;
       error = "";
-      workspaces = await serverStore.currentServer!.trpc.getWorkspaces.query();
+      workspaces = (await serverStore.trpc.getWorkspaces.query()).map((w) => ({
+        ...w,
+        url: serverUrl,
+      }));
     } catch (err) {
       error = (err as Error).message;
     }
   }
 
-  async function addWorkspace(workspace: Workspace) {
-    await workspaceStore.open(serverStore.currentServer!, workspace);
+  async function addWorkspace(workspace: RemoteWorkspace) {
+    await workspaceStore.open(workspace);
   }
 </script>
 

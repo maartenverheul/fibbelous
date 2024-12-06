@@ -9,21 +9,18 @@
   let selectedPageId: string | null = $state(null);
 
   async function newPage() {
-    const page = await server.currentServer!.trpc.workspace.pages.create.query(
-      {}
-    );
+    const page = await server.trpc.workspace.pages.create.query({});
     loadPage(page.id);
   }
 
   function deletePage(id: string) {
-    server.currentServer!.trpc.workspace.pages.delete.query(id);
+    server.trpc.workspace.pages.delete.query(id);
   }
 
   async function loadPage(id: string) {
     if (!id) return;
     selectedPageId = id;
-    server.activePage =
-      await server.currentServer!.trpc.workspace.pages.load.query(id);
+    server.activePage = await server.trpc.workspace.pages.load.query(id);
   }
 </script>
 
