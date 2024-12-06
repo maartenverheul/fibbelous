@@ -1,6 +1,11 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import SettingsModal from "../components/SettingsModal.svelte";
   import Sidebar from "../components/Sidebar.svelte";
+
+  onMount(() => {
+    console.log("EditorLayout mounted");
+  });
 </script>
 
 <div class="EditorLayout w-full h-full flex">

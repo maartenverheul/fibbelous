@@ -25,6 +25,7 @@ const logger = loggerLink({
 });
 
 export class ServerStore {
+  connected = $state(false);
   workspaces: Page[] = $state([]);
   activePage: LoadedPage | null = $state(null);
   syncStatus: SyncStatus = $state(SyncStatus.Idle);
@@ -39,6 +40,12 @@ export class ServerStore {
 
     this.wsClient = createWSClient({
       url: "ws://localhost:3000",
+      onOpen: () => {
+        this.connected = true;
+      },
+      onClose: (cause) => {
+        this.connected = false;
+      },
     });
 
     this.trpc = createTRPCProxyClient<AppRouter>({
