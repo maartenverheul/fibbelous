@@ -51,10 +51,6 @@ export class PageService {
     console.log(this.cache);
   }
 
-  private pageExists(id: string): boolean {
-    return fs.existsSync(path.join(this.storage.pagesFolder, `${id}.mdx`));
-  }
-
   public getNamedPage(id: string, title: string): string {
     return path.join(
       this.storage.pagesFolder,
@@ -111,11 +107,14 @@ modifiedAt: ${now}
     return page;
   }
 
-  async update(page: LoadedPage): Promise<Page> {
-    if (!this.pageExists(page.id))
-      throw new Error(`Page ${page.id} does not exists`);
-    const file = path.join(this.storage.pagesFolder, `${page.id}.mdx`);
-    await fs.promises.writeFile(file, page.content, { encoding: "utf8" });
+  async update(workspace: Workspace, page: LoadedPage): Promise<Page> {
+    const oldFile = await this.get(workspace, page.id);
+    if (!oldFile) throw new Error(`Page ${page.id} does not exists`);
+
+    const newFilename = this.getNamedPage(page.id, page.title);
+    await fs.promises.writeFile(newFilename, page.content, {
+      encoding: "utf8",
+    });
 
     // Update cache
     const { content, ...partialPage } = page;

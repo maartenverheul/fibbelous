@@ -23,6 +23,13 @@
     if (server.activePage != null) loadPage(server.activePage);
   });
 
+  $effect(() => {
+    pageTitle;
+    console.log("title changed");
+
+    delayedUpdate();
+  });
+
   function loadPage(page: LoadedPage) {
     const { data, content: pageContent } = frontmatter(
       server.activePage!.content
@@ -57,7 +64,7 @@
   function sync() {
     if (!server.activePage?.id) return;
     const diff = create(lastSyncedContent, content);
-    server.trpc.workspace.pages.edit.mutate({
+    server.trpc.workspace.pages.update.mutate({
       id: server.activePage.id,
       diff: diff,
     });
@@ -70,9 +77,9 @@
 
   function update() {
     if (!server.activePage?.id) return;
-    server.trpc.workspace.pages.edit.mutate({
+    server.trpc.workspace.pages.update.mutate({
       id: server.activePage.id,
-      diff: create(server.activePage.content, content),
+      title: pageTitle,
     });
   }
 </script>

@@ -91,7 +91,7 @@ const pagesRouter = t.router({
   load: workspacedProcedure.input(z.string()).query((opts) => {
     return pageService.get(opts.ctx.workspace, opts.input);
   }),
-  edit: workspacedProcedure
+  update: workspacedProcedure
     .input(
       z.object({
         id: z.string(),
@@ -101,6 +101,8 @@ const pagesRouter = t.router({
       })
     )
     .mutation(async (opts) => {
+      console.log("Updating page");
+
       const page = await pageService.get(opts.ctx.workspace, opts.input.id);
       if (!page) throw new Error("Page not found");
       if (opts.input.title) page.title = opts.input.title;
@@ -111,7 +113,7 @@ const pagesRouter = t.router({
         const newContent = patch(page.content, opts.input.diff);
         page.content = newContent;
       }
-      return pageService.update(page);
+      return pageService.update(opts.ctx.workspace, page);
     }),
 });
 
