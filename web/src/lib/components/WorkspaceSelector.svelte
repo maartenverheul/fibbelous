@@ -2,6 +2,7 @@
   import { Icon } from "svelte-icons-pack";
   import { BsChevronDoubleRight, BsGear, BsPlus } from "svelte-icons-pack/bs";
   import workspaceStore from "../../workspace.svelte";
+  import settingsManager from "../../settings.svelte";
 
   let open = $state(false);
 
@@ -10,8 +11,6 @@
       (w) => w.id !== workspaceStore.currentWorkspace!.id
     )
   );
-
-  function openWorkspaceSettings() {}
 </script>
 
 <div class="WorkspaceSelector group relative" class:open>
@@ -48,7 +47,7 @@
       <li>
         <button
           class="flex gap-2 items-center cursor-pointer hover:bg-gray-200 transition-colors duration-100 w-full px-4 py-2"
-          onclick={openWorkspaceSettings}
+          onclick={() => settingsManager.open("workspaces")}
         >
           <span class="w-[22px]">
             <Icon src={BsGear} />
