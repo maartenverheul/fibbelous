@@ -45,7 +45,7 @@ class _OpenWorkspaceViewState extends State<OpenWorkspaceView> {
       if (!result) {
         print("Connection failed");
         setState(() {
-          errorMessage = result ? null : "No server found at $result";
+          errorMessage = result ? null : "No server found at $server";
         });
       } else {
         print("Connection successful to $result");

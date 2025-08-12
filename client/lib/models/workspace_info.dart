@@ -7,7 +7,7 @@ class WorkspaceInfo {
     required this.title,
     required this.description,
     required this.createdAt,
-    this.icon = "",
+    this.icon = "🏠",
   });
 
   String id;

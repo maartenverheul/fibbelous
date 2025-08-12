@@ -5,6 +5,7 @@ class Page {
     required this.icon,
     required this.content,
     required this.createdAt,
+    this.children = const [],
   });
 
   final String id;
@@ -12,4 +13,5 @@ class Page {
   final String icon;
   final String content;
   final DateTime createdAt;
+  final List<Page> children;
 }
