@@ -1,13 +1,18 @@
-import 'package:client/models/workspace.dart';
-import 'package:injectable/injectable.dart';
+import 'package:client/models/workspace_info.dart';
+import 'package:http/http.dart' as http;
 
-@injectable
 class WorkspaceService {
-  WorkspaceService() {
-    // final service = getIt.get<AnyService>();
+  static Future<List<WorkspaceInfo>> getStored() async {
+    return [];
   }
 
-  Future<List<Workspace>> getAll() async {
-    return [];
+  static Future<List<WorkspaceInfo>> fetchAll(Uri server) async {
+    final url = server.resolve('/api/workspaces');
+    final response = await http.get(url);
+    if (response.statusCode == 200) {
+      return WorkspaceInfo.listFromJson(response.body);
+    } else {
+      throw Exception('Failed to load workspaces: ${response.statusCode}');
+    }
   }
 }

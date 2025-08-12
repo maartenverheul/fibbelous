@@ -1,8 +1,11 @@
-import 'package:client/globals.dart';
+import 'package:client/models/workspace_info.dart';
+import 'package:client/providers/workspace_provider.dart';
 import 'package:client/services/connection_service.dart';
+import 'package:client/services/workspace_service.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 
 class OpenWorkspaceView extends StatefulWidget {
   const OpenWorkspaceView({super.key});
@@ -13,8 +16,9 @@ class OpenWorkspaceView extends StatefulWidget {
 
 class _OpenWorkspaceViewState extends State<OpenWorkspaceView> {
   String? errorMessage;
+  List<WorkspaceInfo>? fetchedWorkspaces;
   final TextEditingController _ipController = TextEditingController();
-  final ConnectionService _connectionService = getIt.get<ConnectionService>();
+  final Set<String> _selectedWorkspaceIds = {};
 
   @override
   void dispose() {
@@ -32,25 +36,48 @@ class _OpenWorkspaceViewState extends State<OpenWorkspaceView> {
     void submitIp() async {
       setState(() {
         errorMessage = "";
+        fetchedWorkspaces = null;
+        _selectedWorkspaceIds.clear();
       });
       final address = _ipController.text.trim();
-      var result = await _connectionService.testConnection(address);
-      if (!result.$1) {
-        print("Connection failed: ${result.$2}");
+      var server = ConnectionService.parseUri(address);
+      var result = await ConnectionService.testConnection(server);
+      if (!result) {
+        print("Connection failed");
         setState(() {
-          errorMessage = result.$1 ? null : "No server found at ${result.$2}";
+          errorMessage = result ? null : "No server found at $result";
         });
       } else {
-        print("Connection successful to ${result.$2}");
-        if (context.mounted) {
-          context.goNamed(
-            "existingWorkspace",
-            pathParameters: {
-              "workspaceIndex": "1",
-            },
-          );
-        }
+        print("Connection successful to $result");
+        if (!context.mounted) return;
+        var fetchedWorkspaces = await WorkspaceService.fetchAll(server);
+        setState(() {
+          this.fetchedWorkspaces = fetchedWorkspaces;
+        });
       }
+    }
+
+    void submitSelectedWorkspaces() {
+      if (fetchedWorkspaces == null) return;
+
+      final selected = fetchedWorkspaces!
+          .where((w) => _selectedWorkspaceIds.contains(w.id))
+          .toList();
+
+      var workspaceProvider = context.read<WorkspaceProvider>();
+      for (var workspace in selected) {
+        workspaceProvider.addWorkspace(workspace);
+      }
+
+      workspaceProvider.activateWorkspace(selected[0].id);
+
+      context.goNamed(
+        "existingWorkspace",
+        pathParameters: {
+          "workspaceIndex":
+              workspaceProvider.selectedWorkspaceIndex?.toString() ?? "0",
+        },
+      );
     }
 
     return Scaffold(
@@ -104,8 +131,9 @@ class _OpenWorkspaceViewState extends State<OpenWorkspaceView> {
                             padding:
                                 const EdgeInsets.symmetric(horizontal: 24.0),
                             child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisAlignment: MainAxisAlignment.start,
                               children: [
+                                const SizedBox(height: 20),
                                 TextField(
                                   controller: _ipController,
                                   decoration: const InputDecoration(
@@ -119,13 +147,45 @@ class _OpenWorkspaceViewState extends State<OpenWorkspaceView> {
                                   onPressed: submitIp,
                                   child: const Text("Connect"),
                                 ),
-                                const SizedBox(height: 20),
                                 Text(
                                   errorMessage ?? "",
                                   style: TextStyle(
                                     color: Theme.of(context).colorScheme.error,
                                   ),
                                 ),
+                                if (fetchedWorkspaces != null) ...[
+                                  Expanded(
+                                    child: ListView(
+                                      shrinkWrap: true,
+                                      children: [
+                                        ...fetchedWorkspaces!.map((workspace) =>
+                                            CheckboxListTile(
+                                              value: _selectedWorkspaceIds
+                                                  .contains(workspace.id),
+                                              onChanged: (selected) {
+                                                setState(() {
+                                                  if (selected == true) {
+                                                    _selectedWorkspaceIds
+                                                        .add(workspace.id);
+                                                  } else {
+                                                    _selectedWorkspaceIds
+                                                        .remove(workspace.id);
+                                                  }
+                                                });
+                                              },
+                                              title: Text(
+                                                  '${workspace.icon}  ${workspace.title}'),
+                                            )),
+                                      ],
+                                    ),
+                                  ),
+                                  ElevatedButton(
+                                    onPressed: _selectedWorkspaceIds.isNotEmpty
+                                        ? submitSelectedWorkspaces
+                                        : null,
+                                    child: const Text("Add workspaces"),
+                                  ),
+                                ],
                               ],
                             ),
                           ),

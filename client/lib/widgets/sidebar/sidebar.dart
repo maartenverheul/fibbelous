@@ -16,7 +16,7 @@ class Sidebar extends StatelessWidget {
           ),
         ),
       ),
-      child: Column(
+      child: const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           WorkspaceSelector(),

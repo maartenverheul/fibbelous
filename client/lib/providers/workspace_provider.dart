@@ -1,49 +1,54 @@
-import 'package:client/globals.dart';
-import 'package:client/models/workspace.dart';
+import 'package:client/models/workspace_info.dart';
 import 'package:client/services/workspace_service.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:collection/collection.dart';
 
 class WorkspaceProvider extends ChangeNotifier {
-  late final WorkspaceService _workspaceService = getIt.get<WorkspaceService>();
   late SharedPreferences _prefs;
 
-  late List<Workspace> _workspaces = [];
-  late Workspace? _selectedWorkspace = null;
+  late List<WorkspaceInfo> _workspaces = [];
+  WorkspaceInfo? _selectedWorkspace;
 
   late bool _ready = false;
 
   Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
-    _workspaces = await _workspaceService.getAll();
-    final lastActivatedWorkspaceId = _prefs.getInt('activatedWorkspace') ?? 0;
+    _workspaces = await WorkspaceService.getStored();
+    final lastActivatedWorkspaceId =
+        _prefs.getString('activatedWorkspace') ?? 0;
     _selectedWorkspace = _workspaces.firstWhereOrNull(
             (workspace) => workspace.id == lastActivatedWorkspaceId) ??
-        _workspaces[0];
+        _workspaces.firstOrNull;
 
     _ready = true;
     notifyListeners();
   }
 
-  UnmodifiableListView<Workspace> get workspaces =>
+  UnmodifiableListView<WorkspaceInfo> get workspaces =>
       UnmodifiableListView(_workspaces);
 
   bool get ready => _ready;
-  Workspace? get selectedWorkspace => _selectedWorkspace;
+  WorkspaceInfo? get selectedWorkspace => _selectedWorkspace;
+  int? get selectedWorkspaceIndex => _workspaces.indexOf(_selectedWorkspace!);
 
-  void activateWorkspaceById(int workspaceId) {
+  int addWorkspace(WorkspaceInfo workspace) {
+    if (_workspaces.any((w) => w.id == workspace.id)) {
+      throw ErrorSummary("Workspace with id ${workspace.id} already exists");
+    }
+    _workspaces.add(workspace);
+    // _prefs.setStringList('workspaces', _workspaces.map((w) => w.toJson()).toList());
+    notifyListeners();
+    // Return the index of the newly added workspace
+    return _workspaces.length - 1;
+  }
+
+  void activateWorkspace(String workspaceId) {
     final targetWorkspace = _workspaces
         .firstWhereOrNull((workspace) => workspace.id == workspaceId);
     if (targetWorkspace == null) throw ErrorSummary("Workspace does not exist");
     _selectedWorkspace = targetWorkspace;
-    _prefs.setInt('activatedWorkspace', targetWorkspace.id);
-    notifyListeners();
-  }
-
-  void activateWorkspace(Workspace workspace) {
-    _prefs.setInt('activatedWorkspace', workspace.id);
-    _selectedWorkspace = workspace;
+    _prefs.setString('activatedWorkspace', targetWorkspace.id);
     notifyListeners();
   }
 }

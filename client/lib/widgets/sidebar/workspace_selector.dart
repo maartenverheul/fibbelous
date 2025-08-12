@@ -1,4 +1,4 @@
-import 'package:client/models/workspace.dart';
+import 'package:client/models/workspace_info.dart';
 import 'package:client/providers/workspace_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -15,7 +15,7 @@ class _WorkspaceSelectorState extends State<WorkspaceSelector> {
   Widget build(BuildContext context) {
     return Consumer<WorkspaceProvider>(
       builder: (context, workspaceProvider, chilld) => LayoutBuilder(
-        builder: (context, constraints) => DropdownButton<Workspace>(
+        builder: (context, constraints) => DropdownButton<WorkspaceInfo>(
           value: workspaceProvider.selectedWorkspace,
           isExpanded: true,
           icon: Offstage(
@@ -31,13 +31,14 @@ class _WorkspaceSelectorState extends State<WorkspaceSelector> {
             height: 0,
             color: Colors.transparent,
           ),
-          onChanged: (Workspace? value) {
+          onChanged: (WorkspaceInfo? value) {
             if (value == null) return;
-            workspaceProvider.activateWorkspace(value);
+            workspaceProvider.activateWorkspace(value.id);
           },
-          items: workspaceProvider.workspaces.map<DropdownMenuItem<Workspace>>(
-            (Workspace value) {
-              return DropdownMenuItem<Workspace>(
+          items:
+              workspaceProvider.workspaces.map<DropdownMenuItem<WorkspaceInfo>>(
+            (WorkspaceInfo value) {
+              return DropdownMenuItem<WorkspaceInfo>(
                 value: value,
                 child: LayoutBuilder(
                   builder: (context, constraints2) => Row(
@@ -54,7 +55,7 @@ class _WorkspaceSelectorState extends State<WorkspaceSelector> {
                         child: Offstage(
                           offstage: constraints2.maxWidth < 100,
                           child: Text(
-                            value.name,
+                            value.title,
                             maxLines: 1,
                           ),
                         ),
