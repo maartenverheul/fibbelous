@@ -1,5 +1,5 @@
 use axum::extract::Path;
-use axum::{Json, Router, response::IntoResponse, routing::get, serve};
+use axum::{response::IntoResponse, routing::get, serve, Json, Router};
 use std::net::SocketAddr;
 
 // Placeholder handlers for CRUD endpoints
@@ -12,6 +12,12 @@ async fn list_workspaces() -> impl IntoResponse {
         )
             .into_response(),
     }
+}
+
+// Simple hello endpoint for connection testing
+async fn hello() -> impl IntoResponse {
+    println!("Received hello request");
+    (axum::http::StatusCode::OK, "Hello from server!")
 }
 
 async fn create_workspace() -> impl IntoResponse {
@@ -36,6 +42,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/", get(|| async { "Hello, world!" }))
+        .route("/api/hello", get(hello))
         .route(
             "/api/workspaces",
             get(list_workspaces).post(create_workspace),
