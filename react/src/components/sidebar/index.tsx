@@ -40,7 +40,7 @@ export default function Sidebar() {
   return (
     <div className="bg-slate-800 h-full w-full">
       <Select value={selectedWorkspace} onValueChange={changeWorkspace}>
-        <SelectTrigger className="text-white rounded-none border-0 border-b select-none w-full text-center mx-auto">
+        <SelectTrigger className="text-white rounded-none border-0 border-b select-none w-full text-center mx-auto text-lg !h-12">
           <SelectValue
             placeholder="Select an option"
             className="text-center mx-auto"
@@ -49,7 +49,7 @@ export default function Sidebar() {
         <SelectContent>
           {workspaces.map((workspace) => (
             <SelectItem key={workspace.id} value={workspace.id}>
-              {workspace.name}
+              {workspace.icon} {workspace.name}
             </SelectItem>
           ))}
           <SelectItem value="$manage" className="font-bold">

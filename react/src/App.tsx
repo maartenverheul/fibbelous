@@ -21,7 +21,9 @@ function App() {
           <p>Content</p>
         </Panel>
       </PanelGroup>
-      <Outlet />
+      <div className="absolute top-0 left-0 w-full h-full pointer-events-none">
+        <Outlet />
+      </div>
     </div>
   );
 }

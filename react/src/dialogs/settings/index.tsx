@@ -11,7 +11,7 @@ interface SettingsDialogProps {
   onTabChange?: (tab: string) => void;
 }
 
-const pages = [
+export const pages = [
   {
     key: "general",
     label: "General",
@@ -34,7 +34,7 @@ export default function SettingsDialog({
 }: SettingsDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="p-0 overflow-hidden h-full max-h-[500px] bg-slate-800 text-white border-slate-900">
+      <DialogContent className="p-0 overflow-hidden h-full w-full !max-w-[1100px] max-h-[800px] bg-slate-800 text-white border-slate-900">
         <Tabs
           value={activeTab}
           onValueChange={onTabChange}
