@@ -9,6 +9,8 @@ export default function WorkspaceRedirect() {
   useEffect(() => {
     if (workspaces.length > 0) {
       navigate(`/${workspaces[0].id}`, { replace: true });
+    } else {
+      navigate(`/settings/workspaces`, { replace: true });
     }
   }, [workspaces, navigate]);
 

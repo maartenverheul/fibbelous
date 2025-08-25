@@ -13,6 +13,14 @@
   "tauri": {
     "allowlist": {
       "all": false,
+      "dialog": {
+        "all": false,
+        "ask": false,
+        "confirm": false,
+        "message": false,
+        "open": false,
+        "save": false
+      },
       "shell": {
         "all": false,
         "open": true
@@ -20,7 +28,7 @@
     },
     "windows": [
       {
-        "title": "react",
+        "title": "Fibbelous",
         "width": 800,
         "height": 600
       }

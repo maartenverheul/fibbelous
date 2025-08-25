@@ -7,6 +7,7 @@ pub struct WorkspaceInfo {
     pub id: String,
     pub slug: String,
     pub title: String,
+    pub icon: Option<String>,
     pub description: Option<String>,
     pub created_at: Option<String>,
 }
@@ -19,6 +20,7 @@ impl WorkspaceInfo {
             id: generate_hex_id(),
             slug: "default".to_string(),
             title: "Default workspace".to_string(),
+            icon: Some("📁".to_string()),
             description: Some("The default workspace".to_string()),
             created_at: Some(created_at),
         }

@@ -6,8 +6,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useEffect, useState } from "react";
-import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
 import { useLocation, useNavigate } from "react-router";
+import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
 
 export default function Sidebar() {
   const navigate = useNavigate();
@@ -18,8 +18,10 @@ export default function Sidebar() {
   const initialWorkspace =
     match && workspaces.some((w) => w.id === match[1])
       ? match[1]
-      : workspaces[0].id;
-  const [selectedWorkspace, setSelectedWorkspace] = useState(initialWorkspace);
+      : workspaces[0]?.id;
+  const [selectedWorkspace, setSelectedWorkspace] = useState<
+    string | undefined
+  >(initialWorkspace);
 
   useEffect(() => {
     // Update selectedWorkspace if URL changes
@@ -49,7 +51,7 @@ export default function Sidebar() {
         <SelectContent>
           {workspaces.map((workspace) => (
             <SelectItem key={workspace.id} value={workspace.id}>
-              {workspace.icon} {workspace.name}
+              {workspace.icon} {workspace.title}
             </SelectItem>
           ))}
           <SelectItem value="$manage" className="font-bold">
