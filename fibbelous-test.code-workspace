@@ -1,6 +1,10 @@
 {
   "folders": [
     {
+      "name": "Client React",
+      "path": "react"
+    },
+    {
       "name": "Client",
       "path": "client"
     },
