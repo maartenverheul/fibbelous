@@ -31,50 +31,127 @@ fn get_saved_workspaces(state: State<AppState>) -> Vec<WorkspaceInfo> {
 }
 
 #[derive(Serialize)]
-struct OpenLocalRepoResponse {
+struct AddLocalRepoResponse {
     ok: bool,
     error: Option<String>,
     workspace: Option<WorkspaceInfo>,
 }
 
 #[tauri::command]
-fn open_local_repository(app: AppHandle, state: State<AppState>) -> OpenLocalRepoResponse {
+fn add_local_repository(
+    app: AppHandle,
+    state: State<AppState>,
+    existing: bool,
+) -> AddLocalRepoResponse {
+    info!(target: "fibbelous", "add_local_repository called with existing={}", existing);
     // Show a directory picker dialog
     let selected_dir = FileDialogBuilder::new()
         .set_title("Select a workspace directory")
         .pick_folder();
 
     let Some(path) = selected_dir else {
-        let msg = "No directory selected".to_string();
-        warn!(target: "fibbelous", "{}", msg);
-        return OpenLocalRepoResponse {
+        warn!(target: "fibbelous", "Operation cancelled or no directory selected");
+        return AddLocalRepoResponse {
             ok: false,
-            error: Some(msg),
+            error: None,
             workspace: None,
         };
     };
 
-    info!("Opening workspace from directory: {}", path.display());
+    // Determine workspace info: either load existing or create a new one in the selected folder
+    let info: WorkspaceInfo = if existing {
+        info!("Opening workspace from directory: {}", path.display());
 
-    // Check for workspace.json in the selected directory
-    let json_path = path.join("workspace.json");
-    let Ok(json) = fs::read_to_string(&json_path) else {
-        let msg = format!("workspace.json not found at {}", json_path.display());
-        warn!(target: "fibbelous", "{}", msg);
-        return OpenLocalRepoResponse {
-            ok: false,
-            error: Some(msg),
-            workspace: None,
+        // Check for workspace.json in the selected directory
+        let json_path = path.join("workspace.json");
+        let Ok(json) = fs::read_to_string(&json_path) else {
+            let msg = format!("workspace.json not found at {}", json_path.display());
+            warn!(target: "fibbelous", "{}", msg);
+            return AddLocalRepoResponse {
+                ok: false,
+                error: Some(msg),
+                workspace: None,
+            };
         };
-    };
-    let Ok(info) = serde_json::from_str::<WorkspaceInfo>(&json) else {
-        let msg = format!("Failed to parse workspace.json at {}", json_path.display());
-        warn!(target: "fibbelous", "{}", msg);
-        return OpenLocalRepoResponse {
-            ok: false,
-            error: Some(msg),
-            workspace: None,
-        };
+        match serde_json::from_str::<WorkspaceInfo>(&json) {
+            Ok(ws) => ws,
+            Err(_) => {
+                let msg = format!("Failed to parse workspace.json at {}", json_path.display());
+                warn!(target: "fibbelous", "{}", msg);
+                return AddLocalRepoResponse {
+                    ok: false,
+                    error: Some(msg),
+                    workspace: None,
+                };
+            }
+        }
+    } else {
+        // 1) Ensure directory is empty
+        match fs::read_dir(&path) {
+            Ok(mut rd) => {
+                if rd.next().is_some() {
+                    let msg =
+                        "Selected directory must be empty to create a new workspace".to_string();
+                    warn!(target: "fibbelous", "{}", msg);
+                    return AddLocalRepoResponse {
+                        ok: false,
+                        error: Some(msg),
+                        workspace: None,
+                    };
+                }
+            }
+            Err(err) => {
+                let msg = format!("Failed to read directory {}: {}", path.display(), err);
+                warn!(target: "fibbelous", "{}", msg);
+                return AddLocalRepoResponse {
+                    ok: false,
+                    error: Some(msg),
+                    workspace: None,
+                };
+            }
+        }
+
+        // 2) Generate new workspace files at the directory
+        let mut ws = WorkspaceInfo::default_workspace();
+        if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
+            // Use folder name for nicer defaults
+            ws.slug = name.to_string();
+            ws.title = name.to_string();
+        }
+
+        // Create standard directories
+        for d in ["pages", "databases", "content"].iter() {
+            let dir_path = path.join(d);
+            if let Err(e) = fs::create_dir_all(&dir_path) {
+                let msg = format!("Failed to create directory {}: {}", dir_path.display(), e);
+                error!(target: "fibbelous", "{}", msg);
+                return AddLocalRepoResponse {
+                    ok: false,
+                    error: Some(msg),
+                    workspace: None,
+                };
+            }
+        }
+
+        // Write workspace.json
+        let json_path = path.join("workspace.json");
+        match serde_json::to_string_pretty(&ws)
+            .ok()
+            .and_then(|s| fs::write(&json_path, s).ok())
+        {
+            Some(_) => {}
+            None => {
+                let msg = format!("Failed to write {}", json_path.display());
+                error!(target: "fibbelous", "{}", msg);
+                return AddLocalRepoResponse {
+                    ok: false,
+                    error: Some(msg),
+                    workspace: None,
+                };
+            }
+        }
+
+        ws
     };
 
     // Prevent duplicates: if a connection with same id already exists, skip
@@ -83,7 +160,7 @@ fn open_local_repository(app: AppHandle, state: State<AppState>) -> OpenLocalRep
         if conns.iter().any(|c| c.id == info.id) {
             let msg = "Workspace is already loaded".to_string();
             warn!(target: "fibbelous", "{}", msg);
-            return OpenLocalRepoResponse {
+            return AddLocalRepoResponse {
                 ok: false,
                 error: Some(msg),
                 workspace: None,
@@ -103,7 +180,7 @@ fn open_local_repository(app: AppHandle, state: State<AppState>) -> OpenLocalRep
         Err(err) => {
             let msg = format!("Failed to save connection_info: {}", err);
             error!(target: "fibbelous", "{}", msg);
-            return OpenLocalRepoResponse {
+            return AddLocalRepoResponse {
                 ok: false,
                 error: Some(msg),
                 workspace: None,
@@ -129,7 +206,7 @@ fn open_local_repository(app: AppHandle, state: State<AppState>) -> OpenLocalRep
         }
     }
 
-    OpenLocalRepoResponse {
+    AddLocalRepoResponse {
         ok: true,
         error: None,
         workspace: Some(info),
@@ -196,7 +273,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             get_saved_workspaces,
-            open_local_repository,
+            add_local_repository,
             get_saved_connections,
             delete_workspace
         ]);

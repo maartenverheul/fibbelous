@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router";
 import { useState } from "react";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, FolderOpen, PlusIcon } from "lucide-react";
 import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
 import { EyeIcon, TrashIcon } from "lucide-react";
 import { WorkspaceInfo } from "@/models";
@@ -8,7 +8,7 @@ import { WorkspaceInfo } from "@/models";
 export default function SettingsWorkspacePage() {
   const { workspaces, pickLocal, deleteWorkspace } = useWorkspaceContext();
   const navigate = useNavigate();
-  const [openError, setOpenError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   function handleDelete(workspace: WorkspaceInfo) {
     deleteWorkspace(workspace.id);
@@ -18,11 +18,20 @@ export default function SettingsWorkspacePage() {
     navigate(`/${workspace.slug}`);
   }
 
-  async function startPickLocal() {
-    setOpenError(null);
-    const res = await pickLocal();
-    if (!res.ok) {
-      setOpenError(res.error ?? "Failed to open workspace");
+  async function startOpenLocal() {
+    setError(null);
+    const res = await pickLocal(true);
+    if (res.error) {
+      setError(res.error);
+      return;
+    }
+  }
+
+  async function startCreateLocal() {
+    setError(null);
+    const res = await pickLocal(false);
+    if (res.error) {
+      setError(res.error);
       return;
     }
   }
@@ -56,22 +65,30 @@ export default function SettingsWorkspacePage() {
         ))}
       </ul>
       <hr className="my-4" />
-      <div className="flex flex-col gap-2">
-        <button
-          className="px-3 py-1 bg-blue-600 text-white rounded cursor-pointer"
-          onClick={startPickLocal}
+      {error && (
+        <div
+          role="alert"
+          className="inline-flex w-full items-start gap-2 rounded border border-red-800 bg-red-700 px-3 py-2 text-white text-sm shadow-sm"
         >
+          <AlertCircle className="h-4 w-4 mt-0.5 text-white" />
+          <span>{error}</span>
+        </div>
+      )}
+      <div className="flex flex-row gap-2 mt-2">
+        <button
+          className="px-3 py-1 bg-blue-600 text-white rounded cursor-pointer w-full flex items-center justify-center gap-2"
+          onClick={startOpenLocal}
+        >
+          <FolderOpen className="w-4" />
           Open local repository
         </button>
-        {openError && (
-          <div
-            role="alert"
-            className="inline-flex items-start gap-2 rounded border border-red-800 bg-red-700 px-3 py-2 text-white text-sm shadow-sm"
-          >
-            <AlertCircle className="h-4 w-4 mt-0.5 text-white" />
-            <span>{openError}</span>
-          </div>
-        )}
+        <button
+          className="px-3 py-1 bg-blue-600 text-white rounded cursor-pointer w-full flex items-center justify-center gap-2"
+          onClick={startCreateLocal}
+        >
+          <PlusIcon className="w-5" />
+          New local repository
+        </button>
       </div>
     </div>
   );

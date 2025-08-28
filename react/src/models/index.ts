@@ -6,3 +6,9 @@ export type WorkspaceInfo = {
   description?: string,
   created_at?: string,
 }
+
+export type AddLocalRepoResponse = {
+  ok: boolean,
+  error?: string,
+  workspace?: WorkspaceInfo,
+}

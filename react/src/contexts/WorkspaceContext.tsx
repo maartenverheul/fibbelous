@@ -1,4 +1,4 @@
-import { WorkspaceInfo } from "@/models";
+import { AddLocalRepoResponse, WorkspaceInfo } from "@/models";
 import {
   createContext,
   useContext,
@@ -15,7 +15,7 @@ export type WorkspaceContextType = {
   addWorkspace: (workspace: WorkspaceInfo) => void;
   updateWorkspace: (workspace: WorkspaceInfo) => void;
   deleteWorkspace: (id: string) => void;
-  pickLocal: () => Promise<{ ok: boolean; error?: string | null; workspace?: WorkspaceInfo | null }>;
+  pickLocal: (existing: boolean) => Promise<AddLocalRepoResponse>;
 };
 
 export const WorkspaceContext = createContext<WorkspaceContextType | undefined>(
@@ -74,22 +74,19 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  async function pickLocal(): Promise<{ ok: boolean; error?: string | null; workspace?: WorkspaceInfo | null }> {
-    type OpenLocalRepoResponse = {
-      ok: boolean;
-      error?: string | null;
-      workspace?: WorkspaceInfo | null;
-    };
+  async function pickLocal(existing: boolean): Promise<AddLocalRepoResponse> {
     try {
-      const res = (await invoke("open_local_repository")) as OpenLocalRepoResponse;
-      if (!res.ok) return { ok: false, error: res.error ?? "Failed to open workspace" };
+      const res = (await invoke("add_local_repository", {
+        existing
+      })) as AddLocalRepoResponse;
+      if (!res.ok) return { ok: false, error: res.error };
       const ws = res.workspace!;
       setWorkspaces((prev) => [...prev, ws]);
       setSelectedWorkspaceId(ws.id);
       return { ok: true, workspace: ws };
     } catch (err) {
-      console.error("open_local_repository failed", err);
-      return { ok: false, error: "Failed to open workspace" };
+      console.error("add_local_repository failed", err);
+      return { ok: false };
     }
   }
 
