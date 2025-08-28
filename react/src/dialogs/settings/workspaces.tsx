@@ -1,8 +1,8 @@
 import { useNavigate } from "react-router";
 import { useState } from "react";
-import { AlertCircle, FolderOpen, PlusIcon } from "lucide-react";
+import { AlertCircle, FolderOpen, PlusIcon, XIcon } from "lucide-react";
 import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
-import { EyeIcon, TrashIcon } from "lucide-react";
+import { EyeIcon } from "lucide-react";
 import { WorkspaceInfo } from "@/models";
 
 export default function SettingsWorkspacePage() {
@@ -59,7 +59,7 @@ export default function SettingsWorkspacePage() {
               className="px-2 py-1 text-slate-600 hover:text-white hover:bg-red-500 cursor-pointer rounded"
               onClick={() => handleDelete(w)}
             >
-              <TrashIcon className="w-4" />
+              <XIcon className="w-4" />
             </button>
           </li>
         ))}

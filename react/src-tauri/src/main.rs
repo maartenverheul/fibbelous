@@ -2,9 +2,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod connections;
-mod logging;
 
 use connections::{AppState, ConnectionManager};
+use lib::logging;
+use lib::tracing::{error, info, warn};
 use lib::workspaces::{WorkspaceConnection, WorkspaceInfo};
 use serde::Serialize;
 use serde_json;
@@ -14,8 +15,6 @@ use tauri::api::dialog::blocking::FileDialogBuilder;
 use tauri::AppHandle;
 use tauri::Manager;
 use tauri::State;
-use tracing::info;
-use tracing::{error, warn};
 
 #[tauri::command]
 fn get_saved_connections(state: State<AppState>) -> Vec<WorkspaceConnection> {
@@ -42,14 +41,14 @@ fn add_local_repository(
     state: State<AppState>,
     existing: bool,
 ) -> AddLocalRepoResponse {
-    info!(target: "fibbelous", "add_local_repository called with existing={}", existing);
+    info!(target: "main", "add_local_repository called with existing={}", existing);
     // Show a directory picker dialog
     let selected_dir = FileDialogBuilder::new()
         .set_title("Select a workspace directory")
         .pick_folder();
 
     let Some(path) = selected_dir else {
-        warn!(target: "fibbelous", "Operation cancelled or no directory selected");
+        warn!(target: "main", "Operation cancelled or no directory selected");
         return AddLocalRepoResponse {
             ok: false,
             error: None,
@@ -59,13 +58,13 @@ fn add_local_repository(
 
     // Determine workspace info: either load existing or create a new one in the selected folder
     let info: WorkspaceInfo = if existing {
-        info!("Opening workspace from directory: {}", path.display());
+        info!(target: "main", "Opening workspace from directory: {}", path.display());
 
         // Check for workspace.json in the selected directory
         let json_path = path.join("workspace.json");
         let Ok(json) = fs::read_to_string(&json_path) else {
             let msg = format!("workspace.json not found at {}", json_path.display());
-            warn!(target: "fibbelous", "{}", msg);
+            warn!(target: "main", "{}", msg);
             return AddLocalRepoResponse {
                 ok: false,
                 error: Some(msg),
@@ -76,7 +75,7 @@ fn add_local_repository(
             Ok(ws) => ws,
             Err(_) => {
                 let msg = format!("Failed to parse workspace.json at {}", json_path.display());
-                warn!(target: "fibbelous", "{}", msg);
+                warn!(target: "main", "{}", msg);
                 return AddLocalRepoResponse {
                     ok: false,
                     error: Some(msg),
@@ -91,7 +90,7 @@ fn add_local_repository(
                 if rd.next().is_some() {
                     let msg =
                         "Selected directory must be empty to create a new workspace".to_string();
-                    warn!(target: "fibbelous", "{}", msg);
+                    warn!(target: "main", "{}", msg);
                     return AddLocalRepoResponse {
                         ok: false,
                         error: Some(msg),
@@ -101,7 +100,7 @@ fn add_local_repository(
             }
             Err(err) => {
                 let msg = format!("Failed to read directory {}: {}", path.display(), err);
-                warn!(target: "fibbelous", "{}", msg);
+                warn!(target: "main", "{}", msg);
                 return AddLocalRepoResponse {
                     ok: false,
                     error: Some(msg),
@@ -114,7 +113,7 @@ fn add_local_repository(
         let ws = WorkspaceInfo::default_workspace();
         if let Err(e) = lib::workspaces::create(&ws, Some(&path)) {
             let msg = format!("Failed to create workspace at {}: {}", path.display(), e);
-            error!(target: "fibbelous", "{}", msg);
+            error!(target: "main", "{}", msg);
             return AddLocalRepoResponse {
                 ok: false,
                 error: Some(msg),
@@ -130,7 +129,7 @@ fn add_local_repository(
         let conns = state.connections.lock().expect("mutex poisoned");
         if conns.iter().any(|c| c.id == info.id) {
             let msg = "Workspace is already loaded".to_string();
-            warn!(target: "fibbelous", "{}", msg);
+            warn!(target: "main", "{}", msg);
             return AddLocalRepoResponse {
                 ok: false,
                 error: Some(msg),
@@ -150,7 +149,7 @@ fn add_local_repository(
     match ConnectionManager::save_connection_info(&app, &connection_info) {
         Err(err) => {
             let msg = format!("Failed to save connection_info: {}", err);
-            error!(target: "fibbelous", "{}", msg);
+            error!(target: "main", "{}", msg);
             return AddLocalRepoResponse {
                 ok: false,
                 error: Some(msg),
@@ -186,9 +185,9 @@ fn add_local_repository(
 
 #[tauri::command]
 fn delete_workspace(app: AppHandle, state: State<AppState>, id: String) -> bool {
-    match ConnectionManager::delete_connection(&app, &id) {
+    match ConnectionManager::remove_connection(&app, &id) {
         Err(err) => {
-            error!(target: "fibbelous", "Failed to delete connection {}: {}", id, err);
+            error!(target: "main", "Failed to delete connection {}: {}", id, err);
             false
         }
         Ok(updated) => {
@@ -218,10 +217,23 @@ fn main() {
     let builder = tauri::Builder::default()
         .setup(|app| {
             // Initialize logging
-            logging::init(&app.handle());
+            let log_dir = app
+                .path_resolver()
+                .app_log_dir()
+                .or_else(|| app.path_resolver().app_data_dir())
+                .unwrap_or_else(|| std::env::temp_dir().join("fibbelous_logs"));
 
-            info!(target: "fibbelous", "===========");
-            info!(target: "fibbelous", "APP STARTED");
+            let app_data_dir = app
+                .path_resolver()
+                .app_data_dir()
+                .unwrap_or_else(|| std::env::temp_dir().join("fibbelous_data"));
+
+            logging::init(&log_dir);
+
+            info!(target: "main", "===========");
+            info!(target: "main", "APP STARTED");
+
+            info!(target: "main", "App storage is at {}", app_data_dir.display());
 
             // Load connections into memory on startup
             let initial_conns = ConnectionManager::load_saved_connections(&app.handle());
@@ -236,7 +248,7 @@ fn main() {
         .on_window_event(|event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event.event() {
                 info!(
-                    target: "fibbelous",
+                    target: "main",
                     "Window '{}' close requested",
                     event.window().label()
                 );
@@ -255,11 +267,11 @@ fn main() {
 
     app.run(|_app_handle, event| match event {
         tauri::RunEvent::ExitRequested { .. } => {
-            info!(target: "fibbelous", "App exit requested");
+            info!(target: "main", "App exit requested");
         }
         tauri::RunEvent::Exit => {
-            info!(target: "fibbelous", "Bye!");
-            info!(target: "fibbelous", "===========");
+            info!(target: "main", "Bye!");
+            info!(target: "main", "===========");
         }
         _ => {}
     });

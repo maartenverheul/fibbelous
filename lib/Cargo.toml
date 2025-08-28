@@ -13,3 +13,12 @@ hex = "0.4.3"
 rand = "0.9.2"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.142"
+rusqlite = { version = "0.31", features = ["bundled"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = [
+  "env-filter",
+  "fmt",
+  "time",
+] }
+tracing-appender = "0.2"
+time = { version = "0.3", features = ["macros"] }

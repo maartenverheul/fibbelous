@@ -1,3 +1,4 @@
+use lib::tracing::{debug, error, info, warn};
 use lib::workspaces::{WorkspaceConnection, WorkspaceInfo};
 use serde_json;
 use std::env;
@@ -5,7 +6,6 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::AppHandle;
-use tracing::{debug, error, info, warn};
 
 /// Shared in-memory application state for connections and resolved workspaces
 pub struct AppState {
@@ -30,10 +30,10 @@ impl ConnectionManager {
             .expect("failed to resolve app data dir");
 
         if !dir.exists() {
-            info!(target: "fibbelous", "Creating app data folder at: {}", dir.display());
+            info!(target: "connections", "Creating app data folder at: {}", dir.display());
             std::fs::create_dir_all(&dir)?;
         } else {
-            debug!(target: "fibbelous", "App data folder: {}", dir.display());
+            debug!(target: "connections", "App data folder: {}", dir.display());
         }
         Ok(dir)
     }
@@ -48,30 +48,80 @@ impl ConnectionManager {
         let path = match Self::connections_file_path(app) {
             Ok(p) => p,
             Err(err) => {
-                error!(target: "fibbelous", "Failed to compute connections file path: {}", err);
+                error!(target: "connections", "Failed to compute connections file path: {}", err);
                 return Vec::new();
             }
         };
         if !path.exists() {
-            info!(target: "fibbelous", "No existing connections file at {}", path.display());
+            info!(target: "connections", "No existing connections file at {}", path.display());
             return Vec::new();
         }
         match std::fs::read_to_string(&path) {
             Ok(data) => match serde_json::from_str::<Vec<WorkspaceConnection>>(&data) {
                 Ok(list) => {
-                    info!(target: "fibbelous", "Loaded {} saved connection(s)", list.len());
-                    list
+                    let kept = Self::prune_missing_local_paths(&path, list);
+                    info!(target: "connections", "Loaded {} saved connection(s)", kept.len());
+                    kept
                 }
                 Err(err) => {
-                    warn!(target: "fibbelous", "Failed parsing {}: {}", path.display(), err);
+                    warn!(target: "connections", "Failed parsing {}: {}", path.display(), err);
                     Vec::new()
                 }
             },
             Err(err) => {
-                warn!(target: "fibbelous", "Failed reading {}: {}", path.display(), err);
+                warn!(target: "connections", "Failed reading {}: {}", path.display(), err);
                 Vec::new()
             }
         }
+    }
+
+    /// Remove connections whose local `path` no longer exists. If anything is removed,
+    /// rewrite the `connections.json` file with the pruned list.
+    fn prune_missing_local_paths(
+        connections_file: &Path,
+        list: Vec<WorkspaceConnection>,
+    ) -> Vec<WorkspaceConnection> {
+        let (kept, removed): (Vec<WorkspaceConnection>, Vec<WorkspaceConnection>) =
+            list.into_iter().partition(|c| match &c.path {
+                Some(p) => Path::new(p).exists(),
+                None => true,
+            });
+
+        if !removed.is_empty() {
+            match serde_json::to_string_pretty(&kept) {
+                Ok(json) => {
+                    match std::fs::File::create(connections_file) {
+                        Ok(mut file) => {
+                            if let Err(e) = file.write_all(json.as_bytes()) {
+                                warn!(
+                                    target: "connections",
+                                    "Failed to rewrite {} after pruning: {}",
+                                    connections_file.display(),
+                                    e
+                                );
+                            }
+                        }
+                        Err(e) => warn!(
+                            target: "connections",
+                            "Failed to open {} for rewriting after pruning: {}",
+                            connections_file.display(),
+                            e
+                        ),
+                    }
+                    info!(
+                        target: "connections",
+                        "Pruned {} connection(s) with missing path; kept {}",
+                        removed.len(),
+                        kept.len()
+                    );
+                }
+                Err(e) => {
+                    warn!(target: "connections", "Failed to serialize pruned connections: {}", e)
+                }
+            }
+        }
+
+        kept
     }
 
     /// Saves a WorkspaceConnection to a JSON file in the app data folder.
@@ -90,15 +140,15 @@ impl ConnectionManager {
         };
         // Only add if not already present (by id)
         if connections.iter().any(|c| c.id == connection.id) {
-            info!(target: "fibbelous", "Connection_info with id {} already exists, skipping save", connection.id);
+            info!(target: "connections", "Connection_info with id {} already exists, skipping save", connection.id);
             return Ok(false);
         }
-        info!(target: "fibbelous", "Adding new connection_info with id: {}", connection.id);
+        info!(target: "connections", "Adding new connection_info with id: {}", connection.id);
         connections.push(connection.clone());
         let json = serde_json::to_string_pretty(&connections)?;
         let mut file = std::fs::File::create(&file_path)?;
         file.write_all(json.as_bytes())?;
-        info!(target: "fibbelous", "Saved {} connection(s)", connections.len());
+        info!(target: "connections", "Saved {} connection(s)", connections.len());
         Ok(true)
     }
 
@@ -112,7 +162,7 @@ impl ConnectionManager {
         // Expecting base/api/<workspace-slug> returning WorkspaceInfo JSON
         let resp = reqwest::blocking::get(url).ok()?;
         if !resp.status().is_success() {
-            warn!(target: "fibbelous", "HTTP {} fetching {}", resp.status(), url);
+            warn!(target: "connections", "HTTP {} fetching {}", resp.status(), url);
             return None;
         }
         resp.json::<WorkspaceInfo>().ok()
@@ -140,7 +190,7 @@ impl ConnectionManager {
     }
 
     /// Delete a connection by id from connections.json. Returns true if removed.
-    pub fn delete_connection(app: &AppHandle, id: &str) -> std::io::Result<bool> {
+    pub fn remove_connection(app: &AppHandle, id: &str) -> std::io::Result<bool> {
         let dir = Self::app_data_dir(app)?;
         let file_path = dir.join("connections.json");
         let mut connections: Vec<WorkspaceConnection> = if file_path.exists() {
@@ -152,13 +202,13 @@ impl ConnectionManager {
         let before = connections.len();
         connections.retain(|c| c.id != id);
         if connections.len() == before {
-            warn!(target: "fibbelous", "delete_connection: id {} not found", id);
-            return Ok(false);
+            warn!(target: "connections", "remove_connection: id {} not found", id);
+            return Ok(true);
         }
         let json = serde_json::to_string_pretty(&connections)?;
         let mut file = std::fs::File::create(&file_path)?;
         file.write_all(json.as_bytes())?;
-        info!(target: "fibbelous", "Deleted connection {}. Remaining: {}", id, connections.len());
+        info!(target: "connections", "Removed connection {}. Remaining: {}", id, connections.len());
         Ok(true)
     }
 }

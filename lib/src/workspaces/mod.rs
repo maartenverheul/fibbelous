@@ -1,16 +1,49 @@
+use crate::{id::generate_hex_id, indexing::init_index_db};
+use git2::Repository;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-use git2::Repository;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NewWorkspace {
+    pub slug: String,
+    pub title: String,
+    pub description: Option<String>,
+}
 
-mod new_workspace;
-mod workspace_connection;
-mod workspace_info;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceConnection {
+    pub id: String,
+    pub path: Option<String>,
+    pub url: Option<String>,
+    pub git: Option<String>,
+}
 
-pub use new_workspace::NewWorkspace;
-pub use workspace_connection::WorkspaceConnection;
-pub use workspace_info::WorkspaceInfo;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceInfo {
+    pub id: String,
+    pub slug: String,
+    pub title: String,
+    pub icon: Option<String>,
+    pub description: Option<String>,
+    pub created_at: Option<String>,
+    pub version: u16,
+}
 
-const WORKSPACES_PATH: &str = ".data/workspaces";
+impl WorkspaceInfo {
+    pub fn default_workspace() -> Self {
+        let now = chrono::Utc::now();
+        let created_at = now.format("%Y-%m-%dT%H:%M:%S%:z").to_string();
+        Self {
+            id: generate_hex_id(),
+            slug: "default".to_string(),
+            title: "Default workspace".to_string(),
+            icon: Some("📁".to_string()),
+            description: Some("The default workspace".to_string()),
+            created_at: Some(created_at),
+            version: 1,
+        }
+    }
+}
 
 pub fn workspace_dirs() -> Result<Vec<std::path::PathBuf>, std::io::Error> {
     let workspaces_path = Path::new(WORKSPACES_PATH);
@@ -44,6 +77,8 @@ pub fn list() -> Result<Vec<WorkspaceInfo>, std::io::Error> {
     Ok(infos)
 }
 
+const WORKSPACES_PATH: &str = ".data/workspaces";
+
 pub fn ensure_workspace() {
     // Ensure the workspaces directory exists
     let workspaces_path = Path::new(WORKSPACES_PATH);
@@ -73,29 +108,51 @@ pub fn create(
         }
     };
 
+    // Init repo
     let repo = match Repository::init(&repo_path) {
         Ok(repo) => repo,
         Err(e) => panic!("failed to init: {}", e),
     };
 
-    // Create directories inside the new repo after repo init
-    let dirs = ["pages", "databases", "content"];
-    for dir in dirs.iter() {
-        let dir_path = repo_path.join(dir);
-        if let Err(e) = std::fs::create_dir_all(&dir_path) {
-            eprintln!("Failed to create directory {}: {}", dir_path.display(), e);
-        } else {
-            println!("Created directory: {}", dir_path.display());
-        }
-    }
+    // Fill repo
+    write_workspace_info(&repo_path, &settings).expect("Failed to write workspace info");
+    create_workspace_directories(&repo_path).expect("Failed to create workspace directories");
+    let fib_folder =
+        ensure_fibbelous_folder(&repo_path).expect("Failed to create .fibbelous folder");
 
-    let json = serde_json::to_string_pretty(&settings).expect("Failed to serialize settings");
-    let json_path = repo_path.join("workspace.json");
-    if let Err(e) = std::fs::write(&json_path, json) {
-        eprintln!("Failed to write workspace.json: {}", e);
-    } else {
-        println!("Created settings: {}", json_path.display());
-    }
+    // Start indexing
+    init_index_db(&fib_folder).expect("Failed to init index database");
 
     Ok(repo)
+}
+
+fn create_workspace_directories(base_path: &Path) -> Result<(), std::io::Error> {
+    let dirs = ["pages", "databases", "content"];
+    for dir in dirs.iter() {
+        let dir_path = base_path.join(dir);
+        if !dir_path.exists() {
+            std::fs::create_dir_all(&dir_path)?;
+        }
+    }
+    Ok(())
+}
+
+fn write_workspace_info(path: &Path, info: &WorkspaceInfo) -> Result<(), std::io::Error> {
+    let json = serde_json::to_string_pretty(info)?;
+    std::fs::write(path.join("workspace.json"), json)?;
+    Ok(())
+}
+
+fn ensure_fibbelous_folder(path: &Path) -> Result<PathBuf, std::io::Error> {
+    let app_dir = path.join(".fibbelous");
+    if !app_dir.exists() {
+        std::fs::create_dir_all(&app_dir)?;
+    }
+    let gi_path = app_dir.join(".gitignore");
+    if !gi_path.exists() {
+        let gi_contents = "*\n";
+        std::fs::write(&gi_path, gi_contents)?;
+    }
+
+    Ok(app_dir)
 }

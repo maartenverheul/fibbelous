@@ -1,17 +1,13 @@
-use tauri::AppHandle;
+use std::path::Path;
+
 use time::macros::format_description;
 use time::UtcOffset;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::fmt::time::OffsetTime;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
-pub fn init(app: &AppHandle) {
+pub fn init(log_dir: &Path) {
     // Resolve log directory inside the app data dir
-    let log_dir = app
-        .path_resolver()
-        .app_log_dir()
-        .or_else(|| app.path_resolver().app_data_dir())
-        .unwrap_or_else(|| std::env::temp_dir().join("fibbelous_logs"));
 
     let _ = std::fs::create_dir_all(&log_dir);
 
@@ -21,7 +17,7 @@ pub fn init(app: &AppHandle) {
             .rotation(Rotation::DAILY)
             .filename_prefix("fibbelous")
             .filename_suffix("log")
-            .build(log_dir.clone())
+            .build(log_dir)
             .expect("failed to create rolling file appender");
 
     // Timer with milliseconds, e.g. 2025-08-26 14:03:12.345
