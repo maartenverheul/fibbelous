@@ -6,6 +6,7 @@ import { invoke } from "@tauri-apps/api/tauri";
 export type PageContextType = {
   pages: Page[];
   selectedPageId?: string;
+  selectedPage?: Page;
   loaded: boolean;
   selectPage: (id: string) => void;
   createPage: (parent?: string) => Promise<Page>;
@@ -23,6 +24,10 @@ export function PageProvider({ children }: { children: React.ReactNode }) {
   );
   const [loaded, setLoaded] = useState(false);
 
+  const selectedPage = useMemo(() => {
+    return pages.find((page) => page.id === selectedPageId);
+  }, [pages, selectedPageId]);
+
   // Reset/load pages when workspace changes
   useEffect(() => {
     // TODO: Load pages for the selected workspace via Tauri once backend is ready
@@ -33,27 +38,36 @@ export function PageProvider({ children }: { children: React.ReactNode }) {
 
   function selectPage(id: string) {
     setSelectedPageId(id);
-  };
+  }
 
   async function createPage(parent?: string) {
     console.log("Creating new page at parent", parent);
-    const page = await invoke("create_new_page", { parent }) as Page;
+    const page = (await invoke("create_new_page", { parent })) as Page;
     setPages((prev) => [...prev, page]);
     setSelectedPageId((prevSel) => prevSel ?? page.id);
     return page;
-  };
+  }
 
   function updatePage(page: Page) {
     setPages((prev) => prev.map((p) => (p.id === page.id ? page : p)));
-  };
+  }
 
   function deletePage(id: string) {
     setPages((prev) => prev.filter((p) => p.id !== id));
     setSelectedPageId((prevSel) => (prevSel === id ? undefined : prevSel));
-  };
+  }
 
   const value = useMemo<PageContextType>(
-    () => ({ pages, selectedPageId, loaded, selectPage, createPage: createPage, updatePage, deletePage }),
+    () => ({
+      pages,
+      selectedPageId,
+      selectedPage,
+      loaded,
+      selectPage,
+      createPage: createPage,
+      updatePage,
+      deletePage,
+    }),
     [pages, selectedPageId, loaded]
   );
 
@@ -62,6 +76,7 @@ export function PageProvider({ children }: { children: React.ReactNode }) {
 
 export function usePageContext() {
   const ctx = useContext(PageContext);
-  if (!ctx) throw new Error("usePageContext must be used within a PageProvider");
+  if (!ctx)
+    throw new Error("usePageContext must be used within a PageProvider");
   return ctx;
 }
