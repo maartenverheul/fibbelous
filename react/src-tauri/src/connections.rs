@@ -5,6 +5,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::AppHandle;
+use tracing::{debug, error, info, warn};
 
 /// Shared in-memory application state for connections and resolved workspaces
 pub struct AppState {
@@ -29,10 +30,10 @@ impl ConnectionManager {
             .expect("failed to resolve app data dir");
 
         if !dir.exists() {
-            println!("[fibbelous] Creating app data folder at: {}", dir.display());
+            info!(target: "fibbelous", "Creating app data folder at: {}", dir.display());
             std::fs::create_dir_all(&dir)?;
         } else {
-            println!("[fibbelous] App data folder: {}", dir.display());
+            debug!(target: "fibbelous", "App data folder: {}", dir.display());
         }
         Ok(dir)
     }
@@ -47,37 +48,27 @@ impl ConnectionManager {
         let path = match Self::connections_file_path(app) {
             Ok(p) => p,
             Err(err) => {
-                println!(
-                    "[fibbelous] Failed to compute connections file path: {}",
-                    err
-                );
+                error!(target: "fibbelous", "Failed to compute connections file path: {}", err);
                 return Vec::new();
             }
         };
         if !path.exists() {
-            println!(
-                "[fibbelous] No existing connections file at {}",
-                path.display()
-            );
+            info!(target: "fibbelous", "No existing connections file at {}", path.display());
             return Vec::new();
         }
         match std::fs::read_to_string(&path) {
             Ok(data) => match serde_json::from_str::<Vec<WorkspaceConnection>>(&data) {
                 Ok(list) => {
-                    println!(
-                        "[fibbelous] Loaded {} connection(s) from {}",
-                        list.len(),
-                        path.display()
-                    );
+                    info!(target: "fibbelous", "Loaded {} saved connection(s)", list.len());
                     list
                 }
                 Err(err) => {
-                    println!("[fibbelous] Failed parsing {}: {}", path.display(), err);
+                    warn!(target: "fibbelous", "Failed parsing {}: {}", path.display(), err);
                     Vec::new()
                 }
             },
             Err(err) => {
-                println!("[fibbelous] Failed reading {}: {}", path.display(), err);
+                warn!(target: "fibbelous", "Failed reading {}: {}", path.display(), err);
                 Vec::new()
             }
         }
@@ -99,25 +90,15 @@ impl ConnectionManager {
         };
         // Only add if not already present (by id)
         if connections.iter().any(|c| c.id == connection.id) {
-            println!(
-                "[fibbelous] Connection_info with id {} already exists, skipping save",
-                connection.id
-            );
+            info!(target: "fibbelous", "Connection_info with id {} already exists, skipping save", connection.id);
             return Ok(false);
         }
-        println!(
-            "[fibbelous] Adding new connection_info with id: {}",
-            connection.id
-        );
+        info!(target: "fibbelous", "Adding new connection_info with id: {}", connection.id);
         connections.push(connection.clone());
         let json = serde_json::to_string_pretty(&connections)?;
         let mut file = std::fs::File::create(&file_path)?;
         file.write_all(json.as_bytes())?;
-        println!(
-            "[fibbelous] Saved {} connection(s) to {}",
-            connections.len(),
-            file_path.display()
-        );
+        info!(target: "fibbelous", "Saved {} connection(s)", connections.len());
         Ok(true)
     }
 
@@ -131,7 +112,7 @@ impl ConnectionManager {
         // Expecting base/api/<workspace-slug> returning WorkspaceInfo JSON
         let resp = reqwest::blocking::get(url).ok()?;
         if !resp.status().is_success() {
-            println!("[fibbelous] HTTP {} fetching {}", resp.status(), url);
+            warn!(target: "fibbelous", "HTTP {} fetching {}", resp.status(), url);
             return None;
         }
         resp.json::<WorkspaceInfo>().ok()
@@ -171,17 +152,13 @@ impl ConnectionManager {
         let before = connections.len();
         connections.retain(|c| c.id != id);
         if connections.len() == before {
-            println!("[fibbelous] delete_connection: id {} not found", id);
+            warn!(target: "fibbelous", "delete_connection: id {} not found", id);
             return Ok(false);
         }
         let json = serde_json::to_string_pretty(&connections)?;
         let mut file = std::fs::File::create(&file_path)?;
         file.write_all(json.as_bytes())?;
-        println!(
-            "[fibbelous] Deleted connection {}. Remaining: {}",
-            id,
-            connections.len()
-        );
+        info!(target: "fibbelous", "Deleted connection {}. Remaining: {}", id, connections.len());
         Ok(true)
     }
 }

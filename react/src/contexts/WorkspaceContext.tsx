@@ -7,7 +7,6 @@ import {
   useEffect,
 } from "react";
 import { invoke } from "@tauri-apps/api/tauri";
-import { useNavigate } from "react-router";
 
 export type WorkspaceContextType = {
   workspaces: WorkspaceInfo[];

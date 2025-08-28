@@ -10,8 +10,11 @@ use tauri::api::dialog::blocking::FileDialogBuilder;
 use tauri::AppHandle;
 use tauri::Manager;
 use tauri::State;
+use tracing::info;
 mod connections;
+mod logging;
 use connections::{AppState, ConnectionManager};
+use tracing::{error, warn};
 
 // Connection persistence and resolution lives in the `connections` module
 
@@ -43,7 +46,7 @@ fn open_local_repository(app: AppHandle, state: State<AppState>) -> OpenLocalRep
 
     let Some(path) = selected_dir else {
         let msg = "No directory selected".to_string();
-        println!("[fibbelous] {}", msg);
+        warn!(target: "fibbelous", "{}", msg);
         return OpenLocalRepoResponse {
             ok: false,
             error: Some(msg),
@@ -51,11 +54,13 @@ fn open_local_repository(app: AppHandle, state: State<AppState>) -> OpenLocalRep
         };
     };
 
+    info!("Opening workspace from directory: {}", path.display());
+
     // Check for workspace.json in the selected directory
     let json_path = path.join("workspace.json");
     let Ok(json) = fs::read_to_string(&json_path) else {
         let msg = format!("workspace.json not found at {}", json_path.display());
-        println!("[fibbelous] {}", msg);
+        warn!(target: "fibbelous", "{}", msg);
         return OpenLocalRepoResponse {
             ok: false,
             error: Some(msg),
@@ -64,7 +69,7 @@ fn open_local_repository(app: AppHandle, state: State<AppState>) -> OpenLocalRep
     };
     let Ok(info) = serde_json::from_str::<WorkspaceInfo>(&json) else {
         let msg = format!("Failed to parse workspace.json at {}", json_path.display());
-        println!("[fibbelous] {}", msg);
+        warn!(target: "fibbelous", "{}", msg);
         return OpenLocalRepoResponse {
             ok: false,
             error: Some(msg),
@@ -76,8 +81,8 @@ fn open_local_repository(app: AppHandle, state: State<AppState>) -> OpenLocalRep
     {
         let conns = state.connections.lock().expect("mutex poisoned");
         if conns.iter().any(|c| c.id == info.id) {
-            let msg = "Workspace with is already loaded".to_string();
-            println!("[fibbelous] {}", msg);
+            let msg = "Workspace is already loaded".to_string();
+            warn!(target: "fibbelous", "{}", msg);
             return OpenLocalRepoResponse {
                 ok: false,
                 error: Some(msg),
@@ -97,7 +102,7 @@ fn open_local_repository(app: AppHandle, state: State<AppState>) -> OpenLocalRep
     match ConnectionManager::save_connection_info(&app, &connection_info) {
         Err(err) => {
             let msg = format!("Failed to save connection_info: {}", err);
-            println!("[fibbelous] {}", msg);
+            error!(target: "fibbelous", "{}", msg);
             return OpenLocalRepoResponse {
                 ok: false,
                 error: Some(msg),
@@ -135,7 +140,7 @@ fn open_local_repository(app: AppHandle, state: State<AppState>) -> OpenLocalRep
 fn delete_workspace(app: AppHandle, state: State<AppState>, id: String) -> bool {
     match ConnectionManager::delete_connection(&app, &id) {
         Err(err) => {
-            println!("[fibbelous] Failed to delete connection {}: {}", id, err);
+            error!(target: "fibbelous", "Failed to delete connection {}: {}", id, err);
             false
         }
         Ok(updated) => {
@@ -161,8 +166,15 @@ fn delete_workspace(app: AppHandle, state: State<AppState>, id: String) -> bool 
 // Resolution helpers moved into `connections` module
 
 fn main() {
-    tauri::Builder::default()
+    let context = tauri::generate_context!();
+    let builder = tauri::Builder::default()
         .setup(|app| {
+            // Initialize logging
+            logging::init(&app.handle());
+
+            info!(target: "fibbelous", "===========");
+            info!(target: "fibbelous", "APP STARTED");
+
             // Load connections into memory on startup
             let initial_conns = ConnectionManager::load_saved_connections(&app.handle());
             let initial_workspaces =
@@ -173,12 +185,34 @@ fn main() {
             });
             Ok(())
         })
+        .on_window_event(|event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event.event() {
+                info!(
+                    target: "fibbelous",
+                    "Window '{}' close requested",
+                    event.window().label()
+                );
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             get_saved_workspaces,
             open_local_repository,
             get_saved_connections,
             delete_workspace
-        ])
-        .run(tauri::generate_context!())
+        ]);
+
+    let app = builder
+        .build(context)
         .expect("error while running tauri application");
+
+    app.run(|_app_handle, event| match event {
+        tauri::RunEvent::ExitRequested { .. } => {
+            info!(target: "fibbelous", "App exit requested");
+        }
+        tauri::RunEvent::Exit => {
+            info!(target: "fibbelous", "Bye!");
+            info!(target: "fibbelous", "===========");
+        }
+        _ => {}
+    });
 }
