@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use git2::Repository;
 
@@ -52,18 +52,26 @@ pub fn ensure_workspace() {
     // Check if at least one workspace already exists
     if list().unwrap().is_empty() {
         // Create the default workspace
-        create_default().expect("Failed to create default workspace");
+        create_default(None).expect("Failed to create default workspace");
     }
 }
 
-pub fn create_default() -> Result<git2::Repository, git2::Error> {
-    create(&WorkspaceInfo::default_workspace())
+pub fn create_default(target_path: Option<&Path>) -> Result<git2::Repository, git2::Error> {
+    create(&WorkspaceInfo::default_workspace(), target_path)
 }
 
-pub fn create(settings: &WorkspaceInfo) -> Result<git2::Repository, git2::Error> {
+pub fn create(
+    settings: &WorkspaceInfo,
+    target_path: Option<&Path>,
+) -> Result<git2::Repository, git2::Error> {
     println!("Creating workspace {:?}", settings.slug);
-    let workspaces_path = Path::new(WORKSPACES_PATH);
-    let repo_path = workspaces_path.join(&settings.id);
+    let repo_path: PathBuf = match target_path {
+        Some(p) => p.to_path_buf(),
+        None => {
+            let workspaces_path = Path::new(WORKSPACES_PATH);
+            workspaces_path.join(&settings.id)
+        }
+    };
 
     let repo = match Repository::init(&repo_path) {
         Ok(repo) => repo,

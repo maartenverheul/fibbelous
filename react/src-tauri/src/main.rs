@@ -1,6 +1,10 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod connections;
+mod logging;
+
+use connections::{AppState, ConnectionManager};
 use lib::workspaces::{WorkspaceConnection, WorkspaceInfo};
 use serde::Serialize;
 use serde_json;
@@ -11,12 +15,7 @@ use tauri::AppHandle;
 use tauri::Manager;
 use tauri::State;
 use tracing::info;
-mod connections;
-mod logging;
-use connections::{AppState, ConnectionManager};
 use tracing::{error, warn};
-
-// Connection persistence and resolution lives in the `connections` module
 
 #[tauri::command]
 fn get_saved_connections(state: State<AppState>) -> Vec<WorkspaceConnection> {
@@ -111,44 +110,16 @@ fn add_local_repository(
             }
         }
 
-        // 2) Generate new workspace files at the directory
-        let mut ws = WorkspaceInfo::default_workspace();
-        if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
-            // Use folder name for nicer defaults
-            ws.slug = name.to_string();
-            ws.title = name.to_string();
-        }
-
-        // Create standard directories
-        for d in ["pages", "databases", "content"].iter() {
-            let dir_path = path.join(d);
-            if let Err(e) = fs::create_dir_all(&dir_path) {
-                let msg = format!("Failed to create directory {}: {}", dir_path.display(), e);
-                error!(target: "fibbelous", "{}", msg);
-                return AddLocalRepoResponse {
-                    ok: false,
-                    error: Some(msg),
-                    workspace: None,
-                };
-            }
-        }
-
-        // Write workspace.json
-        let json_path = path.join("workspace.json");
-        match serde_json::to_string_pretty(&ws)
-            .ok()
-            .and_then(|s| fs::write(&json_path, s).ok())
-        {
-            Some(_) => {}
-            None => {
-                let msg = format!("Failed to write {}", json_path.display());
-                error!(target: "fibbelous", "{}", msg);
-                return AddLocalRepoResponse {
-                    ok: false,
-                    error: Some(msg),
-                    workspace: None,
-                };
-            }
+        // 2) Generate new workspace (git repo + standard folders + workspace.json) at the directory
+        let ws = WorkspaceInfo::default_workspace();
+        if let Err(e) = lib::workspaces::create(&ws, Some(&path)) {
+            let msg = format!("Failed to create workspace at {}: {}", path.display(), e);
+            error!(target: "fibbelous", "{}", msg);
+            return AddLocalRepoResponse {
+                ok: false,
+                error: Some(msg),
+                workspace: None,
+            };
         }
 
         ws
