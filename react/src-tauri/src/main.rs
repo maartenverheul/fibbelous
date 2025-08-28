@@ -1,36 +1,6 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::process::Command;
-#[tauri::command]
-fn open_workspace_in_system(state: State<AppState>, id: String) -> Result<(), String> {
-    let connections = state
-        .connections
-        .lock()
-        .map_err(|_| "mutex poisoned".to_string())?;
-    let connection = connections
-        .iter()
-        .find(|c| c.id == id)
-        .ok_or_else(|| "Workspace not found".to_string())?;
-    let path = connection
-        .path
-        .as_ref()
-        .ok_or_else(|| "Workspace has no path".to_string())?;
-
-    #[cfg(target_os = "windows")]
-    let result = Command::new("explorer").arg(path).status();
-    #[cfg(target_os = "macos")]
-    let result = Command::new("open").arg(path).status();
-    #[cfg(target_os = "linux")]
-    let result = Command::new("xdg-open").arg(path).status();
-
-    match result {
-        Ok(status) if status.success() => Ok(()),
-        Ok(status) => Err(format!("Failed to open explorer, exit code: {}", status)),
-        Err(e) => Err(format!("Failed to open explorer: {}", e)),
-    }
-}
-
 mod connections;
 
 use connections::{AppState, ConnectionManager};
@@ -41,6 +11,7 @@ use lib::workspaces::{WorkspaceConnection, WorkspaceInfo};
 use serde::Serialize;
 use serde_json;
 use std::fs;
+use std::process::Command;
 use std::sync::Mutex;
 use tauri::api::dialog::blocking::FileDialogBuilder;
 use tauri::AppHandle;
@@ -223,6 +194,35 @@ fn add_local_repository(
         ok: true,
         error: None,
         workspace: Some(info),
+    }
+}
+
+#[tauri::command]
+fn open_workspace_in_system(state: State<AppState>, id: String) -> Result<(), String> {
+    let connections = state
+        .connections
+        .lock()
+        .map_err(|_| "mutex poisoned".to_string())?;
+    let connection = connections
+        .iter()
+        .find(|c| c.id == id)
+        .ok_or_else(|| "Workspace not found".to_string())?;
+    let path = connection
+        .path
+        .as_ref()
+        .ok_or_else(|| "Workspace has no path".to_string())?;
+
+    #[cfg(target_os = "windows")]
+    let result = Command::new("explorer").arg(path).status();
+    #[cfg(target_os = "macos")]
+    let result = Command::new("open").arg(path).status();
+    #[cfg(target_os = "linux")]
+    let result = Command::new("xdg-open").arg(path).status();
+
+    match result {
+        Ok(status) if status.success() => Ok(()),
+        Ok(status) => Err(format!("Failed to open explorer, exit code: {}", status)),
+        Err(e) => Err(format!("Failed to open explorer: {}", e)),
     }
 }
 

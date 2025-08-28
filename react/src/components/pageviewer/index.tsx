@@ -24,20 +24,22 @@ export default function PageViewer({ page }: Props) {
           height: page.cover ? "300px" : "100px",
         }}
       >
-        <div className="absolute bottom-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition delay-100">
-          <button
-            className="items-center gap-2 cursor-pointer select-none text-black/40 text-sm hover:bg-black/40 hover:text-white px-2 flex rounded"
-            onClick={removeCover}
-          >
-            <XCircle className="w-4" /> Remove
-          </button>
-          <button
-            className="items-center gap-2 cursor-pointer select-none text-black/40 text-sm hover:bg-black/40 hover:text-white px-2 flex rounded"
-            onClick={changeCover}
-          >
-            <RotateCcw className="w-4" /> Change
-          </button>
-        </div>
+        {page.cover && (
+          <div className="absolute bottom-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition delay-100">
+            <button
+              className="items-center gap-2 cursor-pointer select-none text-black/40 text-sm hover:bg-black/40 hover:text-white px-2 flex rounded"
+              onClick={removeCover}
+            >
+              <XCircle className="w-4" /> Remove
+            </button>
+            <button
+              className="items-center gap-2 cursor-pointer select-none text-black/40 text-sm hover:bg-black/40 hover:text-white px-2 flex rounded"
+              onClick={changeCover}
+            >
+              <RotateCcw className="w-4" /> Change
+            </button>
+          </div>
+        )}
       </div>
       <div className="PageHeader w-full max-w-[1000px] mx-auto p-4 relative pt-12">
         {page.icon && (

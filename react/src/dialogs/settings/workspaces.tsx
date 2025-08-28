@@ -44,13 +44,13 @@ export default function SettingsWorkspacePage() {
   }
 
   return (
-    <div className="p-2">
+    <div className="SettingsWorkspacePage p-2 select-none">
       <h2 className="text-lg font-bold mb-4">Workspaces</h2>
       <ul className="mb-4">
         {workspaces.map((w) => (
           <li
             key={w.id}
-            className="flex items-center mb-2 border rounded-sm p-2"
+            className="flex items-center mb-2 bg-gray-700 rounded-sm p-2"
           >
             <div className="hover:bg-gray-500 rounded-sm hover:border border-gray-400 cursor-pointer aspect-square select-none h-8 flex items-center justify-center mr-2">
               {w.icon}
@@ -58,21 +58,21 @@ export default function SettingsWorkspacePage() {
             <span className="text-lg">{w.title}</span>
             <div className="ml-auto">
               <button
-                className="px-2 py-1 text-gray-600 hover:text-white hover:bg-green-500 cursor-pointer rounded"
+                className="px-2 py-1 text-gray-500 hover:text-white hover:bg-green-500 cursor-pointer rounded"
                 onClick={() => handleVisit(w)}
                 title="Load workspace"
               >
                 <EyeIcon className="w-4" />
               </button>
               <button
-                className="px-2 py-1 text-gray-600 hover:text-white hover:bg-yellow-500 cursor-pointer rounded"
+                className="px-2 py-1 text-gray-500 hover:text-white hover:bg-yellow-500 cursor-pointer rounded"
                 onClick={() => openInSystem(w.id)}
                 title="Open in System"
               >
                 <FolderSymlink className="w-4" />
               </button>
               <button
-                className="px-2 py-1 text-gray-600 hover:text-white hover:bg-red-500 cursor-pointer rounded"
+                className="px-2 py-1 text-gray-500 hover:text-white hover:bg-red-500 cursor-pointer rounded"
                 onClick={() => handleRemove(w)}
                 title="Remove workspace"
               >
@@ -82,7 +82,7 @@ export default function SettingsWorkspacePage() {
           </li>
         ))}
       </ul>
-      <hr className="my-4" />
+
       {error && (
         <div
           role="alert"
