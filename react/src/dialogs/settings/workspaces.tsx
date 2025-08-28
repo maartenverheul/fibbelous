@@ -45,18 +45,18 @@ export default function SettingsWorkspacePage() {
             key={w.id}
             className="flex items-center mb-2 border rounded-sm p-2"
           >
-            <div className="hover:bg-slate-500 rounded-sm hover:border border-slate-400 cursor-pointer aspect-square select-none h-8 flex items-center justify-center mr-2">
+            <div className="hover:bg-gray-500 rounded-sm hover:border border-gray-400 cursor-pointer aspect-square select-none h-8 flex items-center justify-center mr-2">
               {w.icon}
             </div>
             <span className="text-lg">{w.title}</span>
             <button
-              className="px-2 py-1 text-slate-600 hover:text-white hover:bg-green-500 cursor-pointer rounded ml-auto"
+              className="px-2 py-1 text-gray-600 hover:text-white hover:bg-green-500 cursor-pointer rounded ml-auto"
               onClick={() => handleVisit(w)}
             >
               <EyeIcon className="w-4" />
             </button>
             <button
-              className="px-2 py-1 text-slate-600 hover:text-white hover:bg-red-500 cursor-pointer rounded"
+              className="px-2 py-1 text-gray-600 hover:text-white hover:bg-red-500 cursor-pointer rounded"
               onClick={() => handleDelete(w)}
             >
               <XIcon className="w-4" />

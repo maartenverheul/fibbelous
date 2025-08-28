@@ -12,7 +12,8 @@ import { usePageContext } from "@/contexts/PageContext";
 
 export default function Sidebar() {
   const navigate = useNavigate();
-  const { workspaces, selectedWorkspaceId, switchWorkspace } = useWorkspaceContext();
+  const { workspaces, selectedWorkspaceId, switchWorkspace } =
+    useWorkspaceContext();
   const { pages, selectPage, deletePage, createPage } = usePageContext();
 
   function changeWorkspace(id: string) {
@@ -37,7 +38,7 @@ export default function Sidebar() {
   }
 
   return (
-    <div className="bg-slate-800 h-full w-full">
+    <div className="bg-gray-800 h-full w-full">
       <Select value={selectedWorkspaceId} onValueChange={changeWorkspace}>
         <SelectTrigger className="text-white rounded-none border-0 border-b select-none w-full text-center mx-auto text-lg !h-12">
           <SelectValue

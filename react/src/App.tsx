@@ -8,7 +8,7 @@ function App() {
   const workspaces = useWorkspaceContext();
 
   return (
-    <div className="w-screen h-screen bg-slate-950">
+    <div className="w-screen h-screen bg-gray-950">
       {workspaces.workspaces.length && (
         <PanelGroup direction="horizontal" className="h-full">
           <Panel defaultSize={20} minSize={10} maxSize={40} className="h-full">
