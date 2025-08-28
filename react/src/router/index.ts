@@ -9,19 +9,21 @@ import { Outlet } from "react-router";
 const router = createBrowserRouter([
   {
     path: "/",
-    element: React.createElement(WorkspaceRedirect),
-  },
-  {
-    path: "/",
     Component: App,
     children: [
+      {
+        index: true,
+        element: React.createElement(WorkspaceRedirect),
+      },
       {
         path: "settings/:tab?",
         Component: SettingsDialogRoute,
       },
       {
         path: ":workspaceId",
-        element: React.createElement(WorkspaceGuard, { children: React.createElement(Outlet) }),
+        element: React.createElement(WorkspaceGuard, {
+          children: React.createElement(Outlet),
+        }),
       },
     ],
   },

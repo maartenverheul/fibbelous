@@ -11,6 +11,7 @@ import { invoke } from "@tauri-apps/api/tauri";
 export type WorkspaceContextType = {
   workspaces: WorkspaceInfo[];
   selectedWorkspaceId?: string;
+  loaded: boolean;
   switchWorkspace: (id: string) => void;
   addWorkspace: (workspace: WorkspaceInfo) => void;
   updateWorkspace: (workspace: WorkspaceInfo) => void;
@@ -26,21 +27,36 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   // Initial workspaces can be loaded from a static list or fetched from an API
   const [workspaces, setWorkspaces] = useState<WorkspaceInfo[]>([]);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | undefined>(undefined);
+  const [loaded, setLoaded] = useState(false);
 
 
   useEffect(() => {
-    invoke("get_saved_workspaces").then((result) => {
-      const workspaces = result as WorkspaceInfo[];
-      console.log(workspaces);
+    invoke("get_saved_workspaces")
+      .then((result) => {
+        const workspaces = result as WorkspaceInfo[];
+        console.log(workspaces);
 
-      const match = location.pathname.match(/^\/(\w[\w\s-]*)/);
-      const initialWorkspace = workspaces.find((w) => w.slug === (match ? match[1] : "")) ?? workspaces[0];
+        const match = location.pathname.match(/^\/(\w[\w\s-]*)/);
+        const requestedSlug = match ? match[1] : "";
+        const initialWorkspace =
+          workspaces.find((w) => w.slug === requestedSlug) ?? workspaces[0];
 
-      console.log("INI", initialWorkspace.slug);
+        if (initialWorkspace) {
+          console.log("INI", initialWorkspace.slug);
+          setSelectedWorkspaceId(initialWorkspace.id);
+        } else {
+          console.log("INI <none>");
+          setSelectedWorkspaceId(undefined);
+        }
 
-      setWorkspaces(workspaces);
-      setSelectedWorkspaceId(initialWorkspace.id);
-    });
+        setWorkspaces(workspaces);
+      })
+      .catch((err) => {
+        console.error("Failed to load saved workspaces", err);
+        setWorkspaces([]);
+        setSelectedWorkspaceId(undefined);
+      })
+      .finally(() => setLoaded(true));
   }, []);
 
   function switchWorkspace(id: string) {
@@ -95,6 +111,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       value={{
         workspaces,
         selectedWorkspaceId,
+        loaded,
         switchWorkspace,
         addWorkspace,
         updateWorkspace,

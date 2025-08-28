@@ -8,10 +8,12 @@ export default function WorkspaceGuard({
   children: React.ReactNode;
 }) {
   const { workspaceId } = useParams();
-  const { workspaces } = useWorkspaceContext();
+  const { workspaces, loaded } = useWorkspaceContext();
   const navigate = useNavigate();
 
   useEffect(() => {
+    if (!loaded) return;
+
     if (workspaceId && !workspaces.some((w) => w.id === workspaceId)) {
       // Invalid workspace, redirect to first valid workspace
       if (workspaces.length > 0) {
@@ -20,7 +22,7 @@ export default function WorkspaceGuard({
         navigate("/", { replace: true });
       }
     }
-  }, [workspaceId, workspaces, navigate]);
+  }, [loaded, workspaceId, workspaces, navigate]);
 
   return children;
 }
