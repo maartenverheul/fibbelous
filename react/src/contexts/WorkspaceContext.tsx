@@ -34,20 +34,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     invoke("get_saved_workspaces")
       .then((result) => {
         const workspaces = result as WorkspaceInfo[];
-        console.log(workspaces);
+        console.log("Saved workspaces", workspaces);
 
         const match = location.pathname.match(/^\/(\w[\w\s-]*)/);
         const requestedSlug = match ? match[1] : "";
         const initialWorkspace =
           workspaces.find((w) => w.slug === requestedSlug) ?? workspaces[0];
 
-        if (initialWorkspace) {
-          console.log("INI", initialWorkspace.slug);
-          setSelectedWorkspaceId(initialWorkspace.id);
-        } else {
-          console.log("INI <none>");
-          setSelectedWorkspaceId(undefined);
-        }
+        setSelectedWorkspaceId(initialWorkspace?.id);
 
         setWorkspaces(workspaces);
       })

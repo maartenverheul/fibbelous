@@ -25,7 +25,7 @@ pub struct WorkspaceInfo {
     pub title: String,
     pub icon: Option<String>,
     pub description: Option<String>,
-    pub created_at: Option<String>,
+    pub created_at: String,
     pub version: u16,
 }
 
@@ -39,7 +39,7 @@ impl WorkspaceInfo {
             title: "Default workspace".to_string(),
             icon: Some("📁".to_string()),
             description: Some("The default workspace".to_string()),
-            created_at: Some(created_at),
+            created_at: created_at,
             version: 1,
         }
     }

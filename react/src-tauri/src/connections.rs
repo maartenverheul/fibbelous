@@ -1,3 +1,4 @@
+use lib::pages::Page;
 use lib::tracing::{debug, error, info, warn};
 use lib::workspaces::{WorkspaceConnection, WorkspaceInfo};
 use serde_json;
@@ -10,7 +11,9 @@ use tauri::AppHandle;
 /// Shared in-memory application state for connections and resolved workspaces
 pub struct AppState {
     pub connections: Mutex<Vec<WorkspaceConnection>>,
+    pub active_workspace: Mutex<Option<WorkspaceInfo>>,
     pub workspaces: Mutex<Vec<WorkspaceInfo>>, // resolved workspaces
+    pub pages: Mutex<Vec<Page>>,               // loaded pages from active workspace
 }
 
 pub struct ConnectionManager;

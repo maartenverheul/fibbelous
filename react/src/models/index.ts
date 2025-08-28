@@ -12,3 +12,24 @@ export type AddLocalRepoResponse = {
   error?: string,
   workspace?: WorkspaceInfo,
 }
+
+export type Page = {
+  id: string;
+  title: string;
+  cover?: string;
+  icon?: string;
+  created_at: string;
+  updated_at?: string;
+  deleted_at?: string;
+}
+
+
+export type Database = {
+  id: string;
+  title: string;
+  cover?: string;
+  icon?: string;
+  created_at: string;
+  updated_at?: string;
+  deleted_at?: string;
+}

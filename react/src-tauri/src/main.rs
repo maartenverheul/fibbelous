@@ -5,6 +5,7 @@ mod connections;
 
 use connections::{AppState, ConnectionManager};
 use lib::logging;
+use lib::pages::Page;
 use lib::tracing::{error, info, warn};
 use lib::workspaces::{WorkspaceConnection, WorkspaceInfo};
 use serde::Serialize;
@@ -172,6 +173,17 @@ fn add_local_repository(
                 drop(conns_snapshot);
                 let mut ws = state.workspaces.lock().expect("mutex poisoned");
                 *ws = new_workspaces;
+                // If no active workspace set, or the active one no longer exists, pick the first
+                {
+                    let mut active = state.active_workspace.lock().expect("mutex poisoned");
+                    if active
+                        .as_ref()
+                        .map(|a| !ws.iter().any(|w| w.id == a.id))
+                        .unwrap_or(true)
+                    {
+                        *active = ws.first().cloned();
+                    }
+                }
             }
         }
     }
@@ -184,10 +196,10 @@ fn add_local_repository(
 }
 
 #[tauri::command]
-fn delete_workspace(app: AppHandle, state: State<AppState>, id: String) -> bool {
+fn remove_workspace(app: AppHandle, state: State<AppState>, id: String) -> bool {
     match ConnectionManager::remove_connection(&app, &id) {
         Err(err) => {
-            error!(target: "main", "Failed to delete connection {}: {}", id, err);
+            error!(target: "main", "Failed to remove connection {}: {}", id, err);
             false
         }
         Ok(updated) => {
@@ -205,12 +217,62 @@ fn delete_workspace(app: AppHandle, state: State<AppState>, id: String) -> bool 
             drop(conns_snapshot);
             let mut ws = state.workspaces.lock().expect("mutex poisoned");
             *ws = new_workspaces;
+            // If active removed or not set, pick first workspace as active
+            {
+                let mut active = state.active_workspace.lock().expect("mutex poisoned");
+                if active
+                    .as_ref()
+                    .map(|a| !ws.iter().any(|w| w.id == a.id))
+                    .unwrap_or(true)
+                {
+                    *active = ws.first().cloned();
+                }
+            }
             true
         }
     }
 }
+#[tauri::command]
+fn create_new_page(
+    _app: AppHandle,
+    state: State<AppState>,
+    parent: Option<String>,
+) -> Result<Page, String> {
+    let maybe_workspace = state
+        .active_workspace
+        .lock()
+        .map_err(|_| "mutex poisoned".to_string())?;
 
-// Resolution helpers moved into `connections` module
+    if let Some(workspace) = maybe_workspace.as_ref() {
+        let mut pages = state
+            .pages
+            .lock()
+            .map_err(|_| "mutex poisoned".to_string())?;
+        let page = Page::create_default(parent);
+        pages.push(page.clone());
+
+        // Find the connection for the active workspace
+        let connections = state
+            .connections
+            .lock()
+            .map_err(|_| "mutex poisoned".to_string())?;
+        let connection = connections
+            .iter()
+            .find(|c| c.id == workspace.id)
+            .ok_or("Active workspace connection not found".to_string())?;
+
+        let workspace_path = std::path::Path::new(
+            connection
+                .path
+                .as_ref()
+                .ok_or("Active workspace connection has no path".to_string())?,
+        );
+        let _ = lib::pages::save_page(workspace_path, &page);
+        Ok(page)
+    } else {
+        Err("No active workspace: cannot create a new page".to_string())
+    }
+}
 
 fn main() {
     let context = tauri::generate_context!();
@@ -239,9 +301,12 @@ fn main() {
             let initial_conns = ConnectionManager::load_saved_connections(&app.handle());
             let initial_workspaces =
                 ConnectionManager::compute_workspaces_from_connections(&initial_conns);
+            let initial_active = initial_workspaces.first().cloned();
             app.manage(AppState {
                 connections: Mutex::new(initial_conns),
                 workspaces: Mutex::new(initial_workspaces),
+                active_workspace: Mutex::new(initial_active),
+                pages: Mutex::new(Vec::new()),
             });
             Ok(())
         })
@@ -258,7 +323,8 @@ fn main() {
             get_saved_workspaces,
             add_local_repository,
             get_saved_connections,
-            delete_workspace
+            remove_workspace,
+            create_new_page,
         ]);
 
     let app = builder

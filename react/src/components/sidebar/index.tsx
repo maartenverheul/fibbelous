@@ -7,10 +7,13 @@ import {
 } from "@/components/ui/select";
 import { useNavigate } from "react-router";
 import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
+import PageList from "./PageList";
+import { usePageContext } from "@/contexts/PageContext";
 
 export default function Sidebar() {
   const navigate = useNavigate();
   const { workspaces, selectedWorkspaceId, switchWorkspace } = useWorkspaceContext();
+  const { pages, selectPage, deletePage, createPage } = usePageContext();
 
   function changeWorkspace(id: string) {
     if (id === "$manage") navigate("/settings/workspaces");
@@ -19,6 +22,18 @@ export default function Sidebar() {
       switchWorkspace(id);
       navigate(`/${target?.slug}`);
     }
+  }
+
+  function handlePageClick(id: string) {
+    selectPage(id);
+  }
+
+  function handlePageDelete(id: string) {
+    deletePage(id);
+  }
+
+  function handleCreatePage(parent?: string | undefined): void {
+    createPage(parent);
   }
 
   return (
@@ -41,6 +56,14 @@ export default function Sidebar() {
           </SelectItem>
         </SelectContent>
       </Select>
+
+      <PageList
+        className="mt-2"
+        pages={pages}
+        onPageClick={handlePageClick}
+        onPageDelete={handlePageDelete}
+        onNewPage={handleCreatePage}
+      />
     </div>
   );
 }
