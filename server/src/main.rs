@@ -32,7 +32,7 @@ async fn update_workspace(Path(id): Path<String>) -> impl IntoResponse {
     format!("Update workspace with id: {}", id)
 }
 
-async fn delete_workspace(Path(id): Path<String>) -> impl IntoResponse {
+async fn remove_workspace(Path(id): Path<String>) -> impl IntoResponse {
     format!("Delete workspace with id: {}", id)
 }
 
@@ -51,7 +51,7 @@ async fn main() {
             "/api/workspaces/:id",
             get(get_workspace)
                 .put(update_workspace)
-                .delete(delete_workspace),
+                .delete(remove_workspace),
         );
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3001));

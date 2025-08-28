@@ -26,9 +26,10 @@ export const WorkspaceContext = createContext<WorkspaceContextType | undefined>(
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   // Initial workspaces can be loaded from a static list or fetched from an API
   const [workspaces, setWorkspaces] = useState<WorkspaceInfo[]>([]);
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | undefined>(undefined);
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<
+    string | undefined
+  >(undefined);
   const [loaded, setLoaded] = useState(false);
-
 
   useEffect(() => {
     invoke("get_saved_workspaces")
@@ -54,7 +55,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }, []);
 
   function switchWorkspace(id: string) {
-    if (selectedWorkspaceId && !workspaces.some((w) => w.id === selectedWorkspaceId)) {
+    if (
+      selectedWorkspaceId &&
+      !workspaces.some((w) => w.id === selectedWorkspaceId)
+    ) {
       setSelectedWorkspaceId(workspaces[0]?.id);
       return;
     }
@@ -73,11 +77,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   async function deleteWorkspace(id: string) {
     try {
-      const ok = (await invoke("delete_workspace", { id })) as boolean;
+      const ok = (await invoke("remove_workspace", { id })) as boolean;
       if (ok) {
         setWorkspaces((prev) => prev.filter((w) => w.id !== id));
       } else {
-        console.warn("delete_workspace returned false for id", id);
+        console.warn("remove_workspace returned false for id", id);
       }
     } catch (err) {
       console.error("Failed to delete workspace", id, err);
@@ -87,7 +91,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   async function pickLocal(existing: boolean): Promise<AddLocalRepoResponse> {
     try {
       const res = (await invoke("add_local_repository", {
-        existing
+        existing,
       })) as AddLocalRepoResponse;
       if (!res.ok) return { ok: false, error: res.error };
       const ws = res.workspace!;

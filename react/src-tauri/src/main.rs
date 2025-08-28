@@ -42,7 +42,7 @@ fn add_local_repository(
     state: State<AppState>,
     existing: bool,
 ) -> AddLocalRepoResponse {
-    info!(target: "main", "add_local_repository called with existing={}", existing);
+    info!(target: "main", "Adding local workspace with existing={}", existing);
     // Show a directory picker dialog
     let selected_dir = FileDialogBuilder::new()
         .set_title("Select a workspace directory")
@@ -59,7 +59,7 @@ fn add_local_repository(
 
     // Determine workspace info: either load existing or create a new one in the selected folder
     let info: WorkspaceInfo = if existing {
-        info!(target: "main", "Opening workspace from directory: {}", path.display());
+        info!(target: "main", "Opening workspace at {}", path.display());
 
         // Check for workspace.json in the selected directory
         let json_path = path.join("workspace.json");
@@ -111,6 +111,7 @@ fn add_local_repository(
         }
 
         // 2) Generate new workspace (git repo + standard folders + workspace.json) at the directory
+        info!(target: "main", "Creating local workspace at {}", path.display());
         let ws = WorkspaceInfo::default_workspace();
         if let Err(e) = lib::workspaces::create(&ws, Some(&path)) {
             let msg = format!("Failed to create workspace at {}: {}", path.display(), e);
