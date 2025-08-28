@@ -1,16 +1,23 @@
 import { useNavigate } from "react-router";
 import { useState } from "react";
-import { AlertCircle, FolderOpen, PlusIcon, XIcon } from "lucide-react";
+import {
+  AlertCircle,
+  FolderOpen,
+  FolderSymlink,
+  PlusIcon,
+  XIcon,
+} from "lucide-react";
 import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
 import { EyeIcon } from "lucide-react";
 import { WorkspaceInfo } from "@/models";
 
 export default function SettingsWorkspacePage() {
-  const { workspaces, pickLocal, deleteWorkspace } = useWorkspaceContext();
+  const { workspaces, pickLocal, deleteWorkspace, openInSystem } =
+    useWorkspaceContext();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
 
-  function handleDelete(workspace: WorkspaceInfo) {
+  function handleRemove(workspace: WorkspaceInfo) {
     deleteWorkspace(workspace.id);
   }
 
@@ -49,18 +56,29 @@ export default function SettingsWorkspacePage() {
               {w.icon}
             </div>
             <span className="text-lg">{w.title}</span>
-            <button
-              className="px-2 py-1 text-gray-600 hover:text-white hover:bg-green-500 cursor-pointer rounded ml-auto"
-              onClick={() => handleVisit(w)}
-            >
-              <EyeIcon className="w-4" />
-            </button>
-            <button
-              className="px-2 py-1 text-gray-600 hover:text-white hover:bg-red-500 cursor-pointer rounded"
-              onClick={() => handleDelete(w)}
-            >
-              <XIcon className="w-4" />
-            </button>
+            <div className="ml-auto">
+              <button
+                className="px-2 py-1 text-gray-600 hover:text-white hover:bg-green-500 cursor-pointer rounded"
+                onClick={() => handleVisit(w)}
+                title="Load workspace"
+              >
+                <EyeIcon className="w-4" />
+              </button>
+              <button
+                className="px-2 py-1 text-gray-600 hover:text-white hover:bg-yellow-500 cursor-pointer rounded"
+                onClick={() => openInSystem(w.id)}
+                title="Open in System"
+              >
+                <FolderSymlink className="w-4" />
+              </button>
+              <button
+                className="px-2 py-1 text-gray-600 hover:text-white hover:bg-red-500 cursor-pointer rounded"
+                onClick={() => handleRemove(w)}
+                title="Remove workspace"
+              >
+                <XIcon className="w-4" />
+              </button>
+            </div>
           </li>
         ))}
       </ul>

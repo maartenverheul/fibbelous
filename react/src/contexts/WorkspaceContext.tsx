@@ -12,11 +12,12 @@ export type WorkspaceContextType = {
   workspaces: WorkspaceInfo[];
   selectedWorkspaceId?: string;
   loaded: boolean;
-  switchWorkspace: (id: string) => void;
-  addWorkspace: (workspace: WorkspaceInfo) => void;
-  updateWorkspace: (workspace: WorkspaceInfo) => void;
-  deleteWorkspace: (id: string) => void;
-  pickLocal: (existing: boolean) => Promise<AddLocalRepoResponse>;
+  switchWorkspace(id: string): void;
+  addWorkspace(workspace: WorkspaceInfo): void;
+  updateWorkspace(workspace: WorkspaceInfo): void;
+  deleteWorkspace(id: string): void;
+  pickLocal(existing: boolean): Promise<AddLocalRepoResponse>;
+  openInSystem(id: string): void;
 };
 
 export const WorkspaceContext = createContext<WorkspaceContextType | undefined>(
@@ -104,6 +105,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  function openInSystem(id: string) {
+    invoke("open_workspace_in_system", { id });
+  }
+
   return (
     <WorkspaceContext.Provider
       value={{
@@ -115,6 +120,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         updateWorkspace,
         deleteWorkspace,
         pickLocal,
+        openInSystem,
       }}
     >
       {children}
