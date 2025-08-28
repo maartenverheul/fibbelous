@@ -15,7 +15,7 @@ export default function WorkspaceGuard({
     if (workspaceId && !workspaces.some((w) => w.id === workspaceId)) {
       // Invalid workspace, redirect to first valid workspace
       if (workspaces.length > 0) {
-        navigate(`/${workspaces[0].id}`, { replace: true });
+        navigate(`/${workspaces[0].slug}`, { replace: true });
       } else {
         navigate("/", { replace: true });
       }

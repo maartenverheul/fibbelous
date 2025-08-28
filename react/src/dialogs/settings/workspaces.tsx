@@ -3,18 +3,19 @@ import { useState } from "react";
 import { AlertCircle } from "lucide-react";
 import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
 import { EyeIcon, TrashIcon } from "lucide-react";
+import { WorkspaceInfo } from "@/models";
 
 export default function SettingsWorkspacePage() {
   const { workspaces, pickLocal, deleteWorkspace } = useWorkspaceContext();
   const navigate = useNavigate();
   const [openError, setOpenError] = useState<string | null>(null);
 
-  function handleDelete(id: string) {
-    deleteWorkspace(id);
+  function handleDelete(workspace: WorkspaceInfo) {
+    deleteWorkspace(workspace.id);
   }
 
-  function handleVisit(id: string) {
-    navigate(`/${id}`);
+  function handleVisit(workspace: WorkspaceInfo) {
+    navigate(`/${workspace.slug}`);
   }
 
   async function startPickLocal() {
@@ -41,13 +42,13 @@ export default function SettingsWorkspacePage() {
             <span className="text-lg">{w.title}</span>
             <button
               className="px-2 py-1 text-slate-600 hover:text-white hover:bg-green-500 cursor-pointer rounded ml-auto"
-              onClick={() => handleVisit(w.id)}
+              onClick={() => handleVisit(w)}
             >
               <EyeIcon className="w-4" />
             </button>
             <button
               className="px-2 py-1 text-slate-600 hover:text-white hover:bg-red-500 cursor-pointer rounded"
-              onClick={() => handleDelete(w.id)}
+              onClick={() => handleDelete(w)}
             >
               <TrashIcon className="w-4" />
             </button>
