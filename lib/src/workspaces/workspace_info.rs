@@ -10,6 +10,7 @@ pub struct WorkspaceInfo {
     pub icon: Option<String>,
     pub description: Option<String>,
     pub created_at: Option<String>,
+    pub version: u16,
 }
 
 impl WorkspaceInfo {
@@ -23,12 +24,7 @@ impl WorkspaceInfo {
             icon: Some("📁".to_string()),
             description: Some("The default workspace".to_string()),
             created_at: Some(created_at),
+            version: 1,
         }
     }
-}
-
-pub struct NewWorkspace {
-    pub slug: String,
-    pub title: String,
-    pub description: Option<String>,
 }

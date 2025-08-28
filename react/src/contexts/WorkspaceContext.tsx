@@ -14,7 +14,7 @@ export type WorkspaceContextType = {
   addWorkspace: (workspace: WorkspaceInfo) => void;
   updateWorkspace: (workspace: WorkspaceInfo) => void;
   deleteWorkspace: (id: string) => void;
-  pickLocal: () => Promise<WorkspaceInfo | null>;
+  pickLocal: () => Promise<{ ok: boolean; error?: string | null; workspace?: WorkspaceInfo | null }>;
 };
 
 export const WorkspaceContext = createContext<WorkspaceContextType | undefined>(
@@ -43,17 +43,35 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     );
   }
 
-  function deleteWorkspace(id: string) {
-    setWorkspaces((prev) => prev.filter((w) => w.id !== id));
+  async function deleteWorkspace(id: string) {
+    try {
+      const ok = (await invoke("delete_workspace", { id })) as boolean;
+      if (ok) {
+        setWorkspaces((prev) => prev.filter((w) => w.id !== id));
+      } else {
+        console.warn("delete_workspace returned false for id", id);
+      }
+    } catch (err) {
+      console.error("Failed to delete workspace", id, err);
+    }
   }
 
-  async function pickLocal(): Promise<WorkspaceInfo | null> {
-    const result = (await invoke(
-      "open_local_repository"
-    )) as WorkspaceInfo | null;
-    if (!result) return null;
-    setWorkspaces((prev) => [...prev, result]);
-    return result;
+  async function pickLocal(): Promise<{ ok: boolean; error?: string | null; workspace?: WorkspaceInfo | null }> {
+    type OpenLocalRepoResponse = {
+      ok: boolean;
+      error?: string | null;
+      workspace?: WorkspaceInfo | null;
+    };
+    try {
+      const res = (await invoke("open_local_repository")) as OpenLocalRepoResponse;
+      if (!res.ok) return { ok: false, error: res.error ?? "Failed to open workspace" };
+      const ws = res.workspace!;
+      setWorkspaces((prev) => [...prev, ws]);
+      return { ok: true, workspace: ws };
+    } catch (err) {
+      console.error("open_local_repository failed", err);
+      return { ok: false, error: "Failed to open workspace" };
+    }
   }
 
   return (

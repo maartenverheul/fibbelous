@@ -2,7 +2,12 @@ use std::path::Path;
 
 use git2::Repository;
 
-pub mod workspace_info;
+mod new_workspace;
+mod workspace_connection;
+mod workspace_info;
+
+pub use new_workspace::NewWorkspace;
+pub use workspace_connection::WorkspaceConnection;
 pub use workspace_info::WorkspaceInfo;
 
 const WORKSPACES_PATH: &str = ".data/workspaces";
