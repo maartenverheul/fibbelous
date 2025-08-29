@@ -15,6 +15,7 @@ export type AddLocalRepoResponse = {
 
 export type Page = {
   id: string;
+  parentId?: string;
   title: string;
   cover?: string;
   icon?: string;

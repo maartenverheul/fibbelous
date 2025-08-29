@@ -7,6 +7,7 @@ import {
   useEffect,
 } from "react";
 import { invoke } from "@tauri-apps/api/tauri";
+import { IS_APP } from "@/checks";
 
 export type WorkspaceContextType = {
   workspaces: WorkspaceInfo[];
@@ -33,6 +34,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
+    if (!IS_APP) {
+      setLoaded(true);
+      return;
+    };
     invoke("get_saved_workspaces")
       .then((result) => {
         const workspaces = result as WorkspaceInfo[];
@@ -77,6 +82,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }
 
   async function deleteWorkspace(id: string) {
+    if (!IS_APP) return;
     try {
       const ok = (await invoke("remove_workspace", { id })) as boolean;
       if (ok) {
@@ -90,6 +96,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }
 
   async function pickLocal(existing: boolean): Promise<AddLocalRepoResponse> {
+    if (!IS_APP) throw new Error("Not implemented in web");
     try {
       const res = (await invoke("add_local_repository", {
         existing,
@@ -106,6 +113,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }
 
   function openInSystem(id: string) {
+    if (!IS_APP) throw new Error("Not implemented in web");
     invoke("open_workspace_in_system", { id });
   }
 

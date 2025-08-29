@@ -33,8 +33,7 @@ export default function SettingsDialog({
 }: SettingsDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="p-0 overflow-hidden h-full w-full !max-w-[1100px] max-h-[800px] bg-gray-800 text-white border-gray-900">
-        <DialogTitle className="sr-only">Settings</DialogTitle>
+      <DialogContent className="p-0 max-lg:rounded-[0px] overflow-hidden h-full w-full !max-w-5xl max-h-[800px] bg-gray-800 text-white border-gray-900">
         <Tabs
           value={activeTab}
           onValueChange={onTabChange}

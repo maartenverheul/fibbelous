@@ -1,80 +1,81 @@
-import { Page } from "@/models";
+import { Page, TOCItem } from "@/models";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useWorkspaceContext } from "./WorkspaceContext";
-import { invoke } from "@tauri-apps/api/tauri";
+import { usePageManager } from "./PageManagerContext";
 
 export type PageContextType = {
-  pages: Page[];
-  selectedPageId?: string;
-  selectedPage?: Page;
+  data: Page | undefined;
+  breadcrumbs: TOCItem[];
   loaded: boolean;
-  selectPage: (id: string) => void;
-  createPage: (parent?: string) => Promise<Page>;
-  updatePage: (page: Page) => void;
+  content: string;
   deletePage: (id: string) => void;
+  updateTitle: (newTitle: string) => void;
+  updateIcon: (newIcon: string) => void;
+  updateContent: (newContent: string) => void;
 };
 
 const PageContext = createContext<PageContextType | undefined>(undefined);
 
-export function PageProvider({ children }: { children: React.ReactNode }) {
+type Props = {
+  pageId: string;
+  children: React.ReactNode;
+}
+
+export function PageProvider({ pageId, children }: Props) {
   const { selectedWorkspaceId } = useWorkspaceContext();
-  const [pages, setPages] = useState<Page[]>([]);
-  const [selectedPageId, setSelectedPageId] = useState<string | undefined>(
-    undefined
-  );
+  const pageManager = usePageManager();
+  const [data, setData] = useState<Page>();
   const [loaded, setLoaded] = useState(false);
+  const [content, setContent] = useState(`---
+id: ${pageId}
+---`);
 
-  const selectedPage = useMemo(() => {
-    return pages.find((page) => page.id === selectedPageId);
-  }, [pages, selectedPageId]);
+  const breadcrumbs = useMemo<TOCItem[]>(() => pageManager.buildBreadcrumbs(pageId), [pageId]);
 
-  // Reset/load pages when workspace changes
   useEffect(() => {
-    // TODO: Load pages for the selected workspace via Tauri once backend is ready
-    setPages([]);
-    setSelectedPageId(undefined);
-    setLoaded(true);
-  }, [selectedWorkspaceId]);
-
-  function selectPage(id: string) {
-    setSelectedPageId(id);
-  }
-
-  async function createPage(parent?: string) {
-    console.log("Creating new page at parent", parent);
-    const page = (await invoke("create_new_page", { parent })) as Page;
-    setPages((prev) => [...prev, page]);
-    setSelectedPageId((prevSel) => prevSel ?? page.id);
-    return page;
-  }
+    console.debug("Loading page:", pageId);
+    pageManager.load(pageId).then((page) => {
+      setData(page);
+      setLoaded(true);
+    }).catch(err => {
+      console.error("Failed to load page:", err);
+      setLoaded(true);
+    });
+  }, [pageId]);
 
   function updatePage(page: Page) {
-    setPages((prev) => prev.map((p) => (p.id === page.id ? page : p)));
+    console.warn("TODO Updating page:", page);
   }
 
   function deletePage(id: string) {
-    setPages((prev) => prev.filter((p) => p.id !== id));
-    setSelectedPageId((prevSel) => (prevSel === id ? undefined : prevSel));
+    console.warn("TODO Deleting page:", id);
   }
 
-  const value = useMemo<PageContextType>(
-    () => ({
-      pages,
-      selectedPageId,
-      selectedPage,
-      loaded,
-      selectPage,
-      createPage: createPage,
-      updatePage,
-      deletePage,
-    }),
-    [pages, selectedPageId, loaded]
-  );
+  function updateTitle(newTitle: string) {
+    console.warn("TODO Updating title:", newTitle);
+  }
 
-  return <PageContext.Provider value={value}>{children}</PageContext.Provider>;
+  function updateIcon(newIcon: string) {
+    console.warn("TODO Updating icon:", newIcon);
+  }
+
+  function updateContent(newContent: string) {
+
+  }
+
+  return <PageContext.Provider value={{
+    data,
+    content,
+    breadcrumbs,
+    loaded,
+    deletePage,
+    updateTitle,
+    updateIcon,
+    updateContent,
+  }}>{children}</PageContext.Provider>;
 }
 
-export function usePageContext() {
+export function usePage() {
   const ctx = useContext(PageContext);
   if (!ctx)
     throw new Error("usePageContext must be used within a PageProvider");

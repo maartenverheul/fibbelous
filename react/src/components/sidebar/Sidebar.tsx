@@ -8,14 +8,16 @@ import {
 import { useNavigate } from "react-router";
 import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
 import TOC from "./TOC";
-import { usePageContext } from "@/contexts/PageContext";
 import { useTOCContext } from "@/contexts/TOCContext";
+import { usePageManager } from "@/contexts/PageManagerContext";
+import { useAppNavigation } from "@/contexts/AppNavigationContext";
 
 export default function Sidebar() {
   const navigate = useNavigate();
   const { workspaces, selectedWorkspaceId, switchWorkspace } =
     useWorkspaceContext();
-  const { selectPage, deletePage, createPage } = usePageContext();
+  const { openPage } = useAppNavigation();
+  const { createPage, deletePage } = usePageManager();
   const { toc, loadTOC } = useTOCContext();
 
   function changeWorkspace(id: string) {
@@ -28,7 +30,7 @@ export default function Sidebar() {
   }
 
   function handlePageClick(id: string) {
-    selectPage(id);
+    openPage(id);
   }
 
   function handlePageDelete(id: string) {

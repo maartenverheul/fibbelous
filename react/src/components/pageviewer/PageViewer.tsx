@@ -1,12 +1,10 @@
-import { Page } from "@/models";
 import { RotateCcw, XCircle } from "lucide-react";
-import TopBar from "./topBar";
+import TopBar from "./TopBar";
+import { usePage } from "@/contexts/PageContext";
 
-type Props = {
-  page: Page;
-};
+export default function PageViewer() {
+  const page = usePage();
 
-export default function PageViewer({ page }: Props) {
   function removeCover() { }
 
   function changeCover() { }
@@ -16,6 +14,9 @@ export default function PageViewer({ page }: Props) {
     console.log(newTitle);
   }
 
+  if (!page.loaded) return <p>Loading...</p>;
+  if (!page.data) return <p>Error no page</p>;
+
   return (
     <div className="PageViewer bg-gray-900 h-full flex flex-col">
       <TopBar />
@@ -23,11 +24,11 @@ export default function PageViewer({ page }: Props) {
         <div
           className="PageCover w-full bg-center bg-cover relative group"
           style={{
-            backgroundImage: page.cover ? `url(${page.cover})` : undefined,
-            height: page.cover ? "300px" : "100px",
+            backgroundImage: page.data.cover ? `url(${page.data.cover})` : undefined,
+            height: page.data.cover ? "300px" : "100px",
           }}
         >
-          {page.cover && (
+          {page.data.cover && (
             <div className="absolute bottom-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition delay-100">
               <button
                 className="items-center gap-2 cursor-pointer select-none text-black/40 text-sm hover:bg-black/40 hover:text-white px-2 flex rounded"
@@ -45,9 +46,9 @@ export default function PageViewer({ page }: Props) {
           )}
         </div>
         <div className="PageHeader w-full max-w-[1000px] mx-auto p-4 relative pt-12">
-          {page.icon && (
+          {page.data.icon && (
             <button className="Icon select-none w-24 h-24 text-7xl absolute left-0 top-0 -translate-y-1/2 transition hover:bg-white/20 flex justify-center items-center cursor-pointer rounded">
-              {page.icon}
+              {page.data.icon}
             </button>
           )}
 
@@ -55,14 +56,18 @@ export default function PageViewer({ page }: Props) {
             type="text"
             className="text-white focus:outline-0 text-5xl font-bold placeholder:text-gray-600 w-full"
             placeholder="No title"
-            value={page.title}
+            value={page.data.title}
             onChange={(e) => changeTitle(e.target.value)}
           />
         </div>
         <div className="PageContent w-full max-w-[1000px] mx-auto p-4">
           <textarea
             name="content"
-            className="w-full border border-gray-600 rounded focus:outline-none text-white font-mono"
+            className="w-full border min-h-[300px] border-gray-600 rounded focus:outline-none text-white font-mono"
+            value={page.content}
+            onChange={() => {
+              console.warn("TODO content change");
+            }}
           ></textarea>
         </div>
       </div>
