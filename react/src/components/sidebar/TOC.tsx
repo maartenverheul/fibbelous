@@ -20,15 +20,6 @@ export default function TOC({
 }: Props) {
   return (
     <div className={cn("PageList p-2", className)}>
-      {onNewPage && (
-        <button
-          className="aspect-square block text-gray-600 ml-auto hover:bg-gray-700 rounded cursor-pointer hover:text-gray-500"
-          onClick={() => onNewPage()}
-        >
-          <PlusIcon />
-        </button>
-      )}
-
       {items.map((item) => (
         <TOCPageItem
           key={item.id}
@@ -39,6 +30,14 @@ export default function TOC({
           onNewPage={onNewPage ? () => onNewPage?.(item.id) : undefined}
         />
       ))}
+      {onNewPage && (
+        <button
+          className="aspect-square block text-gray-600 ml-auto hover:bg-gray-700 rounded cursor-pointer hover:text-gray-500"
+          onClick={() => onNewPage()}
+        >
+          <PlusIcon />
+        </button>
+      )}
     </div>
   );
 }
