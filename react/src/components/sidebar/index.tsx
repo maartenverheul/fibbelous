@@ -7,14 +7,16 @@ import {
 } from "@/components/ui/select";
 import { useNavigate } from "react-router";
 import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
-import PageList from "./PageList";
+import TOC from "./TOC";
 import { usePageContext } from "@/contexts/PageContext";
+import { useTOCContext } from "@/contexts/TOCContext";
 
 export default function Sidebar() {
   const navigate = useNavigate();
   const { workspaces, selectedWorkspaceId, switchWorkspace } =
     useWorkspaceContext();
-  const { pages, selectPage, deletePage, createPage } = usePageContext();
+  const { selectPage, deletePage, createPage } = usePageContext();
+  const { toc, loadTOC } = useTOCContext();
 
   function changeWorkspace(id: string) {
     if (id === "$manage") navigate("/settings/workspaces");
@@ -58,9 +60,9 @@ export default function Sidebar() {
         </SelectContent>
       </Select>
 
-      <PageList
+      <TOC
         className="mt-2"
-        pages={pages}
+        items={toc}
         onPageClick={handlePageClick}
         onPageDelete={handlePageDelete}
         onNewPage={handleCreatePage}

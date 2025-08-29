@@ -63,16 +63,16 @@ impl ConnectionManager {
             Ok(data) => match serde_json::from_str::<Vec<WorkspaceConnection>>(&data) {
                 Ok(list) => {
                     let kept = Self::prune_missing_local_paths(&path, list);
-                    info!(target: "connections", "Loaded {} saved connection(s)", kept.len());
+                    info!(target: "connections", "Found {} saved connection(s)", kept.len());
                     kept
                 }
                 Err(err) => {
-                    warn!(target: "connections", "Failed parsing {}: {}", path.display(), err);
+                    error!(target: "connections", "Failed parsing {}: {}", path.display(), err);
                     Vec::new()
                 }
             },
             Err(err) => {
-                warn!(target: "connections", "Failed reading {}: {}", path.display(), err);
+                error!(target: "connections", "Failed reading {}: {}", path.display(), err);
                 Vec::new()
             }
         }
@@ -96,7 +96,7 @@ impl ConnectionManager {
                     match std::fs::File::create(connections_file) {
                         Ok(mut file) => {
                             if let Err(e) = file.write_all(json.as_bytes()) {
-                                warn!(
+                                error!(
                                     target: "connections",
                                     "Failed to rewrite {} after pruning: {}",
                                     connections_file.display(),
@@ -104,7 +104,7 @@ impl ConnectionManager {
                                 );
                             }
                         }
-                        Err(e) => warn!(
+                        Err(e) => error!(
                             target: "connections",
                             "Failed to open {} for rewriting after pruning: {}",
                             connections_file.display(),
@@ -119,7 +119,7 @@ impl ConnectionManager {
                     );
                 }
                 Err(e) => {
-                    warn!(target: "connections", "Failed to serialize pruned connections: {}", e)
+                    error!(target: "connections", "Failed to serialize pruned connections: {}", e)
                 }
             }
         }
@@ -157,18 +157,59 @@ impl ConnectionManager {
 
     pub fn resolve_workspace_from_path(path: &Path) -> Option<WorkspaceInfo> {
         let json_path = path.join("workspace.json");
-        let data = std::fs::read_to_string(&json_path).ok()?;
-        serde_json::from_str::<WorkspaceInfo>(&data).ok()
+        debug!(target: "connections", "Parsing workspace from path: {}", json_path.display());
+        match std::fs::read_to_string(&json_path) {
+            Ok(data) => match serde_json::from_str::<WorkspaceInfo>(&data) {
+                Ok(ws) => {
+                    info!(target: "connections", "Loaded workspace: {}", ws.slug);
+                    Some(ws)
+                }
+                Err(e) => {
+                    error!(
+                        target: "connections",
+                        "Failed to parse workspace JSON at {}: {}",
+                        json_path.display(),
+                        e
+                    );
+                    None
+                }
+            },
+            Err(e) => {
+                debug!(
+                    target: "connections",
+                    "Failed reading {}: {}",
+                    json_path.display(),
+                    e
+                );
+                None
+            }
+        }
     }
 
     pub fn resolve_workspace_from_url(url: &str) -> Option<WorkspaceInfo> {
         // Expecting base/api/<workspace-slug> returning WorkspaceInfo JSON
-        let resp = reqwest::blocking::get(url).ok()?;
+        debug!(target: "connections", "Fetching workspace from URL: {}", url);
+        let resp = match reqwest::blocking::get(url) {
+            Ok(r) => r,
+            Err(e) => {
+                warn!(target: "connections", "Request error fetching {}: {}", url, e);
+                return None;
+            }
+        };
         if !resp.status().is_success() {
             warn!(target: "connections", "HTTP {} fetching {}", resp.status(), url);
             return None;
         }
-        resp.json::<WorkspaceInfo>().ok()
+        match resp.json::<WorkspaceInfo>() {
+            Ok(ws) => {
+                info!(target: "connections", "Parsed workspace from URL: {}", url);
+                Some(ws)
+            }
+            Err(e) => {
+                error!(target: "connections", "Failed parsing response from {}: {}", url, e);
+                None
+            }
+        }
     }
 
     pub fn compute_workspaces_from_connections(
@@ -178,14 +219,20 @@ impl ConnectionManager {
         for c in conns {
             if let Some(p) = &c.path {
                 let path = Path::new(p);
+                debug!(target: "connections", "Trying local path for connection {}: {}", c.id, path.display());
                 if let Some(ws) = Self::resolve_workspace_from_path(path) {
                     out.push(ws);
                     continue;
+                } else {
+                    debug!(target: "connections", "No valid workspace at local path for connection {}", c.id);
                 }
             }
             if let Some(url) = &c.url {
+                debug!(target: "connections", "Trying URL for connection {}: {}", c.id, url);
                 if let Some(ws) = Self::resolve_workspace_from_url(url) {
                     out.push(ws);
+                } else {
+                    error!(target: "connections", "Failed to resolve workspace from URL for connection {}", c.id);
                 }
             }
         }

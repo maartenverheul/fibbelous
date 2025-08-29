@@ -6,6 +6,7 @@ use std::fs;
 use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Page {
     pub id: String,
     pub parent_id: Option<String>,
@@ -33,6 +34,16 @@ impl Page {
         }
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TOCItem {
+    pub id: String,
+    pub title: String,
+    pub icon: Option<String>,
+    pub children: Vec<Page>,
+}
+
 /// Creates a new .mdx file for the given page in the workspace's `pages` directory.
 pub fn save_page(workspace_path: &Path, page: &Page) -> Result<(), String> {
     let pages_dir = workspace_path.join("pages");

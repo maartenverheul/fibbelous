@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NewWorkspace {
     pub slug: String,
     pub title: String,
@@ -11,6 +12,7 @@ pub struct NewWorkspace {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkspaceConnection {
     pub id: String,
     pub path: Option<String>,
@@ -19,6 +21,7 @@ pub struct WorkspaceConnection {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkspaceInfo {
     pub id: String,
     pub slug: String,

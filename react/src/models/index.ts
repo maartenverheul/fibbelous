@@ -4,7 +4,7 @@ export type WorkspaceInfo = {
   title: string,
   icon?: string,
   description?: string,
-  created_at?: string,
+  createdAt?: string,
 }
 
 export type AddLocalRepoResponse = {
@@ -18,18 +18,26 @@ export type Page = {
   title: string;
   cover?: string;
   icon?: string;
-  created_at: string;
-  updated_at?: string;
-  deleted_at?: string;
+  createdAt: string;
+  updatedAt?: string;
+  deletedAt?: string;
 }
 
+export type TOCItem = {
+  id: string;
+  parentId?: string;
+  title: string;
+  icon?: string;
+  /** Intentionally made optional to indicate not loaded. */
+  children?: TOCItem[];
+}
 
 export type Database = {
   id: string;
   title: string;
   cover?: string;
   icon?: string;
-  created_at: string;
-  updated_at?: string;
-  deleted_at?: string;
+  createdAt: string;
+  updatedAt?: string;
+  deletedAt?: string;
 }

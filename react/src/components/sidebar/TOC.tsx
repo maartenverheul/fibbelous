@@ -1,18 +1,18 @@
-import { Page } from "@/models";
-import PageItem from "./PageItem";
+import { TOCItem } from "@/models";
+import TOCPageItem from "./TOCPageItem";
 import { cn } from "@/lib/utils";
 import { PlusIcon } from "lucide-react";
 
 type Props = {
   className?: string;
-  pages: Page[];
+  items: TOCItem[];
   onPageClick?(id: string): void;
   onNewPage?(parent?: string): void;
   onPageDelete?(id: string): void;
 };
 
-export default function PageList({
-  pages,
+export default function TOC({
+  items,
   className,
   onPageClick,
   onPageDelete,
@@ -29,13 +29,14 @@ export default function PageList({
         </button>
       )}
 
-      {pages.map((page) => (
-        <PageItem
-          key={page.id}
-          page={page}
-          onClick={onPageClick ? () => onPageClick?.(page.id) : undefined}
-          onDelete={onPageDelete ? () => onPageDelete?.(page.id) : undefined}
-          onNewPage={onNewPage ? () => onNewPage?.(page.id) : undefined}
+      {items.map((item) => (
+        <TOCPageItem
+          key={item.id}
+          item={item}
+          level={0}
+          onClick={onPageClick ? () => onPageClick?.(item.id) : undefined}
+          onDelete={onPageDelete ? () => onPageDelete?.(item.id) : undefined}
+          onNewPage={onNewPage ? () => onNewPage?.(item.id) : undefined}
         />
       ))}
     </div>
