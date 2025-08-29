@@ -6,3 +6,6 @@ pub mod pages;
 pub mod workspaces;
 
 pub use tracing;
+
+#[macro_use]
+extern crate slugify;

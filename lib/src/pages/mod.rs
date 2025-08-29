@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use slugify::slugify;
 use tracing::{error, info};
 
 use crate::id::generate_hex_id;
@@ -55,7 +56,8 @@ pub fn save_page(workspace_path: &Path, page: &Page) -> Result<(), String> {
         }
     }
 
-    let filename = format!("{}.mdx", page.id);
+    let slug = slugify!(&page.title);
+    let filename = format!("{}-{}.mdx", page.id, slug);
     let file_path = pages_dir.join(filename);
 
     let content = format!(
