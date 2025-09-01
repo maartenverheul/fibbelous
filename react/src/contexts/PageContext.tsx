@@ -1,6 +1,5 @@
 import { Page, TOCItem } from "@/models";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { useWorkspaceContext } from "./WorkspaceContext";
 import { usePageManager } from "./PageManagerContext";
 
 export type PageContextType = {
@@ -22,20 +21,18 @@ type Props = {
 }
 
 export function PageProvider({ pageId, children }: Props) {
-  const { selectedWorkspaceId } = useWorkspaceContext();
   const pageManager = usePageManager();
   const [data, setData] = useState<Page>();
   const [loaded, setLoaded] = useState(false);
-  const [content, setContent] = useState(`---
-id: ${pageId}
----`);
+  const [content, setContent] = useState<string>("");
 
   const breadcrumbs = useMemo<TOCItem[]>(() => pageManager.buildBreadcrumbs(pageId), [pageId]);
 
   useEffect(() => {
     console.debug("Loading page:", pageId);
-    pageManager.load(pageId).then((page) => {
-      setData(page);
+    pageManager.load(pageId).then((result) => {
+      setData(result?.page);
+      setContent(result?.content || "");
       setLoaded(true);
     }).catch(err => {
       console.error("Failed to load page:", err);

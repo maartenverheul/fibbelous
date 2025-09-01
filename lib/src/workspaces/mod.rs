@@ -15,7 +15,7 @@ pub struct NewWorkspace {
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceConnection {
     pub id: String,
-    pub path: Option<String>,
+    pub path: Option<PathBuf>,
     pub url: Option<String>,
     pub git: Option<String>,
 }

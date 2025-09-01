@@ -5,7 +5,7 @@ mod connections;
 
 use connections::{AppState, ConnectionManager};
 use lib::logging;
-use lib::pages::Page;
+use lib::pages::{Page, PageWithContent};
 use lib::tracing::{error, info, warn};
 use lib::workspaces::{WorkspaceConnection, WorkspaceInfo};
 use serde::Serialize;
@@ -143,7 +143,7 @@ fn add_local_repository(
 
     let connection_info = WorkspaceConnection {
         id: info.id.clone(),
-        path: Some(path.to_string_lossy().into()),
+        path: Some(path),
         url: None,
         git: None,
     };
@@ -305,6 +305,26 @@ fn create_new_page(
     }
 }
 
+#[tauri::command]
+fn read_page(
+    _app: AppHandle,
+    state: State<AppState>,
+    workspace_id: String,
+    page_id: String,
+) -> Result<PageWithContent, String> {
+    // Find the connection for the given workspace_id
+    let connections = state
+        .connections
+        .lock()
+        .map_err(|_| "mutex poisoned".to_string())?;
+    let connection = connections
+        .iter()
+        .find(|c| c.id == workspace_id)
+        .ok_or("Workspace connection not found".to_string())?;
+
+    lib::pages::read_page(&connection, &page_id)
+}
+
 fn main() {
     let context = tauri::generate_context!();
     let builder = tauri::Builder::default()
@@ -356,6 +376,7 @@ fn main() {
             get_saved_connections,
             remove_workspace,
             create_new_page,
+            read_page,
             open_workspace_in_system,
         ]);
 

@@ -1,4 +1,4 @@
-import { Page, TOCItem } from "@/models";
+import { Page, PageWithContent, TOCItem } from "@/models";
 import { createContext, useContext, useEffect, useState } from "react";
 import { useWorkspaceContext } from "./WorkspaceContext";
 import { invoke } from "@tauri-apps/api/tauri";
@@ -7,7 +7,7 @@ import { IS_APP } from "@/checks";
 export type PageManagerContextType = {
   pages: Page[];
   loaded: boolean;
-  load(id: string): Promise<Page | undefined>;
+  load(id: string): Promise<PageWithContent | undefined>;
   createPage(parent?: string): Promise<Page | null>;
   deletePage(id: string): void;
   buildBreadcrumbs(pageId: string): TOCItem[];
@@ -59,11 +59,9 @@ export function PageManagerProvider({ children }: { children: React.ReactNode })
     setPages((prev) => prev.filter((p) => p.id !== id));
   }
 
-  async function load(id: string) {
-    // TODO load from backend
-    await new Promise((r) => setTimeout(r, 10));
-
-    return pages.find((p) => p.id === id);
+  async function load(id: string): Promise<PageWithContent | undefined> {
+    const page = (await invoke("read_page", { workspace_id: selectedWorkspaceId, page_id: id })) as PageWithContent;
+    return page;
   }
 
   function buildBreadcrumbs(pageId: string): TOCItem[] {

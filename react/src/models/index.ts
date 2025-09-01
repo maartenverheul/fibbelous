@@ -24,6 +24,11 @@ export type Page = {
   deletedAt?: string;
 }
 
+export type PageWithContent = {
+  page: Page;
+  content: string;
+}
+
 export type TOCItem = {
   id: string;
   parentId?: string;

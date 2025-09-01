@@ -1,6 +1,7 @@
 import { RotateCcw, XCircle } from "lucide-react";
 import TopBar from "./TopBar";
 import { usePage } from "@/contexts/PageContext";
+import PageNotFound from "./PageNotFound";
 
 export default function PageViewer() {
   const page = usePage();
@@ -15,7 +16,7 @@ export default function PageViewer() {
   }
 
   if (!page.loaded) return <p>Loading...</p>;
-  if (!page.data) return <p>Error no page</p>;
+  if (!page.data) return <PageNotFound />;
 
   return (
     <div className="PageViewer bg-gray-900 h-full flex flex-col">

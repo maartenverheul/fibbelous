@@ -3,6 +3,7 @@ use slugify::slugify;
 use tracing::{error, info};
 
 use crate::id::generate_hex_id;
+use crate::workspaces::WorkspaceConnection;
 use std::fs;
 use std::path::Path;
 
@@ -34,6 +35,13 @@ impl Page {
             deleted_at: None,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PageWithContent {
+    pub page: Page,
+    pub content: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,4 +82,26 @@ pub fn save_page(workspace_path: &Path, page: &Page) -> Result<(), String> {
         return Err(format!("Failed to write .mdx file: {}", e));
     }
     Ok(())
+}
+
+pub fn read_page(
+    workspace: &WorkspaceConnection,
+    page_id: &str,
+) -> Result<PageWithContent, String> {
+    let path = workspace.path.as_ref().ok_or("Workspace path is not set")?;
+    let pages_dir = path.join("pages");
+    let slug = slugify!(page_id);
+    let file_path = pages_dir.join(format!("{}-{}.mdx", page_id, slug));
+
+    let content = fs::read_to_string(&file_path).map_err(|e| {
+        error!("Failed to read .mdx file: {}", e);
+        format!("Failed to read .mdx file: {}", e)
+    })?;
+
+    let page: Page = serde_json::from_str(&content).map_err(|e| {
+        error!("Failed to parse .mdx file: {}", e);
+        format!("Failed to parse .mdx file: {}", e)
+    })?;
+
+    Ok(PageWithContent { page, content })
 }
