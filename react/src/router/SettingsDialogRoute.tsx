@@ -18,7 +18,7 @@ export default function SettingsDialogRoute() {
       open={open}
       onOpenChange={onOpenChange}
       activeTab={activeTab}
-      onTabChange={(t) => navigate(`/settings/${t}`, { replace: true })}
+      onTabChange={(t) => navigate(`/_/settings/${t}`, { replace: true })}
     />
   );
 }

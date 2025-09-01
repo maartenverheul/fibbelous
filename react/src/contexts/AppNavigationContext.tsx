@@ -1,12 +1,15 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useMemo, useState } from "react";
 import { TOCItem } from "@/models";
 import { usePageManager } from "./PageManagerContext";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate, useNavigation } from "react-router";
 
 export type AppNavigationContextType = {
+  urlWorkspaceSlug: string | undefined;
   tabs: TOCItem[];
   activeTabIndex?: number;
   openPage(pageId: string, newTab?: boolean): boolean;
+  pageLink(pageId: string): string;
+  openHome(): boolean;
   closeTab(index: number): boolean;
   changeTab(index: number): void;
 };
@@ -14,11 +17,16 @@ export type AppNavigationContextType = {
 const AppNavigationContext = createContext<AppNavigationContextType | undefined>(undefined);
 
 export function AppNavigationProvider({ children }: { children: React.ReactNode }) {
+  const location = useLocation();
   const navigate = useNavigate();
   const pageManager = usePageManager();
 
   const [activeTab, setActiveTab] = useState<number | undefined>();
   const [tabs, setTabs] = useState<TOCItem[]>([]);
+
+  const urlWorkspaceId = useMemo(() => {
+    return location?.pathname.split("/")[1];
+  }, [location]);
 
   function openPage(pageId: string, newTab: boolean = false) {
     const page = pageManager.pages.find((p) => p.id === pageId);
@@ -47,6 +55,15 @@ export function AppNavigationProvider({ children }: { children: React.ReactNode 
     return true;
   }
 
+  function pageLink(pageId: string) {
+    return `/${urlWorkspaceId}/${pageId}`;
+  }
+
+  function openHome() {
+    navigate(`/`);
+    return true;
+  }
+
   function navigateToPage(pageId: string) {
     navigate(`/workspace/page/${pageId}`);
   }
@@ -72,9 +89,12 @@ export function AppNavigationProvider({ children }: { children: React.ReactNode 
   }
 
   return <AppNavigationContext.Provider value={{
+    urlWorkspaceSlug: urlWorkspaceId,
     tabs,
     activeTabIndex: activeTab,
     openPage,
+    pageLink,
+    openHome,
     closeTab,
     changeTab
   }}>{children}</AppNavigationContext.Provider>;

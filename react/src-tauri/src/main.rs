@@ -325,6 +325,76 @@ fn read_page(
     lib::pages::read_page(&connection, &page_id)
 }
 
+#[tauri::command]
+fn save_remote_workspaces(
+    app: AppHandle,
+    state: State<AppState>,
+    urls: Vec<String>,
+) -> Result<(), String> {
+    info!(target: "main", "Saving {} remote workspace URL(s)", urls.len());
+
+    let mut any_saved = false;
+
+    for url in urls.into_iter() {
+        if url.trim().is_empty() {
+            continue;
+        }
+        match ConnectionManager::resolve_workspace_from_url(&url) {
+            Some(ws) => {
+                let conn = WorkspaceConnection {
+                    id: ws.id.clone(),
+                    path: None,
+                    url: Some(url.clone()),
+                    git: None,
+                };
+                match ConnectionManager::save_connection_info(&app, &conn) {
+                    Ok(updated) => {
+                        if updated {
+                            // Update in-memory connections without duplicating by id
+                            let mut conns = state.connections.lock().expect("mutex poisoned");
+                            if !conns.iter().any(|c| c.id == conn.id) {
+                                conns.push(conn);
+                            }
+                            any_saved = true;
+                        } else {
+                            info!(target: "main", "Connection for workspace {} already exists, skipping", ws.id);
+                        }
+                    }
+                    Err(e) => {
+                        error!(target: "main", "Failed to save remote connection: {}", e);
+                    }
+                }
+            }
+            None => {
+                warn!(target: "main", "Could not resolve workspace from URL: {}", url);
+            }
+        }
+    }
+
+    // Recompute and update workspaces if anything changed
+    if any_saved {
+        let conns_snapshot = state.connections.lock().expect("mutex poisoned");
+        let new_workspaces =
+            ConnectionManager::compute_workspaces_from_connections(&conns_snapshot);
+        drop(conns_snapshot);
+        let mut ws = state.workspaces.lock().expect("mutex poisoned");
+        *ws = new_workspaces;
+        // Ensure active workspace is valid; set to first when missing/invalid
+        {
+            let mut active = state.active_workspace.lock().expect("mutex poisoned");
+            if active
+                .as_ref()
+                .map(|a| !ws.iter().any(|w| w.id == a.id))
+                .unwrap_or(true)
+            {
+                *active = ws.first().cloned();
+            }
+        }
+    }
+
+    Ok(())
+}
+
 fn main() {
     let context = tauri::generate_context!();
     let builder = tauri::Builder::default()
@@ -378,6 +448,7 @@ fn main() {
             create_new_page,
             read_page,
             open_workspace_in_system,
+            save_remote_workspaces,
         ]);
 
     let app = builder

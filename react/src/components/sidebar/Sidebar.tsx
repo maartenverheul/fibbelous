@@ -6,22 +6,24 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useNavigate } from "react-router";
-import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
+import { useWorkspaceManager } from "@/contexts/WorkspaceManagerContext";
 import TOC from "./TOC";
 import { useTOCContext } from "@/contexts/TOCContext";
 import { usePageManager } from "@/contexts/PageManagerContext";
 import { useAppNavigation } from "@/contexts/AppNavigationContext";
+import { useWorkspace } from "@/contexts/WorkspaceContext";
 
 export default function Sidebar() {
   const navigate = useNavigate();
-  const { workspaces, selectedWorkspaceId, switchWorkspace } =
-    useWorkspaceContext();
+  const { list: workspaces, selectedWorkspaceId, switchWorkspace } =
+    useWorkspaceManager();
+  const workspace = useWorkspace();
   const { openPage } = useAppNavigation();
   const { createPage, deletePage } = usePageManager();
   const { toc, loadTOC } = useTOCContext();
 
   function changeWorkspace(id: string) {
-    if (id === "$manage") navigate("/settings/workspaces");
+    if (id === "$manage") navigate("/_/settings/workspaces");
     else {
       const target = workspaces.find((w) => w.id === id);
       switchWorkspace(id);
@@ -43,7 +45,7 @@ export default function Sidebar() {
 
   return (
     <div className="bg-gray-800 h-full w-full">
-      <Select value={selectedWorkspaceId} onValueChange={changeWorkspace}>
+      <Select value={workspace?.id} onValueChange={changeWorkspace}>
         <SelectTrigger className="text-white rounded-none border-0 border-b select-none w-full text-center mx-auto text-lg !h-12">
           <SelectValue
             placeholder="Select an option"

@@ -2,9 +2,9 @@ import React from "react";
 import { createBrowserRouter, redirect } from "react-router";
 import WorkspaceRedirect from "@/router/WorkspaceRedirect";
 import App from "../App";
-import SettingsDialogRoute from "./SettingsDialogRoute";
 import WorkspaceGuard from "@/router/WorkspaceGuard";
-import { Outlet } from "react-router";
+import WorkspaceWildcard from "./WorkspaceWildcard";
+import WorkspaceHome from "@/components/pageviewer/WorkspaceHome";
 
 const router = createBrowserRouter([
   {
@@ -16,14 +16,18 @@ const router = createBrowserRouter([
         element: React.createElement(WorkspaceRedirect),
       },
       {
-        path: "settings/:tab?",
-        Component: SettingsDialogRoute,
-      },
-      {
         path: ":workspaceId",
-        element: React.createElement(WorkspaceGuard, {
-          children: React.createElement(Outlet),
-        }),
+        Component: WorkspaceGuard,
+        children: [
+          {
+            index: true,
+            Component: WorkspaceHome,
+          },
+          {
+            path: "*",
+            Component: WorkspaceWildcard, // Matches /:workspaceId/*
+          },
+        ],
       },
     ],
   },

@@ -51,7 +51,7 @@ export default function PageTabBar({ tabs, className }: Props) {
   // Only show if multiple tabs
   if (!tabs || tabs.length <= 1) return null;
 
-  return <List className={cn("flex w-full h-min gap-2 pt-1 px-2 pb-0 bg-gray-800 border-b border-gray-700", className)}>
+  return <div className={cn("flex w-full h-min gap-2 pt-1 px-2 pb-0 bg-gray-800 border-b border-gray-700", className)}>
     {tabs.map((tab, i) => (
       <PageTab
         key={tab.id}
@@ -61,5 +61,5 @@ export default function PageTabBar({ tabs, className }: Props) {
         onSelect={() => tabContext.changeTab(i)}
       />
     ))}
-  </List>
+  </div>
 }

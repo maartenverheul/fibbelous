@@ -1,16 +1,22 @@
 export type WorkspaceInfo = {
-  id: string,
-  slug: string,
-  title: string,
-  icon?: string,
-  description?: string,
-  createdAt?: string,
+  id: string;
+  slug: string;
+  title: string;
+  icon?: string;
+  description?: string;
+  createdAt?: string;
+}
+
+export type WorkspaceConnection = {
+  url: string;
+
+  info?: WorkspaceInfo;
 }
 
 export type AddLocalRepoResponse = {
-  ok: boolean,
-  error?: string,
-  workspace?: WorkspaceInfo,
+  ok: boolean;
+  error?: string;
+  workspace?: WorkspaceInfo;
 }
 
 export type Page = {

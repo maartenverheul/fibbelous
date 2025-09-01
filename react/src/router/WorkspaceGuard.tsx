@@ -1,15 +1,14 @@
 import { useEffect } from "react";
-import { useNavigate, useParams } from "react-router";
-import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
+import { Outlet, useNavigate, useParams } from "react-router";
+import { useWorkspaceManager } from "@/contexts/WorkspaceManagerContext";
 
-export default function WorkspaceGuard({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function WorkspaceGuard() {
   const { workspaceId } = useParams();
-  const { workspaces, loaded } = useWorkspaceContext();
+  const { list: workspaces, loaded } = useWorkspaceManager();
   const navigate = useNavigate();
+
+  console.log("WG");
+
 
   useEffect(() => {
     if (!loaded) return;
@@ -24,5 +23,5 @@ export default function WorkspaceGuard({
     }
   }, [loaded, workspaceId, workspaces, navigate]);
 
-  return children;
+  return <Outlet />;
 }

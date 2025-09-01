@@ -1,16 +1,17 @@
 import ReactDOM from "react-dom/client";
 import { RouterProvider } from "react-router";
 import router from "./router";
-import { WorkspaceProvider } from "./contexts/WorkspaceContext";
+import { WorkspaceManagerProvider } from "./contexts/WorkspaceManagerContext";
 import { TOCProvider } from "./contexts/TOCContext";
 import { PageManagerProvider } from "./contexts/PageManagerContext";
+import { WorkspaceProvider } from "./contexts/WorkspaceContext";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-  <WorkspaceProvider>
+  <WorkspaceManagerProvider>
     <PageManagerProvider>
       <TOCProvider>
         <RouterProvider router={router} />
       </TOCProvider>
     </PageManagerProvider>
-  </WorkspaceProvider>
+  </WorkspaceManagerProvider>
 );

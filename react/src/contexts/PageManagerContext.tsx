@@ -1,6 +1,6 @@
 import { Page, PageWithContent, TOCItem } from "@/models";
 import { createContext, useContext, useEffect, useState } from "react";
-import { useWorkspaceContext } from "./WorkspaceContext";
+import { useWorkspaceManager } from "./WorkspaceManagerContext";
 import { invoke } from "@tauri-apps/api/tauri";
 import { IS_APP } from "@/checks";
 
@@ -16,7 +16,7 @@ export type PageManagerContextType = {
 const PageManagerContext = createContext<PageManagerContextType | undefined>(undefined);
 
 export function PageManagerProvider({ children }: { children: React.ReactNode }) {
-  const { selectedWorkspaceId } = useWorkspaceContext();
+  const { selectedWorkspaceId } = useWorkspaceManager();
   const [pages, setPages] = useState<Page[]>([]);
   const [loaded, setLoaded] = useState(false);
 

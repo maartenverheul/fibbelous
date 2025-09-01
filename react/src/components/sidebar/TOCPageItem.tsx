@@ -9,6 +9,7 @@ import { TOCItem } from "@/models";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "../ui/collapsible";
 import { usePageManager } from "@/contexts/PageManagerContext";
 import { useAppNavigation } from "@/contexts/AppNavigationContext";
+import { Link } from "react-router";
 
 type Props = {
   item: TOCItem;
@@ -28,7 +29,7 @@ export default function TOCPageItem({
 
   return (
     <Collapsible disabled={!hasChildren}>
-      <div className="flex items-end justify-center transition duration-75 hover:bg-gray-700 text-gray-400 gap-1 rounded relative group/page select-none text-sm">
+      <div className="flex items-center justify-center transition duration-75 hover:bg-gray-700 text-gray-400 gap-1 rounded relative group/page select-none text-sm">
         <div className="p-[2px]" style={{
           paddingLeft: `${level * pageIndent + 2}px`
         }}>
@@ -40,12 +41,13 @@ export default function TOCPageItem({
 
           </CollapsibleTrigger>
         </div>
-        <button
+        <Link
+          to={appNavigation.pageLink(item.id)}
           onClick={() => appNavigation.openPage(item.id)}
-          className="text-left block w-full cursor-pointer h-[28px] relative"
+          className="text-left block w-full cursor-pointer relative align-middle"
         >
           {item.title}
-        </button>
+        </Link>
         <div className="opacity-0 group-hover/page:opacity-100 flex p-[2px] rounded">
           <button
             className="cursor-pointer hover:bg-gray-500 rounded flex items-center justify-center"

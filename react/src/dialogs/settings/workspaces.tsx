@@ -5,21 +5,37 @@ import {
   ChevronRight,
   FolderOpen,
   FolderSymlink,
+  Loader2,
   PlusIcon,
   XIcon,
 } from "lucide-react";
-import { useWorkspaceContext } from "@/contexts/WorkspaceContext";
+import { useWorkspaceManager } from "@/contexts/WorkspaceManagerContext";
 import { EyeIcon } from "lucide-react";
-import { WorkspaceInfo } from "@/models";
+import { WorkspaceConnection, WorkspaceInfo } from "@/models";
 import { IS_APP } from "@/checks";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { CollapsibleTrigger } from "@radix-ui/react-collapsible";
+import { Checkbox } from "@/components/ui/checkbox";
+import { useAppNavigation } from "@/contexts/AppNavigationContext";
 
 export default function SettingsWorkspacePage() {
-  const { workspaces, pickLocal, deleteWorkspace, openInSystem, loaded } =
-    useWorkspaceContext();
+  const {
+    list: workspaces,
+    pickLocal,
+    deleteWorkspace,
+    fetchRemoteWorkspaces,
+    saveRemoteWorkspaces,
+    openInSystem,
+    loaded
+  } = useWorkspaceManager();
   const navigate = useNavigate();
+  const appNavigation = useAppNavigation();
+
   const [error, setError] = useState<string | null>(null);
+  const [remoteUrl, setRemoteUrl] = useState<string>("");
+  const [connecting, setConnecting] = useState<boolean>(false);
+  const [fetchedWorkspaces, setFetchedWorkspaces] = useState<WorkspaceInfo[] | undefined>();
+  const [selectedWorkspaces, setSelectedWorkspaces] = useState<string[]>([]);
 
   function handleRemove(workspace: WorkspaceInfo) {
     deleteWorkspace(workspace.id);
@@ -45,6 +61,42 @@ export default function SettingsWorkspacePage() {
       setError(res.error);
       return;
     }
+  }
+
+  async function connectToRemote() {
+    setConnecting(true);
+
+    const minTimeout = new Promise((resolve) => setTimeout(resolve, 500));
+    const fetchPromise = fetchRemoteWorkspaces(remoteUrl).catch((err) => {
+      setError(err.message || "Failed to fetch workspaces");
+      return [];
+    });
+
+    await Promise.all([minTimeout, fetchPromise]);
+    setFetchedWorkspaces(await fetchPromise);
+    setConnecting(false);
+  }
+
+  async function importSelectedWorkspaces() {
+    setError(null);
+    const selected = fetchedWorkspaces?.filter((w) => selectedWorkspaces.includes(w.id));
+    if (!selected || selected.length === 0) {
+      setError("No workspaces selected");
+      return;
+    }
+
+    const savedWorkspaces = selected.map((w): WorkspaceConnection => ({
+      info: w,
+      url: remoteUrl
+    }));
+
+    await saveRemoteWorkspaces(...savedWorkspaces)
+      .then(() => {
+        appNavigation.openHome();
+      })
+      .catch((err) => {
+        setError(err.message || "Failed to add remote workspaces");
+      });
   }
 
   return (
@@ -95,7 +147,7 @@ export default function SettingsWorkspacePage() {
               Add Workspace
               <ChevronRight className="ml-auto group-data-[state=open]:rotate-90 w-5 h-5 text-gray-500 transition-transform" />
             </CollapsibleTrigger>
-            <CollapsibleContent className="bg-gray-700/50 p-2 rounded-b-sm">
+            <CollapsibleContent className="bg-gray-700/50 p-4 pt-2 rounded-b-sm">
               {error && (
                 <div
                   role="alert"
@@ -108,7 +160,7 @@ export default function SettingsWorkspacePage() {
               {
                 IS_APP && <>
                   <p className="text-sm mb-1 text-gray-300">Local</p>
-                  <div className="flex flex-row gap-2 mt-2">
+                  <div className="flex flex-row gap-2 mt-2 mb-4">
                     <button
                       className="px-3 py-1 bg-blue-600 text-white rounded cursor-pointer w-full flex items-center justify-center gap-2"
                       onClick={startOpenLocal}
@@ -126,19 +178,63 @@ export default function SettingsWorkspacePage() {
                   </div>
                 </>
               }
-              <p className="mt-4 text-sm mb-1 text-gray-300">Remote</p>
-              <div className=" flex gap-2 items-center">
+              <p className="text-sm mb-1 text-gray-300">Remote</p>
+              <div className=" flex gap-2 items-center mb-2">
                 <input
                   type="text"
                   placeholder="https://server.example:8080"
                   className="px-2 py-1 rounded bg-gray-800 text-white border border-gray-600 flex-1 placeholder:text-gray-500"
+                  value={remoteUrl}
+                  onChange={(e) => setRemoteUrl(e.target.value)}
                 />
                 <button
-                  className="px-3 py-1 bg-blue-600 text-white rounded cursor-pointer"
+                  className="px-3 py-1 bg-blue-600 text-white rounded cursor-pointer w-24 disabled:bg-gray-600 disabled:cursor-default"
+                  disabled={!remoteUrl}
+                  onClick={connectToRemote}
                 >
-                  Connect
+                  {
+                    connecting ? <Loader2 className="mx-auto animate-spin" /> : "Connect"
+                  }
                 </button>
               </div>
+              {
+                fetchedWorkspaces && (
+                  <>
+                    <p className="text-sm mb-2 text-gray-300">Choose workspace(s) to import</p>
+                    <ul>
+                      {fetchedWorkspaces.map((workspace) => (
+                        <li key={workspace.id}>
+                          <label className="hover:bg-gray-700 cursor-pointer flex items-start gap-3 rounded-lg border p-3 has-[[aria-checked=true]]:border-gray-600 has-[[aria-checked=true]]:bg-gray-500 dark:has-[[aria-checked=true]]:border-gray-900 dark:has-[[aria-checked=true]]:bg-gray-950">
+                            <Checkbox
+                              id={`import-workspace-${workspace.id}`}
+                              checked={selectedWorkspaces.includes(workspace.id)}
+                              className="cursor-pointer data-[state=checked]:bg-gray-800"
+                              onCheckedChange={(checked) => {
+                                setSelectedWorkspaces((prev) =>
+                                  checked
+                                    ? [...prev, workspace.id]
+                                    : prev.filter((id) => id !== workspace.id)
+                                );
+                              }}
+                            />
+                            <p className="text-sm leading-none font-medium">
+                              <span className="mr-2">{workspace.icon}</span>
+                              <span>{workspace.title}</span>
+                            </p>
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                    <button
+                      className="mt-4 px-4 py-1 bg-blue-600 text-white rounded cursor-pointer disabled:bg-gray-600 disabled:cursor-default"
+                      onClick={importSelectedWorkspaces}
+                      disabled={selectedWorkspaces.length === 0}
+                    >
+                      Import ({selectedWorkspaces.length}) workspaces
+                    </button>
+                  </>
+                )
+              }
             </CollapsibleContent>
           </Collapsible>
         </>

@@ -2,12 +2,13 @@ import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { Outlet } from "react-router";
 import Sidebar from "./components/sidebar/Sidebar";
 import "./App.css";
-import { useWorkspaceContext } from "./contexts/WorkspaceContext";
+import { useWorkspaceManager } from "./contexts/WorkspaceManagerContext";
 import PageViewer from "./components/pageviewer/PageViewer";
 import PageTabBar from "./components/tabs/PageTabBar";
 import { AppNavigationProvider, useAppNavigation } from "./contexts/AppNavigationContext";
 import { Tabs, TabsContent } from "@radix-ui/react-tabs";
 import { PageProvider } from "./contexts/PageContext";
+import { WorkspaceProvider } from "./contexts/WorkspaceContext";
 
 function TabsShell() {
   const tabsContext = useAppNavigation();
@@ -25,47 +26,36 @@ function TabsShell() {
         className="relative"
       />
       <div className="relative flex-1">
-        {tabsContext.tabs.map((tab, i) => {
-          return (
-            <TabsContent
-              key={i}
-              value={i.toString()}
-              forceMount
-              className="absolute inset-0 h-full w-full data-[state=inactive]:opacity-0 data-[state=inactive]:pointer-events-none"
-            >
-              <PageProvider pageId={tab.id}>
-                <PageViewer />
-              </PageProvider>
-            </TabsContent>
-          );
-        })}
+        <div
+          className="absolute inset-0 h-full w-full data-[state=inactive]:opacity-0 data-[state=inactive]:pointer-events-none"
+        >
+          <Outlet />
+        </div>
       </div>
     </Tabs>
   );
 }
 
 function App() {
-  const workspaceContext = useWorkspaceContext();
+  const workspaceContext = useWorkspaceManager();
 
   return (
     <AppNavigationProvider>
-      <div className="w-screen h-screen bg-gray-950">
-        {workspaceContext.workspaces.length && (
-          <PanelGroup direction="horizontal" className="h-full">
-            <Panel defaultSize={20} minSize={10} maxSize={40} className="h-full">
-              <Sidebar />
-            </Panel>
-            <PanelResizeHandle className="bg-black w-[1px] cursor-col-resize" />
-            <Panel defaultSize={80} minSize={40} className="h-full bg-gray-500 flex flex-col">
-              <TabsShell />
-            </Panel>
-          </PanelGroup>
-        )}
-
-        <div className="absolute top-0 left-0 w-full h-full pointer-events-none">
-          <Outlet />
+      <WorkspaceProvider>
+        <div className="w-screen h-screen bg-gray-950">
+          {workspaceContext.list.length && (
+            <PanelGroup direction="horizontal" className="h-full">
+              <Panel defaultSize={20} minSize={10} maxSize={40} className="h-full">
+                <Sidebar />
+              </Panel>
+              <PanelResizeHandle className="bg-black w-[1px] cursor-col-resize" />
+              <Panel defaultSize={80} minSize={40} className="h-full bg-gray-500 flex flex-col">
+                <TabsShell />
+              </Panel>
+            </PanelGroup>
+          )}
         </div>
-      </div>
+      </WorkspaceProvider>
     </AppNavigationProvider>
   );
 }
