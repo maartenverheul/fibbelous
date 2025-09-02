@@ -1,4 +1,8 @@
-import { AddLocalRepoResponse, WorkspaceConnection, WorkspaceInfo } from "@/models";
+import {
+  AddLocalRepoResponse,
+  WorkspaceConnection,
+  WorkspaceInfo,
+} from "@/models";
 import {
   createContext,
   useContext,
@@ -8,7 +12,7 @@ import {
 } from "react";
 import { invoke } from "@tauri-apps/api/tauri";
 import { IS_APP } from "@/checks";
-import useLocalStorageState from 'use-local-storage-state';
+import useLocalStorageState from "use-local-storage-state";
 
 export type WorkspaceManagerContextType = {
   list: WorkspaceInfo[];
@@ -26,26 +30,36 @@ export type WorkspaceManagerContextType = {
   openInSystem(id: string): void;
 };
 
-export const WorkspaceManagerContext = createContext<WorkspaceManagerContextType | undefined>(
-  undefined
-);
+export const WorkspaceManagerContext = createContext<
+  WorkspaceManagerContextType | undefined
+>(undefined);
 
-export function WorkspaceManagerProvider({ children }: { children: ReactNode }) {
+export function WorkspaceManagerProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
   // Initial workspaces can be loaded from a static list or fetched from an API
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<
     string | undefined
   >(undefined);
   const [loaded, setLoaded] = useState(false);
-  const [remoteWorkspaces, setRemoteWorkspaces] = useLocalStorageState<WorkspaceConnection[]>('remoteWorkspaces', {
-    defaultValue: []
+  const [remoteWorkspaces, setRemoteWorkspaces] = useLocalStorageState<
+    WorkspaceConnection[]
+  >("remoteWorkspaces", {
+    defaultValue: [],
   });
-  const [list, setList] = useState<WorkspaceInfo[]>(remoteWorkspaces.map(w => w.info!));
+  const [list, setList] = useState<WorkspaceInfo[]>(
+    remoteWorkspaces.map((w) => w.info!)
+  );
+
+  console.log("WM", remoteWorkspaces, list);
 
   useEffect(() => {
     if (!IS_APP) {
       setLoaded(true);
       return;
-    };
+    }
     invoke("get_saved_workspaces")
       .then((result) => {
         const workspaces = result as WorkspaceInfo[];
@@ -92,9 +106,7 @@ export function WorkspaceManagerProvider({ children }: { children: ReactNode }) 
   }
 
   function updateWorkspace(workspace: WorkspaceInfo) {
-    setList((prev) =>
-      prev.map((w) => (w.id === workspace.id ? workspace : w))
-    );
+    setList((prev) => prev.map((w) => (w.id === workspace.id ? workspace : w)));
   }
 
   async function deleteWorkspace(id: string) {
@@ -139,7 +151,9 @@ export function WorkspaceManagerProvider({ children }: { children: ReactNode }) 
     }
   }
 
-  async function saveRemoteWorkspaces(...workspaces: WorkspaceConnection[]): Promise<void> {
+  async function saveRemoteWorkspaces(
+    ...workspaces: WorkspaceConnection[]
+  ): Promise<void> {
     if (!IS_APP) {
       setRemoteWorkspaces((prev) => [...prev, ...workspaces]);
     } else {

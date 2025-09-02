@@ -3354,6 +3354,7 @@ dependencies = [
  "hyper",
  "lib",
  "tokio",
+ "tower-http",
 ]
 
 [[package]]

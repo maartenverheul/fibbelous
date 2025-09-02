@@ -1,31 +1,28 @@
-import React from "react";
 import { createBrowserRouter, redirect } from "react-router";
-import WorkspaceRedirect from "@/router/WorkspaceRedirect";
 import App from "../App";
-import WorkspaceGuard from "@/router/WorkspaceGuard";
 import WorkspaceWildcard from "./WorkspaceWildcard";
 import WorkspaceHome from "@/components/pageviewer/WorkspaceHome";
+import WorkspaceGuard from "./WorkspaceGuard";
 
 const router = createBrowserRouter([
   {
     path: "/",
-    Component: App,
+    element: (
+      <WorkspaceGuard>
+        <App />
+      </WorkspaceGuard>
+    ),
     children: [
       {
-        index: true,
-        element: React.createElement(WorkspaceRedirect),
-      },
-      {
-        path: ":workspaceId",
-        Component: WorkspaceGuard,
+        path: ":workspaceSlug",
         children: [
           {
             index: true,
-            Component: WorkspaceHome,
+            element: <WorkspaceHome />,
           },
           {
             path: "*",
-            Component: WorkspaceWildcard, // Matches /:workspaceId/*
+            element: <WorkspaceWildcard />, // Matches /:workspaceId/*
           },
         ],
       },

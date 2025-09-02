@@ -26,7 +26,7 @@ export default function SettingsWorkspacePage() {
     fetchRemoteWorkspaces,
     saveRemoteWorkspaces,
     openInSystem,
-    loaded
+    loaded,
   } = useWorkspaceManager();
   const navigate = useNavigate();
   const appNavigation = useAppNavigation();
@@ -34,7 +34,9 @@ export default function SettingsWorkspacePage() {
   const [error, setError] = useState<string | null>(null);
   const [remoteUrl, setRemoteUrl] = useState<string>("");
   const [connecting, setConnecting] = useState<boolean>(false);
-  const [fetchedWorkspaces, setFetchedWorkspaces] = useState<WorkspaceInfo[] | undefined>();
+  const [fetchedWorkspaces, setFetchedWorkspaces] = useState<
+    WorkspaceInfo[] | undefined
+  >();
   const [selectedWorkspaces, setSelectedWorkspaces] = useState<string[]>([]);
 
   function handleRemove(workspace: WorkspaceInfo) {
@@ -79,16 +81,20 @@ export default function SettingsWorkspacePage() {
 
   async function importSelectedWorkspaces() {
     setError(null);
-    const selected = fetchedWorkspaces?.filter((w) => selectedWorkspaces.includes(w.id));
+    const selected = fetchedWorkspaces?.filter((w) =>
+      selectedWorkspaces.includes(w.id)
+    );
     if (!selected || selected.length === 0) {
       setError("No workspaces selected");
       return;
     }
 
-    const savedWorkspaces = selected.map((w): WorkspaceConnection => ({
-      info: w,
-      url: remoteUrl
-    }));
+    const savedWorkspaces = selected.map(
+      (w): WorkspaceConnection => ({
+        info: w,
+        url: remoteUrl,
+      })
+    );
 
     await saveRemoteWorkspaces(...savedWorkspaces)
       .then(() => {
@@ -102,8 +108,8 @@ export default function SettingsWorkspacePage() {
   return (
     <div className="SettingsWorkspacePage p-2 select-none">
       <h2 className="text-lg font-bold mb-4">Workspaces</h2>
-      {
-        loaded && <>
+      {loaded && (
+        <>
           <ul className="mb-4">
             {workspaces.map((w) => (
               <li
@@ -157,8 +163,8 @@ export default function SettingsWorkspacePage() {
                   <span>{error}</span>
                 </div>
               )}
-              {
-                IS_APP && <>
+              {IS_APP && (
+                <>
                   <p className="text-sm mb-1 text-gray-300">Local</p>
                   <div className="flex flex-row gap-2 mt-2 mb-4">
                     <button
@@ -177,7 +183,7 @@ export default function SettingsWorkspacePage() {
                     </button>
                   </div>
                 </>
-              }
+              )}
               <p className="text-sm mb-1 text-gray-300">Remote</p>
               <div className=" flex gap-2 items-center mb-2">
                 <input
@@ -192,53 +198,55 @@ export default function SettingsWorkspacePage() {
                   disabled={!remoteUrl}
                   onClick={connectToRemote}
                 >
-                  {
-                    connecting ? <Loader2 className="mx-auto animate-spin" /> : "Connect"
-                  }
+                  {connecting ? (
+                    <Loader2 className="mx-auto animate-spin" />
+                  ) : (
+                    "Connect"
+                  )}
                 </button>
               </div>
-              {
-                fetchedWorkspaces && (
-                  <>
-                    <p className="text-sm mb-2 text-gray-300">Choose workspace(s) to import</p>
-                    <ul>
-                      {fetchedWorkspaces.map((workspace) => (
-                        <li key={workspace.id}>
-                          <label className="hover:bg-gray-700 cursor-pointer flex items-start gap-3 rounded-lg border p-3 has-[[aria-checked=true]]:border-gray-600 has-[[aria-checked=true]]:bg-gray-500 dark:has-[[aria-checked=true]]:border-gray-900 dark:has-[[aria-checked=true]]:bg-gray-950">
-                            <Checkbox
-                              id={`import-workspace-${workspace.id}`}
-                              checked={selectedWorkspaces.includes(workspace.id)}
-                              className="cursor-pointer data-[state=checked]:bg-gray-800"
-                              onCheckedChange={(checked) => {
-                                setSelectedWorkspaces((prev) =>
-                                  checked
-                                    ? [...prev, workspace.id]
-                                    : prev.filter((id) => id !== workspace.id)
-                                );
-                              }}
-                            />
-                            <p className="text-sm leading-none font-medium">
-                              <span className="mr-2">{workspace.icon}</span>
-                              <span>{workspace.title}</span>
-                            </p>
-                          </label>
-                        </li>
-                      ))}
-                    </ul>
-                    <button
-                      className="mt-4 px-4 py-1 bg-blue-600 text-white rounded cursor-pointer disabled:bg-gray-600 disabled:cursor-default"
-                      onClick={importSelectedWorkspaces}
-                      disabled={selectedWorkspaces.length === 0}
-                    >
-                      Import ({selectedWorkspaces.length}) workspaces
-                    </button>
-                  </>
-                )
-              }
+              {fetchedWorkspaces && (
+                <>
+                  <p className="text-sm mb-2 text-gray-300">
+                    Choose workspace(s) to import
+                  </p>
+                  <ul>
+                    {fetchedWorkspaces.map((workspace) => (
+                      <li key={workspace.id} className="mb-2">
+                        <label className="hover:bg-gray-700 cursor-pointer flex items-start gap-3 rounded-lg border p-3 has-[[aria-checked=true]]:border-gray-600 has-[[aria-checked=true]]:bg-gray-500 dark:has-[[aria-checked=true]]:border-gray-900 dark:has-[[aria-checked=true]]:bg-gray-950">
+                          <Checkbox
+                            id={`import-workspace-${workspace.id}`}
+                            checked={selectedWorkspaces.includes(workspace.id)}
+                            className="cursor-pointer data-[state=checked]:bg-gray-800"
+                            onCheckedChange={(checked) => {
+                              setSelectedWorkspaces((prev) =>
+                                checked
+                                  ? [...prev, workspace.id]
+                                  : prev.filter((id) => id !== workspace.id)
+                              );
+                            }}
+                          />
+                          <p className="text-sm leading-none font-medium">
+                            <span className="mr-2">{workspace.icon}</span>
+                            <span>{workspace.title}</span>
+                          </p>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                  <button
+                    className="mt-4 px-4 py-1 bg-blue-600 text-white rounded cursor-pointer disabled:bg-gray-600 disabled:cursor-default"
+                    onClick={importSelectedWorkspaces}
+                    disabled={selectedWorkspaces.length === 0}
+                  >
+                    Import ({selectedWorkspaces.length}) workspaces
+                  </button>
+                </>
+              )}
             </CollapsibleContent>
           </Collapsible>
         </>
-      }
+      )}
     </div>
   );
 }

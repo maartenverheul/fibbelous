@@ -1,24 +1,33 @@
 import SettingsDialog, { pages } from "@/dialogs/settings";
-import { useNavigate, useParams } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 
 export default function SettingsDialogRoute() {
   const navigate = useNavigate();
-  const { tab } = useParams();
+  const { hash } = useLocation();
 
-  const open = true;
+  const open = hash?.startsWith("#settings/") ?? false;
+
   const onOpenChange = (open: boolean) => {
-    if (!open) navigate("..", { replace: true });
+    console.log("O", open);
+
+    if (!open) navigate("/");
   };
 
+  console.log(hash);
+
+  const activeTabName = hash?.substring(10);
+
   const activeTab =
-    tab && pages.find((p) => p.key === tab) ? tab : pages[0].key;
+    activeTabName && pages.find((p) => p.key === activeTabName)
+      ? activeTabName
+      : pages[0].key;
 
   return (
     <SettingsDialog
       open={open}
       onOpenChange={onOpenChange}
       activeTab={activeTab}
-      onTabChange={(t) => navigate(`/_/settings/${t}`, { replace: true })}
+      onTabChange={(t) => navigate(`#settings/${t}`, { replace: true })}
     />
   );
 }

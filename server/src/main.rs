@@ -1,6 +1,7 @@
 use axum::extract::Path;
 use axum::{response::IntoResponse, routing::get, serve, Json, Router};
 use std::net::SocketAddr;
+use tower_http::cors::{Any, CorsLayer};
 
 // Placeholder handlers for CRUD endpoints
 async fn list_workspaces() -> impl IntoResponse {
@@ -40,6 +41,11 @@ async fn remove_workspace(Path(id): Path<String>) -> impl IntoResponse {
 async fn main() {
     lib::workspaces::ensure_workspace();
 
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
+
     let app = Router::new()
         .route("/", get(|| async { "Hello, world!" }))
         .route("/api/hello", get(hello))
@@ -52,7 +58,8 @@ async fn main() {
             get(get_workspace)
                 .put(update_workspace)
                 .delete(remove_workspace),
-        );
+        )
+        .layer(cors);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3001));
     println!("Listening on http://{}", addr);

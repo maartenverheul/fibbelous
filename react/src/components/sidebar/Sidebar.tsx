@@ -15,15 +15,18 @@ import { useWorkspace } from "@/contexts/WorkspaceContext";
 
 export default function Sidebar() {
   const navigate = useNavigate();
-  const { list: workspaces, selectedWorkspaceId, switchWorkspace } =
-    useWorkspaceManager();
+  const {
+    list: workspaces,
+    selectedWorkspaceId,
+    switchWorkspace,
+  } = useWorkspaceManager();
   const workspace = useWorkspace();
   const { openPage } = useAppNavigation();
   const { createPage, deletePage } = usePageManager();
   const { toc, loadTOC } = useTOCContext();
 
   function changeWorkspace(id: string) {
-    if (id === "$manage") navigate("/_/settings/workspaces");
+    if (id === "$manage") navigate("#settings/workspaces");
     else {
       const target = workspaces.find((w) => w.id === id);
       switchWorkspace(id);
