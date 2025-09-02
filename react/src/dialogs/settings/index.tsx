@@ -2,6 +2,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import SettingsGeneralPage from "./general";
 import SettingsWorkspacesPage from "./workspaces";
+import { FolderIcon, SettingsIcon } from "lucide-react";
 
 interface SettingsDialogProps {
   open: boolean;
@@ -14,13 +15,13 @@ export const pages = [
   {
     key: "general",
     label: "General",
-    icon: <div></div>,
+    icon: SettingsIcon,
     component: <SettingsGeneralPage />,
   },
   {
     key: "workspaces",
     label: "Workspaces",
-    icon: <div></div>,
+    icon: FolderIcon,
     component: <SettingsWorkspacesPage />,
   },
 ];
@@ -49,7 +50,7 @@ export default function SettingsDialog({
                   className="w-full flex gap-2 items-center text-white/60 justify-start px-3 py-2 h-[40px] transition-colors border-l-4 border-transparent data-[state=active]:bg-gray-700 data-[state=active]:border-blue-500 data-[state=active]:text-blue-400"
                   value={page.key}
                 >
-                  {/* <Icon className="w-5 h-5" /> */}
+                  <Icon className="w-5 h-5" />
                   {page.label}
                 </TabsTrigger>
               );

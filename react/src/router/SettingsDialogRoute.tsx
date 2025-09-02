@@ -10,7 +10,7 @@ export default function SettingsDialogRoute() {
   const onOpenChange = (open: boolean) => {
     console.log("O", open);
 
-    if (!open) navigate("/");
+    if (!open) navigate("#");
   };
 
   console.log(hash);
