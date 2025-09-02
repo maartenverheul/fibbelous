@@ -5,7 +5,7 @@ use tracing::{error, info};
 use crate::id::generate_hex_id;
 use crate::workspaces::WorkspaceConnection;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -49,6 +49,7 @@ pub struct PageWithContent {
 pub struct TOCItem {
     pub id: String,
     pub title: String,
+    pub slug: String,
     pub icon: Option<String>,
     pub children: Vec<Page>,
 }
@@ -104,4 +105,43 @@ pub fn read_page(
     })?;
 
     Ok(PageWithContent { page, content })
+}
+
+pub fn get_page_path(workspace: &WorkspaceConnection, page_id: &str) -> Result<PathBuf, String> {
+    let path = workspace.path.as_ref().ok_or("Workspace path is not set")?;
+    let pages_dir = path.join("pages");
+    let slug = slugify!(page_id);
+    let file_path = pages_dir.join(format!("{}-{}.mdx", page_id, slug));
+    Ok(file_path)
+}
+
+pub fn get_child_pages(
+    workspace: &WorkspaceConnection,
+    parent_id: &str,
+) -> Result<Vec<Page>, String> {
+    // let pages = get_all_pages(workspace)?;
+    // let child_pages = pages
+    //     .into_iter()
+    //     .filter(|page| page.parent_id.as_ref() == Some(parent_id))
+    //     .collect();
+    // Ok(child_pages)
+    Ok(vec![]) // Placeholder implementation
+}
+
+pub fn make_toc(workspace: &WorkspaceConnection, parent_id: &str) -> Result<Vec<TOCItem>, String> {
+    let pages = get_child_pages(workspace, parent_id)?;
+    let mut toc = Vec::new();
+
+    for page in pages {
+        let item = TOCItem {
+            id: page.id,
+            title: page.title.clone(),
+            slug: slugify!(&page.title),
+            icon: page.icon,
+            children: Vec::new(),
+        };
+        toc.push(item);
+    }
+
+    Ok(toc)
 }

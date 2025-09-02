@@ -40,9 +40,10 @@ export function TOCProvider({ children }: { children: React.ReactNode }) {
     pages.forEach((page) => {
       pageMap.set(page.id, {
         id: page.id,
+        slug: page.slug,
         title: page.title,
         icon: page.icon,
-        children: []
+        children: [],
       });
     });
 
@@ -71,15 +72,20 @@ export function TOCProvider({ children }: { children: React.ReactNode }) {
     return toc;
   }
 
-  return <TOCContext.Provider value={{
-    toc,
-    loadTOC
-  }}>{children}</TOCContext.Provider>;
+  return (
+    <TOCContext.Provider
+      value={{
+        toc,
+        loadTOC,
+      }}
+    >
+      {children}
+    </TOCContext.Provider>
+  );
 }
 
 export function useTOCContext() {
   const ctx = useContext(TOCContext);
-  if (!ctx)
-    throw new Error("useTOCContext must be used within a TOCProvider");
+  if (!ctx) throw new Error("useTOCContext must be used within a TOCProvider");
   return ctx;
 }

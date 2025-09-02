@@ -50,7 +50,7 @@ export function WorkspaceManagerProvider({
     defaultValue: [],
   });
   const [list, setList] = useState<WorkspaceInfo[]>(
-    remoteWorkspaces.map((w) => w.info!)
+    remoteWorkspaces.map((w) => ({ ...w.info!, connection: w }))
   );
 
   useEffect(() => {

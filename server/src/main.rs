@@ -1,4 +1,5 @@
 use axum::extract::Path;
+use axum::routing::post;
 use axum::{response::IntoResponse, routing::get, serve, Json, Router};
 use std::net::SocketAddr;
 use tower_http::cors::{Any, CorsLayer};
@@ -37,6 +38,10 @@ async fn remove_workspace(Path(id): Path<String>) -> impl IntoResponse {
     format!("Delete workspace with id: {}", id)
 }
 
+async fn make_toc(Path(id): Path<String>) -> impl IntoResponse {
+    format!("Make TOC for workspace with id: {}", id)
+}
+
 #[tokio::main]
 async fn main() {
     lib::workspaces::ensure_workspace();
@@ -59,6 +64,11 @@ async fn main() {
                 .put(update_workspace)
                 .delete(remove_workspace),
         )
+        .route(
+            "/api/workspaces/:id/pages",
+            get(list_workspaces).post(create_workspace),
+        )
+        .route("/api/workspaces/:id/toc", post(make_toc))
         .layer(cors);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3001));

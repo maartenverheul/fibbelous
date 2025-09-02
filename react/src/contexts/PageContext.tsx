@@ -2,6 +2,11 @@ import { Page, TOCItem } from "@/models";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { usePageManager } from "./PageManagerContext";
 import { useAppNavigation } from "./AppNavigationContext";
+import { useWorkspace } from "./WorkspaceContext";
+import PageService, {
+  LocalPageService,
+  RemotePageService,
+} from "@/services/PageService";
 
 export type PageContextType = {
   data: Page | undefined;
@@ -22,14 +27,22 @@ type Props = {
 
 export function PageProvider({ children }: Props) {
   const appNavigation = useAppNavigation();
+  const workspace = useWorkspace();
   const pageManager = usePageManager();
   const [data, setData] = useState<Page>();
   const [loaded, setLoaded] = useState(false);
   const [content, setContent] = useState<string>("");
 
+  const pageService = useMemo<PageService>(() => {
+    return workspace?.connection?.url == undefined
+      ? new LocalPageService()
+      : new RemotePageService(workspace.connection.url, workspace);
+  }, []);
+
   useEffect(() => {
-    const pageId = appNavigation.urlPageSlug!;
-    pageManager
+    const pageId = appNavigation.urlPageId!;
+
+    pageService
       .load(pageId)
       .then((result) => {
         setData(result?.page);

@@ -13,36 +13,45 @@ export type PageManagerContextType = {
   buildBreadcrumbs(pageId: string): TOCItem[];
 };
 
-const PageManagerContext = createContext<PageManagerContextType | undefined>(undefined);
+const PageManagerContext = createContext<PageManagerContextType | undefined>(
+  undefined
+);
 
-export function PageManagerProvider({ children }: { children: React.ReactNode }) {
+export function PageManagerProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const { selectedWorkspaceId } = useWorkspaceManager();
   const [pages, setPages] = useState<Page[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    setPages([
-      {
-        id: "1",
-        title: "Test",
-        icon: "1️⃣",
-        createdAt: new Date().toISOString(),
-      },
-      {
-        id: "2",
-        parentId: "1",
-        title: "Test 2",
-        icon: "2️⃣",
-        createdAt: new Date().toISOString(),
-      },
-      {
-        id: "3",
-        parentId: "2",
-        title: "Test 3",
-        icon: "3️⃣",
-        createdAt: new Date().toISOString(),
-      }
-    ]);
+    // setPages([
+    //   {
+    //     id: "1",
+    //     title: "Test",
+    //     slug: "test",
+    //     icon: "1️⃣",
+    //     createdAt: new Date().toISOString(),
+    //   },
+    //   {
+    //     id: "2",
+    //     parentId: "1",
+    //     title: "Test 2",
+    //     slug: "test-2",
+    //     icon: "2️⃣",
+    //     createdAt: new Date().toISOString(),
+    //   },
+    //   {
+    //     id: "3",
+    //     parentId: "2",
+    //     title: "Test 3",
+    //     slug: "test-3",
+    //     icon: "3️⃣",
+    //     createdAt: new Date().toISOString(),
+    //   },
+    // ]);
     setLoaded(true);
   }, [selectedWorkspaceId]);
 
@@ -60,7 +69,10 @@ export function PageManagerProvider({ children }: { children: React.ReactNode })
   }
 
   async function load(id: string): Promise<PageWithContent | undefined> {
-    const page = (await invoke("read_page", { workspace_id: selectedWorkspaceId, page_id: id })) as PageWithContent;
+    const page = (await invoke("read_page", {
+      workspace_id: selectedWorkspaceId,
+      page_id: id,
+    })) as PageWithContent;
     return page;
   }
 
@@ -70,29 +82,38 @@ export function PageManagerProvider({ children }: { children: React.ReactNode })
     while (currentPage) {
       breadcrumbs.unshift({
         id: currentPage.id,
+        slug: currentPage.slug,
         title: currentPage.title,
         icon: currentPage.icon,
       });
-      currentPage = currentPage.parentId ? pages.find((p) => p.id === currentPage!.parentId) : undefined;
+      currentPage = currentPage.parentId
+        ? pages.find((p) => p.id === currentPage!.parentId)
+        : undefined;
     }
     return breadcrumbs;
   }
 
-  return <PageManagerContext.Provider value={{
-    pages,
-    loaded,
-    load,
-    createPage,
-    deletePage,
-    buildBreadcrumbs
-  }}>
-    {children}
-  </PageManagerContext.Provider>;
+  return (
+    <PageManagerContext.Provider
+      value={{
+        pages,
+        loaded,
+        load,
+        createPage,
+        deletePage,
+        buildBreadcrumbs,
+      }}
+    >
+      {children}
+    </PageManagerContext.Provider>
+  );
 }
 
 export function usePageManager() {
   const ctx = useContext(PageManagerContext);
   if (!ctx)
-    throw new Error("usePageManagerContext must be used within a PageManagerProvider");
+    throw new Error(
+      "usePageManagerContext must be used within a PageManagerProvider"
+    );
   return ctx;
 }

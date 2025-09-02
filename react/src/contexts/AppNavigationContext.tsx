@@ -7,11 +7,12 @@ import { useWorkspaceManager } from "./WorkspaceManagerContext";
 export type AppNavigationContextType = {
   urlWorkspaceSlug: string | undefined;
   urlPageSlug: string | undefined;
+  urlPageId: string | undefined;
   tabs: TOCItem[];
   activeTabIndex?: number;
   openPage(pageId: string, newTab?: boolean): boolean;
-  pageLink(pageId: string): string;
-  openHome(): boolean;
+  pageLink(toc: TOCItem): string;
+  workspaceHomeLink(): string;
   closeTab(index: number): boolean;
   changeTab(index: number): void;
 };
@@ -32,7 +33,10 @@ export function AppNavigationProvider({
 
   const params = useParams();
   const { workspaceSlug } = params;
-  const pageSlug = params["*"];
+  const pageString = params["*"]?.split("/");
+  const pageId = pageString?.[pageString.length - 1];
+  const pageSlug = pageString?.[pageString.length - 2];
+  console.log(pageString, pageId, pageSlug);
 
   const [activeTab, setActiveTab] = useState<number | undefined>();
   const [tabs, setTabs] = useState<TOCItem[]>([]);
@@ -77,21 +81,21 @@ export function AppNavigationProvider({
       setActiveTab(activeTab);
     }
 
-    navigateToPage(page.id);
+    navigateToPage(page);
     return true;
   }
 
-  function pageLink(pageId: string) {
-    return `/${workspaceSlug}/${pageId}`;
+  function pageLink(toc: TOCItem) {
+    return `/${workspaceSlug}/${toc.slug}/${toc.id}`;
   }
 
-  function openHome() {
-    navigate(`/`);
-    return true;
+  function workspaceHomeLink() {
+    return `/${workspaceSlug ?? ""}`;
   }
 
-  function navigateToPage(pageId: string) {
-    navigate(`/workspace/page/${pageId}`);
+  function navigateToPage(page: TOCItem) {
+    if (!workspaceSlug) return;
+    navigate(`/${workspaceSlug}/${page.slug}/${page.id}`);
   }
 
   function closeTab(index: number) {
@@ -119,11 +123,12 @@ export function AppNavigationProvider({
       value={{
         urlWorkspaceSlug: workspaceSlug,
         urlPageSlug: pageSlug,
+        urlPageId: pageId,
         tabs,
         activeTabIndex: activeTab,
         openPage,
         pageLink,
-        openHome,
+        workspaceHomeLink,
         closeTab,
         changeTab,
       }}
