@@ -1,5 +1,5 @@
 import { CircleCheckBig } from "lucide-react";
-import Breadcrumbs from "./Tbreadcrumbs";
+import Breadcrumbs from "./Breadcrumbs";
 import { cn } from "@/lib/utils";
 
 type Props = {
