@@ -22,16 +22,11 @@ impl ConnectionManager {
     /// Returns the path to the app's persistent data folder, creating it if necessary.
     /// Uses Tauri's app-specific data directory with a temp fallback.
     pub fn app_data_dir(app: &AppHandle) -> std::io::Result<PathBuf> {
-        let dir = app
-            .path_resolver()
-            .app_data_dir()
-            .or_else(|| {
-                let mut tmp = env::temp_dir();
-                tmp.push("fibbelous_app_data");
-                Some(tmp)
-            })
-            .expect("failed to resolve app data dir");
-
+        let dir = app.path_resolver().app_data_dir().unwrap_or_else(|| {
+            let mut tmp = env::temp_dir();
+            tmp.push("fibbelous_app_data");
+            tmp
+        });
         if !dir.exists() {
             info!(target: "connections", "Creating app data folder at: {}", dir.display());
             std::fs::create_dir_all(&dir)?;
@@ -59,23 +54,23 @@ impl ConnectionManager {
             info!(target: "connections", "No existing connections file at {}", path.display());
             return Vec::new();
         }
-        match std::fs::read_to_string(&path) {
-            Ok(data) => match serde_json::from_str::<Vec<WorkspaceConnection>>(&data) {
-                Ok(list) => {
-                    let kept = Self::prune_missing_local_paths(&path, list);
-                    info!(target: "connections", "Found {} saved connection(s)", kept.len());
-                    kept
-                }
-                Err(err) => {
-                    error!(target: "connections", "Failed parsing {}: {}", path.display(), err);
-                    Vec::new()
-                }
-            },
+        let data = match std::fs::read_to_string(&path) {
+            Ok(data) => data,
             Err(err) => {
                 error!(target: "connections", "Failed reading {}: {}", path.display(), err);
-                Vec::new()
+                return Vec::new();
             }
-        }
+        };
+        let list = match serde_json::from_str::<Vec<WorkspaceConnection>>(&data) {
+            Ok(list) => list,
+            Err(err) => {
+                error!(target: "connections", "Failed parsing {}: {}", path.display(), err);
+                return Vec::new();
+            }
+        };
+        let kept = Self::prune_missing_local_paths(&path, list);
+        info!(target: "connections", "Found {} saved connection(s)", kept.len());
+        kept
     }
 
     /// Remove connections whose local `path` no longer exists. If anything is removed,
@@ -84,44 +79,34 @@ impl ConnectionManager {
         connections_file: &Path,
         list: Vec<WorkspaceConnection>,
     ) -> Vec<WorkspaceConnection> {
-        let (kept, removed): (Vec<WorkspaceConnection>, Vec<WorkspaceConnection>) =
-            list.into_iter().partition(|c| match &c.path {
-                Some(p) => Path::new(p).exists(),
-                None => true,
-            });
+        let (kept, removed): (Vec<WorkspaceConnection>, Vec<WorkspaceConnection>) = list
+            .into_iter()
+            .partition(|c| c.path.as_ref().map_or(true, |p| Path::new(p).exists()));
 
-        if !removed.is_empty() {
-            match serde_json::to_string_pretty(&kept) {
-                Ok(json) => {
-                    match std::fs::File::create(connections_file) {
-                        Ok(mut file) => {
-                            if let Err(e) = file.write_all(json.as_bytes()) {
-                                error!(
-                                    target: "connections",
-                                    "Failed to rewrite {} after pruning: {}",
-                                    connections_file.display(),
-                                    e
-                                );
-                            }
-                        }
-                        Err(e) => error!(
-                            target: "connections",
-                            "Failed to open {} for rewriting after pruning: {}",
-                            connections_file.display(),
-                            e
-                        ),
-                    }
-                    info!(
-                        target: "connections",
-                        "Pruned {} connection(s) with missing path; kept {}",
-                        removed.len(),
-                        kept.len()
-                    );
-                }
-                Err(e) => {
-                    error!(target: "connections", "Failed to serialize pruned connections: {}", e)
-                }
+        if removed.is_empty() {
+            return kept;
+        }
+
+        // Try to update the file with the pruned list
+        if let Ok(json) = serde_json::to_string_pretty(&kept) {
+            match std::fs::File::create(connections_file)
+                .and_then(|mut file| file.write_all(json.as_bytes()))
+            {
+                Ok(_) => info!(
+                    target: "connections",
+                    "Pruned {} connection(s) with missing path; kept {}",
+                    removed.len(),
+                    kept.len()
+                ),
+                Err(e) => error!(
+                    target: "connections",
+                    "Failed to update {} after pruning: {}",
+                    connections_file.display(),
+                    e
+                ),
             }
+        } else {
+            error!(target: "connections", "Failed to serialize pruned connections");
         }
 
         kept
@@ -136,12 +121,13 @@ impl ConnectionManager {
         let dir = Self::app_data_dir(app)?;
         let file_path = dir.join("connections.json");
         let mut connections: Vec<WorkspaceConnection> = if file_path.exists() {
-            let data = std::fs::read_to_string(&file_path)?;
-            serde_json::from_str(&data).unwrap_or_default()
+            std::fs::read_to_string(&file_path)
+                .ok()
+                .and_then(|data| serde_json::from_str(&data).ok())
+                .unwrap_or_default()
         } else {
             Vec::new()
         };
-        // Only add if not already present (by id)
         if connections.iter().any(|c| c.id == connection.id) {
             info!(target: "connections", "Connection_info with id {} already exists, skipping save", connection.id);
             return Ok(false);
@@ -158,29 +144,20 @@ impl ConnectionManager {
     pub fn resolve_workspace_from_path(path: &Path) -> Option<WorkspaceInfo> {
         let json_path = path.join("workspace.json");
         debug!(target: "connections", "Parsing workspace from path: {}", json_path.display());
-        match std::fs::read_to_string(&json_path) {
-            Ok(data) => match serde_json::from_str::<WorkspaceInfo>(&data) {
-                Ok(ws) => {
-                    info!(target: "connections", "Loaded workspace: {}", ws.slug);
-                    Some(ws)
-                }
-                Err(e) => {
-                    error!(
-                        target: "connections",
-                        "Failed to parse workspace JSON at {}: {}",
-                        json_path.display(),
-                        e
-                    );
-                    None
-                }
-            },
+        let data = match std::fs::read_to_string(&json_path) {
+            Ok(data) => data,
             Err(e) => {
-                debug!(
-                    target: "connections",
-                    "Failed reading {}: {}",
-                    json_path.display(),
-                    e
-                );
+                debug!(target: "connections", "Failed reading {}: {}", json_path.display(), e);
+                return None;
+            }
+        };
+        match serde_json::from_str::<WorkspaceInfo>(&data) {
+            Ok(ws) => {
+                info!(target: "connections", "Loaded workspace: {}", ws.slug);
+                Some(ws)
+            }
+            Err(e) => {
+                error!(target: "connections", "Failed to parse workspace JSON at {}: {}", json_path.display(), e);
                 None
             }
         }
@@ -200,43 +177,38 @@ impl ConnectionManager {
             warn!(target: "connections", "HTTP {} fetching {}", resp.status(), url);
             return None;
         }
-        match resp.json::<WorkspaceInfo>() {
-            Ok(ws) => {
-                info!(target: "connections", "Parsed workspace from URL: {}", url);
-                Some(ws)
-            }
+        let ws = match resp.json::<WorkspaceInfo>() {
+            Ok(ws) => ws,
             Err(e) => {
                 error!(target: "connections", "Failed parsing response from {}: {}", url, e);
-                None
+                return None;
             }
-        }
+        };
+        info!(target: "connections", "Parsed workspace from URL: {}", url);
+        Some(ws)
     }
 
     pub fn compute_workspaces_from_connections(
         conns: &[WorkspaceConnection],
     ) -> Vec<WorkspaceInfo> {
-        let mut out = Vec::new();
-        for c in conns {
+        conns.iter().filter_map(|c| {
             if let Some(p) = &c.path {
                 let path = Path::new(p);
                 debug!(target: "connections", "Trying local path for connection {}: {}", c.id, path.display());
                 if let Some(ws) = Self::resolve_workspace_from_path(path) {
-                    out.push(ws);
-                    continue;
-                } else {
-                    debug!(target: "connections", "No valid workspace at local path for connection {}", c.id);
+                    return Some(ws);
                 }
+                debug!(target: "connections", "No valid workspace at local path for connection {}", c.id);
             }
             if let Some(url) = &c.url {
                 debug!(target: "connections", "Trying URL for connection {}: {}", c.id, url);
                 if let Some(ws) = Self::resolve_workspace_from_url(url) {
-                    out.push(ws);
-                } else {
-                    error!(target: "connections", "Failed to resolve workspace from URL for connection {}", c.id);
+                    return Some(ws);
                 }
+                error!(target: "connections", "Failed to resolve workspace from URL for connection {}", c.id);
             }
-        }
-        out
+            None
+        }).collect()
     }
 
     /// Delete a connection by id from connections.json. Returns true if removed.
@@ -244,8 +216,10 @@ impl ConnectionManager {
         let dir = Self::app_data_dir(app)?;
         let file_path = dir.join("connections.json");
         let mut connections: Vec<WorkspaceConnection> = if file_path.exists() {
-            let data = std::fs::read_to_string(&file_path)?;
-            serde_json::from_str(&data).unwrap_or_default()
+            std::fs::read_to_string(&file_path)
+                .ok()
+                .and_then(|data| serde_json::from_str(&data).ok())
+                .unwrap_or_default()
         } else {
             Vec::new()
         };
