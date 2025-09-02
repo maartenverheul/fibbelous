@@ -7,13 +7,9 @@ export default function SettingsDialogRoute() {
 
   const open = hash?.startsWith("#settings/") ?? false;
 
-  const onOpenChange = (open: boolean) => {
-    console.log("O", open);
-
+  function onOpenChange(open: boolean) {
     if (!open) navigate("#");
-  };
-
-  console.log(hash);
+  }
 
   const activeTabName = hash?.substring(10);
 

@@ -1,4 +1,4 @@
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import SettingsGeneralPage from "./general";
 import SettingsWorkspacesPage from "./workspaces";

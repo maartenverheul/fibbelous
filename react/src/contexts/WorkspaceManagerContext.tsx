@@ -53,8 +53,6 @@ export function WorkspaceManagerProvider({
     remoteWorkspaces.map((w) => w.info!)
   );
 
-  console.log("WM", remoteWorkspaces, list);
-
   useEffect(() => {
     if (!IS_APP) {
       setLoaded(true);

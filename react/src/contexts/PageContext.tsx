@@ -1,6 +1,7 @@
 import { Page, TOCItem } from "@/models";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { usePageManager } from "./PageManagerContext";
+import { useAppNavigation } from "./AppNavigationContext";
 
 export type PageContextType = {
   data: Page | undefined;
@@ -16,29 +17,35 @@ export type PageContextType = {
 const PageContext = createContext<PageContextType | undefined>(undefined);
 
 type Props = {
-  pageId: string;
   children: React.ReactNode;
-}
+};
 
-export function PageProvider({ pageId, children }: Props) {
+export function PageProvider({ children }: Props) {
+  const appNavigation = useAppNavigation();
   const pageManager = usePageManager();
   const [data, setData] = useState<Page>();
   const [loaded, setLoaded] = useState(false);
   const [content, setContent] = useState<string>("");
 
-  const breadcrumbs = useMemo<TOCItem[]>(() => pageManager.buildBreadcrumbs(pageId), [pageId]);
-
   useEffect(() => {
-    console.debug("Loading page:", pageId);
-    pageManager.load(pageId).then((result) => {
-      setData(result?.page);
-      setContent(result?.content || "");
-      setLoaded(true);
-    }).catch(err => {
-      console.error("Failed to load page:", err);
-      setLoaded(true);
-    });
-  }, [pageId]);
+    const pageId = appNavigation.urlPageSlug!;
+    pageManager
+      .load(pageId)
+      .then((result) => {
+        setData(result?.page);
+        setContent(result?.content || "");
+        setLoaded(true);
+      })
+      .catch((err) => {
+        console.error("Failed to load page:", err);
+        setLoaded(true);
+      });
+  }, [appNavigation.urlPageSlug]);
+
+  const breadcrumbs = useMemo<TOCItem[]>(
+    () => pageManager.buildBreadcrumbs(appNavigation.urlPageSlug!),
+    [appNavigation.urlPageSlug]
+  );
 
   function updatePage(page: Page) {
     console.warn("TODO Updating page:", page);
@@ -56,20 +63,24 @@ export function PageProvider({ pageId, children }: Props) {
     console.warn("TODO Updating icon:", newIcon);
   }
 
-  function updateContent(newContent: string) {
+  function updateContent(newContent: string) {}
 
-  }
-
-  return <PageContext.Provider value={{
-    data,
-    content,
-    breadcrumbs,
-    loaded,
-    deletePage,
-    updateTitle,
-    updateIcon,
-    updateContent,
-  }}>{children}</PageContext.Provider>;
+  return (
+    <PageContext.Provider
+      value={{
+        data,
+        content,
+        breadcrumbs,
+        loaded,
+        deletePage,
+        updateTitle,
+        updateIcon,
+        updateContent,
+      }}
+    >
+      {children}
+    </PageContext.Provider>
+  );
 }
 
 export function usePage() {

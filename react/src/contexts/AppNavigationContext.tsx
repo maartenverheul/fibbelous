@@ -1,10 +1,12 @@
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { TOCItem } from "@/models";
 import { usePageManager } from "./PageManagerContext";
-import { useLocation, useNavigate, useNavigation } from "react-router";
+import { useLocation, useNavigate, useParams } from "react-router";
+import { useWorkspaceManager } from "./WorkspaceManagerContext";
 
 export type AppNavigationContextType = {
   urlWorkspaceSlug: string | undefined;
+  urlPageSlug: string | undefined;
   tabs: TOCItem[];
   activeTabIndex?: number;
   openPage(pageId: string, newTab?: boolean): boolean;
@@ -14,19 +16,45 @@ export type AppNavigationContextType = {
   changeTab(index: number): void;
 };
 
-const AppNavigationContext = createContext<AppNavigationContextType | undefined>(undefined);
+const AppNavigationContext = createContext<
+  AppNavigationContextType | undefined
+>(undefined);
 
-export function AppNavigationProvider({ children }: { children: React.ReactNode }) {
-  const location = useLocation();
+export function AppNavigationProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const navigate = useNavigate();
   const pageManager = usePageManager();
+  const { list: workspaces, loaded } = useWorkspaceManager();
+  const { hash } = useLocation();
+
+  const params = useParams();
+  const { workspaceSlug } = params;
+  const pageSlug = params["*"];
 
   const [activeTab, setActiveTab] = useState<number | undefined>();
   const [tabs, setTabs] = useState<TOCItem[]>([]);
 
-  const urlWorkspaceId = useMemo(() => {
-    return location?.pathname.split("/")[1];
-  }, [location]);
+  useEffect(() => {
+    if (!loaded) return;
+
+    // When no workspaces are loaded, navigate to the settings dialog
+    if (workspaces.length == 0 && !hash.startsWith("#settings"))
+      navigate("/#settings/workspaces");
+
+    // If no workspace is selected, navigate to the first workspace
+    if (!workspaceSlug && workspaces.length > 0) {
+      navigate(`/${workspaces[0].slug}`, { replace: true });
+    }
+
+    // If the selected workspace is invalid, redirect back
+    if (workspaceSlug && !workspaces.some((w) => w.slug === workspaceSlug)) {
+      // Invalid workspace, redirect to first valid workspace
+      navigate("/", { replace: true });
+    }
+  }, [loaded, workspaceSlug, workspaces, hash]);
 
   function openPage(pageId: string, newTab: boolean = false) {
     const page = pageManager.pages.find((p) => p.id === pageId);
@@ -44,9 +72,7 @@ export function AppNavigationProvider({ children }: { children: React.ReactNode 
     } else {
       // Change the current tab's page to the new page
       setTabs((prevTabs) =>
-        prevTabs.map((tab, idx) =>
-          idx === activeTab ? page : tab
-        )
+        prevTabs.map((tab, idx) => (idx === activeTab ? page : tab))
       );
       setActiveTab(activeTab);
     }
@@ -56,7 +82,7 @@ export function AppNavigationProvider({ children }: { children: React.ReactNode 
   }
 
   function pageLink(pageId: string) {
-    return `/${urlWorkspaceId}/${pageId}`;
+    return `/${workspaceSlug}/${pageId}`;
   }
 
   function openHome() {
@@ -88,21 +114,30 @@ export function AppNavigationProvider({ children }: { children: React.ReactNode 
     setActiveTab(index);
   }
 
-  return <AppNavigationContext.Provider value={{
-    urlWorkspaceSlug: urlWorkspaceId,
-    tabs,
-    activeTabIndex: activeTab,
-    openPage,
-    pageLink,
-    openHome,
-    closeTab,
-    changeTab
-  }}>{children}</AppNavigationContext.Provider>;
+  return (
+    <AppNavigationContext.Provider
+      value={{
+        urlWorkspaceSlug: workspaceSlug,
+        urlPageSlug: pageSlug,
+        tabs,
+        activeTabIndex: activeTab,
+        openPage,
+        pageLink,
+        openHome,
+        closeTab,
+        changeTab,
+      }}
+    >
+      {children}
+    </AppNavigationContext.Provider>
+  );
 }
 
 export function useAppNavigation() {
   const ctx = useContext(AppNavigationContext);
   if (!ctx)
-    throw new Error("useAppNavigation must be used within an AppNavigationProvider");
+    throw new Error(
+      "useAppNavigation must be used within an AppNavigationProvider"
+    );
   return ctx;
 }

@@ -1,16 +1,21 @@
 import { createBrowserRouter, redirect } from "react-router";
 import App from "../App";
-import WorkspaceWildcard from "./WorkspaceWildcard";
 import WorkspaceHome from "@/components/pageviewer/WorkspaceHome";
 import WorkspaceGuard from "./WorkspaceGuard";
+import PageViewer from "@/components/pageviewer/PageViewer";
+import { WorkspaceProvider } from "@/contexts/WorkspaceContext";
+import { AppNavigationProvider } from "@/contexts/AppNavigationContext";
+import { PageProvider } from "@/contexts/PageContext";
 
 const router = createBrowserRouter([
   {
     path: "/",
     element: (
-      <WorkspaceGuard>
-        <App />
-      </WorkspaceGuard>
+      <AppNavigationProvider>
+        <WorkspaceProvider>
+          <App />
+        </WorkspaceProvider>
+      </AppNavigationProvider>
     ),
     children: [
       {
@@ -22,7 +27,11 @@ const router = createBrowserRouter([
           },
           {
             path: "*",
-            element: <WorkspaceWildcard />, // Matches /:workspaceId/*
+            element: (
+              <PageProvider>
+                <PageViewer />
+              </PageProvider>
+            ), // Matches /:workspaceId/*
           },
         ],
       },

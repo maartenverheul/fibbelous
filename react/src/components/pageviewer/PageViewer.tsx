@@ -1,14 +1,14 @@
 import { RotateCcw, XCircle } from "lucide-react";
-import TopBar from "./TopBar";
+import TopBar from "./TtopBar";
 import { usePage } from "@/contexts/PageContext";
 import PageNotFound from "./PageNotFound";
 
 export default function PageViewer() {
   const page = usePage();
 
-  function removeCover() { }
+  function removeCover() {}
 
-  function changeCover() { }
+  function changeCover() {}
 
   function changeTitle(newTitle: string) {
     // Update the page title
@@ -25,7 +25,9 @@ export default function PageViewer() {
         <div
           className="PageCover w-full bg-center bg-cover relative group"
           style={{
-            backgroundImage: page.data.cover ? `url(${page.data.cover})` : undefined,
+            backgroundImage: page.data.cover
+              ? `url(${page.data.cover})`
+              : undefined,
             height: page.data.cover ? "300px" : "100px",
           }}
         >

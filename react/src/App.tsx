@@ -3,14 +3,12 @@ import { Outlet } from "react-router";
 import Sidebar from "./components/sidebar/Sidebar";
 import "./App.css";
 import { useWorkspaceManager } from "./contexts/WorkspaceManagerContext";
-import PageViewer from "./components/pageviewer/PageViewer";
 import PageTabBar from "./components/tabs/PageTabBar";
 import {
   AppNavigationProvider,
   useAppNavigation,
 } from "./contexts/AppNavigationContext";
-import { Tabs, TabsContent } from "@radix-ui/react-tabs";
-import { PageProvider } from "./contexts/PageContext";
+import { Tabs } from "@radix-ui/react-tabs";
 import { WorkspaceProvider } from "./contexts/WorkspaceContext";
 import SettingsDialogRoute from "./router/SettingsDialogRoute";
 
@@ -42,33 +40,32 @@ function App() {
   const workspaceContext = useWorkspaceManager();
 
   return (
-    <AppNavigationProvider>
-      <WorkspaceProvider>
-        <div className="w-screen h-screen bg-gray-950">
-          {workspaceContext.list.length && (
-            <PanelGroup direction="horizontal" className="h-full">
-              <Panel
-                defaultSize={20}
-                minSize={10}
-                maxSize={40}
-                className="h-full"
-              >
-                <Sidebar />
-              </Panel>
-              <PanelResizeHandle className="bg-black w-[1px] cursor-col-resize" />
-              <Panel
-                defaultSize={80}
-                minSize={40}
-                className="h-full bg-gray-500 flex flex-col"
-              >
-                <TabsShell />
-              </Panel>
-            </PanelGroup>
-          )}
-        </div>
-        <SettingsDialogRoute />
-      </WorkspaceProvider>
-    </AppNavigationProvider>
+    <>
+      <div className="w-screen h-screen bg-gray-950">
+        {workspaceContext.list.length && (
+          <PanelGroup direction="horizontal" className="h-full">
+            <Panel
+              defaultSize={20}
+              minSize={10}
+              maxSize={40}
+              className="h-full"
+            >
+              <Sidebar />
+            </Panel>
+            <PanelResizeHandle className="bg-black w-[1px] cursor-col-resize" />
+            <Panel
+              defaultSize={80}
+              minSize={40}
+              className="h-full bg-gray-500 flex flex-col"
+            >
+              <TabsShell />
+            </Panel>
+          </PanelGroup>
+        )}
+      </div>
+
+      <SettingsDialogRoute />
+    </>
   );
 }
 
