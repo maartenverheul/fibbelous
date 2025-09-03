@@ -2,8 +2,7 @@ use std::path::Path;
 
 use crate::migration::Migrator;
 use sea_orm::entity::prelude::*;
-use sea_orm::sea_query::OnConflict;
-use sea_orm::{ConnectOptions, Database, DatabaseConnection, DbErr, Set};
+use sea_orm::{ConnectOptions, Database, DatabaseConnection, DbErr};
 use sea_orm_migration::MigratorTrait;
 use tracing::log::LevelFilter;
 use tracing::{debug, error, info};
@@ -52,59 +51,80 @@ pub async fn init_index_db(location: &Path) -> Result<DatabaseConnection, DbErr>
     Ok(db)
 }
 
-/// Tiny smoke test helper: set and get a setting value.
-pub async fn set_setting(db: &DatabaseConnection, key: &str, value: &str) -> Result<(), DbErr> {
-    use settings::{ActiveModel as SettingsActive, Column as SettingsColumn, Entity as Settings};
-    let am = SettingsActive {
-        key: Set(key.to_string()),
-        value: Set(value.to_string()),
-    };
-    Settings::insert(am)
-        .on_conflict(
-            OnConflict::column(SettingsColumn::Key)
-                .update_column(SettingsColumn::Value)
-                .to_owned(),
-        )
-        .exec(db)
-        .await?;
-    Ok(())
+// Repository-style helpers working with the domain Page type
+pub async fn create_page(
+    db: &DatabaseConnection,
+    page: crate::pages::Page,
+) -> Result<crate::pages::Page, DbErr> {
+    let am: pages::ActiveModel = page.into();
+    let model = am.insert(db).await?;
+    Ok(model.into())
 }
 
-pub async fn get_setting(db: &DatabaseConnection, key: &str) -> Result<Option<String>, DbErr> {
-    use settings::Entity as Settings;
-    Ok(Settings::find_by_id(key.to_string())
+pub async fn get_page(
+    db: &DatabaseConnection,
+    id: &str,
+) -> Result<Option<crate::pages::Page>, DbErr> {
+    Ok(pages::Entity::find_by_id(id.to_string())
         .one(db)
         .await?
-        .map(|m| m.value))
+        .map(|m| m.into()))
 }
 
-// Entities (optional, used for settings/documents CRUD; schema controlled via migrations)
-mod settings {
-    use super::*;
-    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
-    #[sea_orm(table_name = "settings")]
-    pub struct Model {
-        #[sea_orm(primary_key)]
-        pub key: String,
-        pub value: String,
+pub async fn update_page(
+    db: &DatabaseConnection,
+    page: crate::pages::Page,
+) -> Result<crate::pages::Page, DbErr> {
+    use sea_orm::EntityTrait;
+    // Ensure it exists; if not, return not found
+    let exists = pages::Entity::find_by_id(page.id.clone()).one(db).await?;
+    if exists.is_none() {
+        return Err(DbErr::RecordNotFound(format!("page {} not found", page.id)));
     }
-
-    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-    pub enum Relation {}
-
-    impl ActiveModelBehavior for ActiveModel {}
+    let am: pages::ActiveModel = page.into();
+    let model = am.update(db).await?;
+    Ok(model.into())
 }
 
-mod documents {
+pub async fn delete_page(db: &DatabaseConnection, id: &str) -> Result<(), DbErr> {
+    use sea_orm::EntityTrait;
+    let res = pages::Entity::delete_by_id(id.to_string()).exec(db).await?;
+    if res.rows_affected == 0 {
+        Err(DbErr::RecordNotFound(format!("page {} not found", id)))
+    } else {
+        Ok(())
+    }
+}
+
+pub async fn list_children(
+    db: &DatabaseConnection,
+    parent_id: Option<&str>,
+) -> Result<Vec<crate::pages::Page>, DbErr> {
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+    let mut query = pages::Entity::find();
+    query = match parent_id {
+        Some(pid) => query.filter(pages::Column::ParentId.eq(pid.to_string())),
+        None => query.filter(pages::Column::ParentId.is_null()),
+    };
+    let rows = query.all(db).await?;
+    Ok(rows.into_iter().map(Into::into).collect())
+}
+
+// Entity: pages (schema controlled via migrations)
+mod pages {
     use super::*;
     #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
-    #[sea_orm(table_name = "documents")]
+    #[sea_orm(table_name = "pages")]
     pub struct Model {
         #[sea_orm(primary_key)]
         pub id: String,
-        pub path: String,
-        pub title: Option<String>,
-        pub updated_at: i64,
+        pub parent_id: Option<String>,
+        pub title: String,
+        pub cover: Option<String>,
+        pub icon: Option<String>,
+        pub created_at: String,
+        pub updated_at: Option<String>,
+        pub deleted_at: Option<String>,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -114,3 +134,35 @@ mod documents {
 }
 
 // Note: schema_migrations table is managed by sea-orm-migration internally
+
+// Mappers between ORM entity and domain model
+impl From<pages::Model> for crate::pages::Page {
+    fn from(m: pages::Model) -> Self {
+        crate::pages::Page {
+            id: m.id,
+            parent_id: m.parent_id,
+            title: m.title,
+            cover: m.cover,
+            icon: m.icon,
+            created_at: m.created_at,
+            updated_at: m.updated_at,
+            deleted_at: m.deleted_at,
+        }
+    }
+}
+
+impl From<crate::pages::Page> for pages::ActiveModel {
+    fn from(p: crate::pages::Page) -> Self {
+        use sea_orm::ActiveValue::Set;
+        pages::ActiveModel {
+            id: Set(p.id),
+            parent_id: Set(p.parent_id),
+            title: Set(p.title),
+            cover: Set(p.cover),
+            icon: Set(p.icon),
+            created_at: Set(p.created_at),
+            updated_at: Set(p.updated_at),
+            deleted_at: Set(p.deleted_at),
+        }
+    }
+}

@@ -2,25 +2,30 @@ use axum::extract::{Path, State};
 use axum::routing::post;
 use axum::{response::IntoResponse, routing::get, serve, Json, Router};
 use lib::tracing::info;
+use lib::workspaces;
 use sea_orm::DatabaseConnection;
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use tower_http::cors::{Any, CorsLayer};
 
 // Placeholder handlers for CRUD endpoints
 #[derive(Clone)]
-struct AppState {
+struct WorkspaceState {
+    id: String,
+    path: std::path::PathBuf,
+    info: lib::workspaces::WorkspaceInfo,
     db: DatabaseConnection,
 }
 
-async fn list_workspaces(State(_state): State<AppState>) -> impl IntoResponse {
-    match lib::workspaces::list() {
-        Ok(list) => Json(list).into_response(),
-        Err(e) => (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to list workspaces: {}", e),
-        )
-            .into_response(),
-    }
+#[derive(Clone)]
+struct AppState {
+    workspaces: HashMap<String, WorkspaceState>,
+}
+
+async fn list_workspaces(State(state): State<AppState>) -> impl IntoResponse {
+    let list: Vec<lib::workspaces::WorkspaceInfo> =
+        state.workspaces.values().map(|w| w.info.clone()).collect();
+    Json(list).into_response()
 }
 
 // Simple hello endpoint for connection testing
@@ -76,21 +81,65 @@ async fn main() {
     let logs_dir = data_dir.join("logs");
     lib::logging::init(logs_dir.as_path());
 
+    info!(target: "main", "==============");
+    info!(target: "main", "SERVER STARTED");
+
     lib::workspaces::ensure_workspace();
+    let state = init_app_state().await;
+    let app = build_app(state);
+    start_server(app).await;
+}
 
-    // Open shared index database in ./.data/index.sqlite
-    let db = lib::indexing::init_index_db(&data_dir)
-        .await
-        .expect("Failed to open index database in .data");
+async fn init_workspaces() -> HashMap<String, WorkspaceState> {
+    info!(target: "main", "Initializing workspaces");
+    let dirs = lib::workspaces::workspace_dirs().unwrap_or_default();
+    let infos_vec = lib::workspaces::list().unwrap_or_default();
+    let info_map: HashMap<String, lib::workspaces::WorkspaceInfo> =
+        infos_vec.into_iter().map(|i| (i.id.clone(), i)).collect();
 
-    let state = AppState { db };
+    let mut workspaces: HashMap<String, WorkspaceState> = HashMap::new();
+    info!(target: "main", "Found {} workspace directories", dirs.len());
+    for dir in dirs {
+        info!(target: "main", "Initializing workspace at: {:?}", dir);
+        if let Some(os_id) = dir.file_name() {
+            let id = os_id.to_string_lossy().to_string();
+            let info = match info_map.get(&id) {
+                Some(i) => i.clone(),
+                None => continue,
+            };
+            let fib = dir.join(".fibbelous");
+            let db = lib::indexing::init_index_db(&fib)
+                .await
+                .unwrap_or_else(|e| panic!("Failed to init DB for workspace {}: {}", id, e));
+            workspaces.insert(
+                id.clone(),
+                WorkspaceState {
+                    id,
+                    path: dir.clone(),
+                    info,
+                    db,
+                },
+            );
+        }
+    }
 
+    workspaces
+}
+
+async fn init_app_state() -> AppState {
+    // Load workspace infos and initialize a DB per workspace in <workspace_root>/.fibbelous
+    let workspaces = init_workspaces().await;
+
+    AppState { workspaces }
+}
+
+fn build_app(state: AppState) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
         .allow_headers(Any);
 
-    let app = Router::new()
+    Router::new()
         .route("/", get(|| async { "Hello, world!" }))
         .route("/api/hello", get(hello))
         .route(
@@ -109,8 +158,10 @@ async fn main() {
         )
         .route("/api/workspaces/:id/toc", post(make_toc))
         .layer(cors)
-        .with_state(state);
+        .with_state(state)
+}
 
+async fn start_server(app: Router) {
     let addr = SocketAddr::from(([127, 0, 0, 1], 3001));
     info!("Listening on http://{}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
