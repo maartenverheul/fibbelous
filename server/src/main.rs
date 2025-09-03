@@ -1,11 +1,18 @@
-use axum::extract::Path;
+use axum::extract::{Path, State};
 use axum::routing::post;
 use axum::{response::IntoResponse, routing::get, serve, Json, Router};
+use lib::tracing::info;
+use sea_orm::DatabaseConnection;
 use std::net::SocketAddr;
 use tower_http::cors::{Any, CorsLayer};
 
 // Placeholder handlers for CRUD endpoints
-async fn list_workspaces() -> impl IntoResponse {
+#[derive(Clone)]
+struct AppState {
+    db: DatabaseConnection,
+}
+
+async fn list_workspaces(State(_state): State<AppState>) -> impl IntoResponse {
     match lib::workspaces::list() {
         Ok(list) => Json(list).into_response(),
         Err(e) => (
@@ -22,11 +29,31 @@ async fn hello() -> impl IntoResponse {
     (axum::http::StatusCode::OK, "Hello from server!")
 }
 
-async fn create_workspace() -> impl IntoResponse {
-    "Create workspace (placeholder)"
+async fn create_workspace(State(state): State<AppState>) -> impl IntoResponse {
+    // if let Err(e) = lib::indexing::set_setting(&state.db, "last_action", "create_workspace").await {
+    //     return (
+    //         axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+    //         format!("DB error: {}", e),
+    //     )
+    //         .into_response();
+    // }
+    (
+        axum::http::StatusCode::CREATED,
+        "Workspace created (placeholder)",
+    )
+        .into_response()
 }
 
-async fn get_workspace(Path(id): Path<String>) -> impl IntoResponse {
+async fn get_workspace(State(state): State<AppState>, Path(id): Path<String>) -> impl IntoResponse {
+    // let last = lib::indexing::get_setting(&state.db, "last_action")
+    //     .await
+    //     .ok()
+    //     .flatten();
+    // Json(serde_json::json!({
+    //     "id": id,
+    //     "lastAction": last,
+    // }))
+    // .into_response()
     format!("Get workspace with id: {}", id)
 }
 
@@ -44,7 +71,19 @@ async fn make_toc(Path(id): Path<String>) -> impl IntoResponse {
 
 #[tokio::main]
 async fn main() {
+    // Initialize logging to ./.data/logs
+    let data_dir = std::path::PathBuf::from(".data");
+    let logs_dir = data_dir.join("logs");
+    lib::logging::init(logs_dir.as_path());
+
     lib::workspaces::ensure_workspace();
+
+    // Open shared index database in ./.data/index.sqlite
+    let db = lib::indexing::init_index_db(&data_dir)
+        .await
+        .expect("Failed to open index database in .data");
+
+    let state = AppState { db };
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -69,10 +108,11 @@ async fn main() {
             get(list_workspaces).post(create_workspace),
         )
         .route("/api/workspaces/:id/toc", post(make_toc))
-        .layer(cors);
+        .layer(cors)
+        .with_state(state);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3001));
-    println!("Listening on http://{}", addr);
+    info!("Listening on http://{}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     serve(listener, app).await.unwrap();
 }

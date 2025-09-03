@@ -1,84 +1,116 @@
 use std::path::Path;
 
-use rusqlite::{params, Connection, Result};
+use crate::migration::Migrator;
+use sea_orm::entity::prelude::*;
+use sea_orm::sea_query::OnConflict;
+use sea_orm::{ConnectOptions, Database, DatabaseConnection, DbErr, Set};
+use sea_orm_migration::MigratorTrait;
+use tracing::log::LevelFilter;
 use tracing::{debug, error, info};
 
 /// Name of the app database file within a workspace directory
 pub const DB_FILE: &str = "index.sqlite";
 
-/// Open (and create if missing) the workspace SQLite database at `<workspace_root>/databases/app.sqlite`.
-/// Ensures the base schema exists.
-pub fn init_index_db(location: &Path) -> Result<Connection> {
+/// Open (and create if missing) the workspace SQLite database
+/// Ensures the base schema exists. Returns an async SeaORM DatabaseConnection.
+pub async fn init_index_db(location: &Path) -> Result<DatabaseConnection, DbErr> {
     let db_path = location.join(DB_FILE);
     info!("Initializing index database at {:?}", db_path);
     if let Some(parent) = db_path.parent() {
         if let Err(e) = std::fs::create_dir_all(parent) {
             error!("Failed to create parent directory {:?}: {}", parent, e);
-            return Err(rusqlite::Error::ToSqlConversionFailure(Box::new(e)));
+            return Err(DbErr::Conn(sea_orm::RuntimeErr::Internal(e.to_string())));
         }
     }
-    let conn = Connection::open(&db_path)?;
-    debug!("Opened SQLite connection");
-    init_schema(&conn)?;
-    info!("Database schema initialized");
-    Ok(conn)
-}
 
-/// Create minimal schema if not present.
-fn init_schema(conn: &Connection) -> Result<()> {
-    // Simple key-value store for app settings
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS settings (
-			key TEXT PRIMARY KEY,
-			value TEXT NOT NULL
-		);",
-        [],
-    )?;
+    // Build a SQLite URL similar to the working hardcoded example
+    let mut path_str = db_path.to_string_lossy().to_string();
+    if std::path::MAIN_SEPARATOR == '\\' {
+        path_str = path_str.replace('\\', "/");
+    }
+    let url = if db_path.is_absolute() {
+        let is_windows_drive = path_str.chars().nth(1) == Some(':');
+        if is_windows_drive {
+            // e.g. sqlite://C:/path/to/index.sqlite
+            format!("sqlite://{}?mode=rwc", path_str)
+        } else {
+            // e.g. sqlite:///var/data/index.sqlite
+            format!("sqlite:///{}?mode=rwc", path_str)
+        }
+    } else {
+        // relative path (use sqlite:prefix)
+        format!("sqlite:{}?mode=rwc", path_str)
+    };
 
-    // Example table for indexed documents
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS documents (
-			id TEXT PRIMARY KEY,
-			path TEXT NOT NULL,
-			title TEXT,
-			updated_at INTEGER NOT NULL
-		);",
-        [],
-    )?;
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_documents_path ON documents(path);",
-        [],
-    )?;
+    let mut opt = ConnectOptions::new(&url);
+    opt.sqlx_logging_level(LevelFilter::Debug); // Or set SQLx log level
 
-    // Simple migration meta
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS schema_migrations (
-			version INTEGER PRIMARY KEY,
-			applied_at INTEGER NOT NULL
-		);",
-        [],
-    )?;
-
-    Ok(())
+    let db = Database::connect(opt).await?;
+    debug!("Opened SeaORM SQLite connection");
+    Migrator::up(&db, None).await?;
+    info!("Database migrated");
+    Ok(db)
 }
 
 /// Tiny smoke test helper: set and get a setting value.
-pub fn set_setting(conn: &Connection, key: &str, value: &str) -> Result<()> {
-    conn.execute(
-        "INSERT INTO settings(key, value) VALUES (?1, ?2)
-		 ON CONFLICT(key) DO UPDATE SET value = excluded.value;",
-        params![key, value],
-    )?;
+pub async fn set_setting(db: &DatabaseConnection, key: &str, value: &str) -> Result<(), DbErr> {
+    use settings::{ActiveModel as SettingsActive, Column as SettingsColumn, Entity as Settings};
+    let am = SettingsActive {
+        key: Set(key.to_string()),
+        value: Set(value.to_string()),
+    };
+    Settings::insert(am)
+        .on_conflict(
+            OnConflict::column(SettingsColumn::Key)
+                .update_column(SettingsColumn::Value)
+                .to_owned(),
+        )
+        .exec(db)
+        .await?;
     Ok(())
 }
 
-pub fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>> {
-    let mut stmt = conn.prepare("SELECT value FROM settings WHERE key = ?1")?;
-    let mut rows = stmt.query(params![key])?;
-    if let Some(row) = rows.next()? {
-        let v: String = row.get(0)?;
-        Ok(Some(v))
-    } else {
-        Ok(None)
-    }
+pub async fn get_setting(db: &DatabaseConnection, key: &str) -> Result<Option<String>, DbErr> {
+    use settings::Entity as Settings;
+    Ok(Settings::find_by_id(key.to_string())
+        .one(db)
+        .await?
+        .map(|m| m.value))
 }
+
+// Entities (optional, used for settings/documents CRUD; schema controlled via migrations)
+mod settings {
+    use super::*;
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "settings")]
+    pub struct Model {
+        #[sea_orm(primary_key)]
+        pub key: String,
+        pub value: String,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+mod documents {
+    use super::*;
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "documents")]
+    pub struct Model {
+        #[sea_orm(primary_key)]
+        pub id: String,
+        pub path: String,
+        pub title: Option<String>,
+        pub updated_at: i64,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+// Note: schema_migrations table is managed by sea-orm-migration internally

@@ -124,7 +124,19 @@ pub fn create(
         ensure_fibbelous_folder(&repo_path).expect("Failed to create .fibbelous folder");
 
     // Start indexing
-    init_index_db(&fib_folder).expect("Failed to init index database");
+    // Bridge async SeaORM init into this sync function
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) => {
+            handle
+                .block_on(init_index_db(&fib_folder))
+                .expect("Failed to init index database");
+        }
+        Err(_) => {
+            let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
+            rt.block_on(init_index_db(&fib_folder))
+                .expect("Failed to init index database");
+        }
+    }
 
     Ok(repo)
 }
