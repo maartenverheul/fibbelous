@@ -1,7 +1,6 @@
 import { createBrowserRouter, redirect } from "react-router";
 import App from "../App";
 import WorkspaceHome from "@/components/pageviewer/WorkspaceHome";
-import WorkspaceGuard from "./WorkspaceGuard";
 import PageViewer from "@/components/pageviewer/PageViewer";
 import { WorkspaceProvider } from "@/contexts/WorkspaceContext";
 import { AppNavigationProvider } from "@/contexts/AppNavigationContext";

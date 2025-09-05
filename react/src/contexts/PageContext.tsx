@@ -34,9 +34,9 @@ export function PageProvider({ children }: Props) {
   const [content, setContent] = useState<string>("");
 
   const pageService = useMemo<PageService>(() => {
-    return workspace?.connection?.url == undefined
+    return workspace?.info?.connection?.url == undefined
       ? new LocalPageService()
-      : new RemotePageService(workspace.connection.url, workspace);
+      : new RemotePageService(workspace.info.connection.url, workspace.info);
   }, []);
 
   useEffect(() => {
@@ -76,7 +76,7 @@ export function PageProvider({ children }: Props) {
     console.warn("TODO Updating icon:", newIcon);
   }
 
-  function updateContent(newContent: string) {}
+  function updateContent(newContent: string) { }
 
   return (
     <PageContext.Provider

@@ -23,10 +23,9 @@ export type WorkspaceManagerContextType = {
   switchWorkspace(id: string): void;
   addWorkspace(workspace: WorkspaceInfo): void;
   updateWorkspace(workspace: WorkspaceInfo): void;
-  deleteWorkspace(id: string): void;
+  removeWorkspace(id: string): void;
   pickLocal(existing: boolean): Promise<AddLocalRepoResponse>;
   fetchRemoteWorkspaces(url: string): Promise<WorkspaceInfo[]>;
-  saveRemoteWorkspaces(...workspaces: WorkspaceConnection[]): Promise<void>;
   openInSystem(id: string): void;
 };
 
@@ -45,12 +44,12 @@ export function WorkspaceManagerProvider({
   >(undefined);
   const [loaded, setLoaded] = useState(false);
   const [remoteWorkspaces, setRemoteWorkspaces] = useLocalStorageState<
-    WorkspaceConnection[]
+    WorkspaceInfo[]
   >("remoteWorkspaces", {
     defaultValue: [],
   });
   const [list, setList] = useState<WorkspaceInfo[]>(
-    remoteWorkspaces.map((w) => ({ ...w.info!, connection: w }))
+    remoteWorkspaces
   );
 
   useEffect(() => {
@@ -92,6 +91,9 @@ export function WorkspaceManagerProvider({
   }
 
   function addWorkspace(workspace: WorkspaceInfo) {
+    if (workspace.connection?.url) {
+      saveRemoteWorkspace(workspace);
+    }
     setList((prev) => [...prev, workspace]);
   }
 
@@ -107,17 +109,21 @@ export function WorkspaceManagerProvider({
     setList((prev) => prev.map((w) => (w.id === workspace.id ? workspace : w)));
   }
 
-  async function deleteWorkspace(id: string) {
-    if (!IS_APP) return;
-    try {
-      const ok = (await invoke("remove_workspace", { id })) as boolean;
-      if (ok) {
-        setList((prev) => prev.filter((w) => w.id !== id));
-      } else {
-        console.warn("remove_workspace returned false for id", id);
+  async function removeWorkspace(id: string) {
+    let ok = true;
+    if (IS_APP) {
+      try {
+        const ok = (await invoke("remove_workspace", { id })) as boolean;
+        if (!ok) console.warn("remove_workspace returned false for id", id);
+      } catch (err) {
+        console.error("Failed to delete workspace", id, err);
       }
-    } catch (err) {
-      console.error("Failed to delete workspace", id, err);
+    } else {
+      remoteWorkspaces.splice(remoteWorkspaces.findIndex(w => w?.id === id), 1);
+      setRemoteWorkspaces(remoteWorkspaces);
+    }
+    if (ok) {
+      setList((prev) => prev.filter((w) => w.id !== id));
     }
   }
 
@@ -149,15 +155,16 @@ export function WorkspaceManagerProvider({
     }
   }
 
-  async function saveRemoteWorkspaces(
-    ...workspaces: WorkspaceConnection[]
+  async function saveRemoteWorkspace(
+    workspace: WorkspaceInfo
   ): Promise<void> {
+    if (!workspace.connection) throw new Error("No connection info");
     if (!IS_APP) {
-      setRemoteWorkspaces((prev) => [...prev, ...workspaces]);
+      setRemoteWorkspaces((prev) => [...prev, workspace]);
     } else {
       try {
         await invoke("save_remote_workspaces", {
-          workspaces,
+          workspaces: [workspace],
         });
       } catch (err) {
         console.error("save_remote_workspaces failed", err);
@@ -182,10 +189,9 @@ export function WorkspaceManagerProvider({
         switchWorkspace,
         addWorkspace,
         updateWorkspace,
-        deleteWorkspace,
+        removeWorkspace,
         pickLocal,
         fetchRemoteWorkspaces,
-        saveRemoteWorkspaces,
         openInSystem,
       }}
     >

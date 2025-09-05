@@ -4,12 +4,8 @@ import Sidebar from "./components/sidebar/Sidebar";
 import "./App.css";
 import { useWorkspaceManager } from "./contexts/WorkspaceManagerContext";
 import PageTabBar from "./components/tabs/PageTabBar";
-import {
-  AppNavigationProvider,
-  useAppNavigation,
-} from "./contexts/AppNavigationContext";
+import { useAppNavigation } from "./contexts/AppNavigationContext";
 import { Tabs } from "@radix-ui/react-tabs";
-import { WorkspaceProvider } from "./contexts/WorkspaceContext";
 import SettingsDialogRoute from "./router/SettingsDialogRoute";
 
 function TabsShell() {

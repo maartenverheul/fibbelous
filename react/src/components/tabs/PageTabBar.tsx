@@ -1,7 +1,6 @@
 import { cn } from "@/lib/utils";
 import { TOCItem } from "@/models";
 import { XIcon } from "lucide-react";
-import { List } from "@radix-ui/react-tabs";
 import { useAppNavigation } from "@/contexts/AppNavigationContext";
 import type { MouseEvent } from "react";
 

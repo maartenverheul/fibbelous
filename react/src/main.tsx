@@ -4,7 +4,6 @@ import router from "./router";
 import { WorkspaceManagerProvider } from "./contexts/WorkspaceManagerContext";
 import { TOCProvider } from "./contexts/TOCContext";
 import { PageManagerProvider } from "./contexts/PageManagerContext";
-import { WorkspaceProvider } from "./contexts/WorkspaceContext";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <WorkspaceManagerProvider>

@@ -49,7 +49,7 @@ export function AppNavigationProvider({
       navigate("/#settings/workspaces");
 
     // If no workspace is selected, navigate to the first workspace
-    if (!workspaceSlug && workspaces.length > 0) {
+    if (!workspaceSlug && workspaces.length > 0 && workspaces[0].slug != undefined) {
       navigate(`/${workspaces[0].slug}`, { replace: true });
     }
 

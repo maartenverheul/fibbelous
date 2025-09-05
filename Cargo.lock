@@ -4246,6 +4246,7 @@ dependencies = [
  "hyper",
  "lib",
  "sea-orm",
+ "serde",
  "serde_json",
  "tokio",
  "tower-http",

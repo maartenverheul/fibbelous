@@ -11,25 +11,23 @@ import {
 } from "lucide-react";
 import { useWorkspaceManager } from "@/contexts/WorkspaceManagerContext";
 import { EyeIcon } from "lucide-react";
-import { WorkspaceConnection, WorkspaceInfo } from "@/models";
+import { WorkspaceInfo } from "@/models";
 import { IS_APP } from "@/checks";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { CollapsibleTrigger } from "@radix-ui/react-collapsible";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useAppNavigation } from "@/contexts/AppNavigationContext";
 
 export default function SettingsWorkspacePage() {
   const {
     list: workspaces,
     pickLocal,
-    deleteWorkspace,
+    removeWorkspace,
     fetchRemoteWorkspaces,
-    saveRemoteWorkspaces,
+    addWorkspace,
     openInSystem,
     loaded,
   } = useWorkspaceManager();
   const navigate = useNavigate();
-  const appNavigation = useAppNavigation();
 
   const [error, setError] = useState<string | null>(null);
   const [remoteUrl, setRemoteUrl] = useState<string>("");
@@ -40,7 +38,7 @@ export default function SettingsWorkspacePage() {
   const [selectedWorkspaces, setSelectedWorkspaces] = useState<string[]>([]);
 
   function handleRemove(workspace: WorkspaceInfo) {
-    deleteWorkspace(workspace.id);
+    removeWorkspace(workspace.id);
   }
 
   function handleVisit(workspace: WorkspaceInfo) {
@@ -89,20 +87,19 @@ export default function SettingsWorkspacePage() {
       return;
     }
 
-    const savedWorkspaces = selected.map(
-      (w): WorkspaceConnection => ({
-        info: w,
-        url: remoteUrl,
-      })
-    );
 
-    await saveRemoteWorkspaces(...savedWorkspaces)
-      .then(() => {
-        appNavigation.openHome();
-      })
-      .catch((err) => {
-        setError(err.message || "Failed to add remote workspaces");
-      });
+
+    // const savedWorkspaces = selected.map(
+    //   (w): WorkspaceConnection => ({
+    //     info: w,
+    //     url: remoteUrl,
+    //   })
+    // );
+
+    for (const ws of selected) {
+      ws.connection = { url: remoteUrl };
+      addWorkspace(ws);
+    }
   }
 
   return (

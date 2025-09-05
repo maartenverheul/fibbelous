@@ -1,3 +1,4 @@
+pub mod command_handler;
 pub mod databases;
 mod id;
 pub mod indexing;

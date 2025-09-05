@@ -45,10 +45,10 @@ async fn main() {
     let verbose = if cli.verbose { true } else { env_verbose };
     lib::logging::init(logs_dir.as_path(), verbose);
 
-    info!(target: "main", "==============");
-    info!(target: "main", "SERVER STARTED");
+    info!("==============");
+    info!("SERVER STARTED");
     if verbose {
-        debug!(target: "main", "Verbose logging enabled");
+        debug!("Verbose logging enabled");
     }
 
     lib::workspaces::ensure_workspace();
@@ -58,16 +58,16 @@ async fn main() {
 }
 
 async fn init_workspaces() -> HashMap<String, WorkspaceState> {
-    info!(target: "main", "Initializing workspaces");
+    info!("Initializing workspaces");
     let dirs = lib::workspaces::workspace_dirs().unwrap_or_default();
     let infos_vec = lib::workspaces::list().unwrap_or_default();
     let info_map: HashMap<String, lib::workspaces::WorkspaceInfo> =
         infos_vec.into_iter().map(|i| (i.id.clone(), i)).collect();
 
     let mut workspaces: HashMap<String, WorkspaceState> = HashMap::new();
-    info!(target: "main", "Found {} workspace directories", dirs.len());
+    info!("Found {} workspace directories", dirs.len());
     for dir in dirs {
-        info!(target: "main", "Initializing workspace at: {:?}", dir);
+        info!("Initializing workspace at: {:?}", dir);
         if let Some(os_id) = dir.file_name() {
             let id = os_id.to_string_lossy().to_string();
             let info = match info_map.get(&id) {

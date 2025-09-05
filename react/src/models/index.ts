@@ -11,7 +11,6 @@ export type WorkspaceInfo = {
 
 export type WorkspaceConnection = {
   url?: string;
-  info?: WorkspaceInfo;
 }
 
 export type AddLocalRepoResponse = {

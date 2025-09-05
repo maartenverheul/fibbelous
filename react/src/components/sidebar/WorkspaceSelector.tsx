@@ -24,7 +24,7 @@ export default function WorkspaceSelector() {
   }
 
   return (
-    <Select value={workspace?.id} onValueChange={changeWorkspace}>
+    <Select value={workspace?.info?.id} onValueChange={changeWorkspace}>
       <SelectTrigger className="text-white bg-gray-700 border !border-gray-900 rounded-sm select-none w-full text-center mx-auto text-lg !h-12">
         <SelectValue
           placeholder="Select an option"
