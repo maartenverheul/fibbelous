@@ -45,7 +45,7 @@ export default function SettingsWorkspacePage() {
   }
 
   return (
-    <div className="SettingsWorkspacePage p-2 pr-4 select-none">
+    <div className="SettingsWorkspacePage p-2 pr-4 select-none pb-10">
       <div className="flex items-center mb-4">
         <h2 className="text-lg font-bold mr-2">Workspaces</h2>
         <button

@@ -42,7 +42,7 @@ export default function SettingsDialog({
           value={activeTab}
           onValueChange={onTabChange}
           defaultValue={pages[0].key}
-          className="w-full h-full flex flex-row"
+          className="w-full h-full flex flex-row overflow-y-auto"
         >
           <TabsList className="bg-gray-900 p-2 text-white block flex-col items-start gap-1 rounded-none h-full justify-end">
             {pages.map((page) => {
@@ -60,7 +60,7 @@ export default function SettingsDialog({
             })}
           </TabsList>
           {pages.map((page) => (
-            <TabsContent key={page.key} value={page.key}>
+            <TabsContent key={page.key} value={page.key} className="overflow-y-auto h-full">
               {page.component}
             </TabsContent>
           ))}

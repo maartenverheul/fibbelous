@@ -1,24 +1,31 @@
 import { useState } from "react";
+import useLocalStorageState from "use-local-storage-state";
 import { AlertCircle, FolderOpen, Loader2, PlusIcon } from "lucide-react";
 import { useWorkspaceManager } from "@/contexts/WorkspaceManagerContext";
 import { ConnectionType, Workspace, WorkspaceInfo } from "@/models";
 import { IS_APP } from "@/checks";
 import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import EditWorkspaceForm from "./EditWorkspaceForm";
 
 export function AddWorkspaceForm() {
   const {
     pickLocal,
     fetchRemoteWorkspaces,
     addWorkspace,
+    workspaces,
   } = useWorkspaceManager();
 
   const [error, setError] = useState<string | null>(null);
-  const [remoteUrl, setRemoteUrl] = useState<string>("");
+  const [lastRemoteUrl, setLastRemoteUrl] = useLocalStorageState<string>("lastRemoteUrl", { defaultValue: "" });
+  const [remoteUrl, setRemoteUrl] = useState<string>(lastRemoteUrl || "");
   const [connecting, setConnecting] = useState<boolean>(false);
   const [fetchedWorkspaces, setFetchedWorkspaces] = useState<
     WorkspaceInfo[] | undefined
   >();
+  const [fetchedTotalCount, setFetchedTotalCount] = useState<number | undefined>(undefined);
   const [selectedWorkspaces, setSelectedWorkspaces] = useState<string[]>([]);
+  const [importMode, setImportMode] = useState<'existing' | 'new'>('existing');
 
   async function startOpenLocal() {
     setError(null);
@@ -49,7 +56,11 @@ export function AddWorkspaceForm() {
     });
 
     await Promise.all([minTimeout, fetchPromise]);
-    setFetchedWorkspaces(await fetchPromise);
+    const result = await fetchPromise;
+    setFetchedTotalCount(result.length);
+    const existingIds = new Set(workspaces.map(w => w.info.id));
+    const filtered = result.filter(r => !existingIds.has(r.id));
+    setFetchedWorkspaces(filtered);
     setConnecting(false);
   }
 
@@ -77,6 +88,7 @@ export function AddWorkspaceForm() {
       }
       addWorkspace(workspace);
     }
+    if (remoteUrl) setLastRemoteUrl(remoteUrl);
   }
 
   return (
@@ -134,40 +146,76 @@ export function AddWorkspaceForm() {
       </div>
       {fetchedWorkspaces && (
         <>
-          <p className="text-sm mb-2 text-gray-300">
-            Choose workspace(s) to import
-          </p>
-          <ul>
-            {fetchedWorkspaces.map((workspace) => (
-              <li key={workspace.id} className="mb-2">
-                <label className="hover:bg-gray-700 cursor-pointer flex items-start gap-3 rounded-lg border p-3 has-[[aria-checked=true]]:border-gray-600 has-[[aria-checked=true]]:bg-gray-500 dark:has-[[aria-checked=true]]:border-gray-900 dark:has-[[aria-checked=true]]:bg-gray-950">
-                  <Checkbox
-                    id={`import-workspace-${workspace.id}`}
-                    checked={selectedWorkspaces.includes(workspace.id)}
-                    className="cursor-pointer data-[state=checked]:bg-gray-800"
-                    onCheckedChange={(checked) => {
-                      setSelectedWorkspaces((prev) =>
-                        checked
-                          ? [...prev, workspace.id]
-                          : prev.filter((id) => id !== workspace.id)
-                      );
-                    }}
-                  />
-                  <p className="text-sm leading-none font-medium">
-                    <span className="mr-2">{workspace.icon}</span>
-                    <span>{workspace.title}</span>
-                  </p>
-                </label>
-              </li>
-            ))}
-          </ul>
-          <button
-            className="mt-4 px-4 py-1 bg-blue-600 text-white rounded cursor-pointer disabled:bg-gray-600 disabled:cursor-default"
-            onClick={importSelectedWorkspaces}
-            disabled={selectedWorkspaces.length === 0}
-          >
-            Import ({selectedWorkspaces.length}) workspaces
-          </button>
+
+          <RadioGroup className="flex mb-4" defaultValue="existing" value={importMode} onValueChange={(v) => setImportMode(v as any)}>
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem className="text-white [&_*]:fill-white" value="existing" id="mode-existing" />
+              <label className="cursor-pointer" htmlFor="mode-existing">Existing</label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem className="text-white [&_*]:fill-white" value="new" id="mode-new" />
+              <label className="cursor-pointer" htmlFor="mode-new">Create new</label>
+            </div>
+          </RadioGroup>
+          {importMode === 'existing' && (
+            fetchedWorkspaces.length === 0 ? (
+              <p className="text-sm mb-2 text-gray-400 italic">
+                {fetchedTotalCount === 0
+                  ? 'Server has no workspaces.'
+                  : 'All remote workspaces are already imported.'}
+              </p>
+            ) : (
+              <>
+                <p className="text-sm mb-2 text-gray-300">Choose workspace(s) to import</p>
+                <ul className="flex gap-2">
+                  {fetchedWorkspaces.map((workspace) => (
+                    <li key={workspace.id} className="mb-2">
+                      <label className="hover:bg-gray-700 w-max cursor-pointer flex items-center gap-3 rounded-lg border h-11 p-3 has-[[aria-checked=true]]:border-gray-600 has-[[aria-checked=true]]:bg-gray-500 dark:has-[[aria-checked=true]]:border-gray-900 dark:has-[[aria-checked=true]]:bg-gray-950">
+                        <Checkbox
+                          id={`import-workspace-${workspace.id}`}
+                          checked={selectedWorkspaces.includes(workspace.id)}
+                          className="cursor-pointer data-[state=checked]:bg-gray-800"
+                          onCheckedChange={(checked) => {
+                            setSelectedWorkspaces((prev) =>
+                              checked
+                                ? [...prev, workspace.id]
+                                : prev.filter((id) => id !== workspace.id)
+                            );
+                          }}
+                        />
+                        <p className="text-sm leading-none font-medium">
+                          <span className="mr-2">{workspace.icon}</span>
+                          <span>{workspace.title}</span>
+                        </p>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  className="mt-4 px-4 py-1 bg-blue-600 text-white rounded cursor-pointer disabled:bg-gray-600 disabled:cursor-default"
+                  onClick={importSelectedWorkspaces}
+                  disabled={selectedWorkspaces.length === 0}
+                >
+                  {importMode === 'existing' ? 'Import' : 'Create'} ({selectedWorkspaces.length}) workspaces
+                </button>
+              </>
+            )
+          )}
+          {importMode === 'new' && (
+            <div className="mt-2 p-3 rounded border border-gray-700 bg-gray-800/40">
+              <p className="text-sm text-gray-300 mb-3">Create a new workspace</p>
+              <EditWorkspaceForm
+                create
+                remoteUrl={remoteUrl || undefined}
+                onCreate={() => {
+                  // Reset creation form state basics
+                  setImportMode('existing');
+                  setSelectedWorkspaces([]);
+                  if (remoteUrl) setLastRemoteUrl(remoteUrl);
+                }}
+              />
+            </div>
+          )}
         </>
       )}
     </>

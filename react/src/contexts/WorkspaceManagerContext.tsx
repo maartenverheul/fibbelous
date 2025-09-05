@@ -98,16 +98,22 @@ export function WorkspaceManagerProvider({
         newList = newList.map(w => {
           if (!workspaces.some(ws => ws.id === w.info.id)) return w;
           const remote = remoteList.find(r => r.id === w.info.id) || remoteList.find(r => r.slug === w.info.slug);
-          const updatedFields = remote ? {
-            title: remote.title,
-            slug: remote.slug,
-            icon: remote.icon,
-            description: remote.description,
-          } : {};
           const urlValue = w.connection?.url || url;
+          if (!remote) {
+            // Workspace no longer exists remotely
+            return {
+              ...w,
+              connectionState: { success: false, error: 'Workspace not found on server', checking: false },
+              connection: {
+                url: urlValue,
+                cachedInfo: w.info,
+                type: url ? ConnectionType.remote : ConnectionType.local
+              },
+            } satisfies Workspace;
+          }
+          // Remote exists – keep cached info but mark success
           return {
             ...w,
-            ...updatedFields,
             connectionState: { success: true, checking: false },
             connection: {
               url: urlValue,

@@ -1,45 +1,83 @@
 import { useState } from "react";
-import { Workspace, WorkspaceInfo } from "@/models";
+import { Workspace, WorkspaceInfo, ConnectionType } from "@/models";
 import { useWorkspaceManager } from "@/contexts/WorkspaceManagerContext";
-import { RotateCcw, SaveIcon } from "lucide-react";
+import { RotateCcw, SaveIcon, PlusIcon } from "lucide-react";
 import { toast } from "sonner";
 
-type Props = {
+type EditProps = {
   workspace: Workspace;
-  readOnly?: boolean; // if true, form is read-only (for offline workspaces)
+  readOnly?: boolean;
+  create?: false;
+  onCreate?: never;
+  remoteUrl?: string;
 };
+type CreateProps = {
+  workspace?: undefined;
+  readOnly?: false; // creation is always editable
+  create: true;
+  onCreate: (workspace: Workspace) => void;
+  remoteUrl?: string; // if provided, set as connection url
+};
+type Props = EditProps | CreateProps;
 
-export default function EditWorkspaceForm({ workspace, readOnly = false }: Props) {
-  const { updateWorkspace, workspaces } = useWorkspaceManager();
+export default function EditWorkspaceForm(props: Props) {
+  const { updateWorkspace, workspaces, addWorkspace } = useWorkspaceManager();
 
-  const [title, setTitle] = useState(workspace.info.title);
-  const [slug, setSlug] = useState(workspace.info.slug);
-  const [description, setDescription] = useState(workspace.info.description ?? "");
-  const [icon, setIcon] = useState(workspace.info.icon ?? "");
-  const [connectionUrl, setConnectionUrl] = useState(workspace.connection?.url ?? "");
+  const isCreate = props.create === true;
+  const workspace = props.workspace;
+  const readOnly = !isCreate && (props.readOnly ?? false);
+  const remoteUrl = props.remoteUrl;
 
-  const slugConflict = workspaces.some(w => w.info.id !== workspace.info.id && w.info.slug === slug);
+  const [title, setTitle] = useState(isCreate ? "" : workspace!.info.title);
+  const [slug, setSlug] = useState(isCreate ? "" : workspace!.info.slug);
+  const [description, setDescription] = useState(isCreate ? "" : (workspace!.info.description ?? ""));
+  const [icon, setIcon] = useState(isCreate ? "" : (workspace!.info.icon ?? ""));
+  const [connectionUrl, setConnectionUrl] = useState(isCreate ? (remoteUrl ?? "") : (workspace!.connection?.url ?? ""));
+
+  const slugConflict = !!slug && workspaces.some(w => (!isCreate ? w.info.id !== workspace!.info.id : true) && w.info.slug === slug);
   const disabled = readOnly || !title.trim() || !slug.trim() || slugConflict;
 
-  function handleSave() {
-    if (disabled || readOnly) return;
-    const updated: WorkspaceInfo = {
-      ...workspace.info,
+  function buildWorkspaceInfo(): WorkspaceInfo {
+    if (isCreate) {
+      return {
+        id: crypto.randomUUID(),
+        title: title.trim(),
+        slug: slug.trim(),
+        description: description.trim() || undefined,
+        icon: icon.trim() || undefined,
+        createdAt: new Date().toISOString(),
+      };
+    }
+    return {
+      ...workspace!.info,
       title: title.trim(),
       slug: slug.trim(),
       description: description.trim(),
       icon: icon.trim(),
     };
-    updateWorkspace(updated);
-    toast("Workspace has been updated.");
   }
 
-  function handleReset() {
-    setTitle(workspace.info.title);
-    setSlug(workspace.info.slug);
-    setDescription(workspace.info.description ?? "");
-    setIcon(workspace.info.icon ?? "");
-    setConnectionUrl(workspace.connection?.url ?? "");
+  function handleSave() {
+    if (disabled) return;
+    if (isCreate) {
+      const info = buildWorkspaceInfo();
+      const ws: Workspace = {
+        info,
+        connection: {
+          cachedInfo: info,
+          url: connectionUrl || remoteUrl,
+          type: connectionUrl || remoteUrl ? ConnectionType.remote : ConnectionType.local,
+        },
+        connectionState: { success: true },
+      };
+      addWorkspace(ws);
+      props.onCreate?.(ws);
+      toast("Workspace created");
+      return;
+    }
+    const updated = buildWorkspaceInfo();
+    updateWorkspace(updated);
+    toast("Workspace has been updated.");
   }
 
   return (
@@ -52,9 +90,9 @@ export default function EditWorkspaceForm({ workspace, readOnly = false }: Props
     >
       <div className="flex gap-2">
         <div className="flex flex-col flex-1">
-          <label className="mb-1 text-gray-300" htmlFor={`ws-title-${workspace.info.id}`}>Title</label>
+          <label className="mb-1 text-gray-300" htmlFor={`ws-title-${workspace?.info.id || 'new'}`}>Title</label>
           <input
-            id={`ws-title-${workspace.info.id}`}
+            id={`ws-title-${workspace?.info.id || 'new'}`}
             className="px-2 py-1 rounded bg-gray-800 text-white border border-gray-600 disabled:text-white/50  disabled:cursor-not-allowed"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -63,9 +101,9 @@ export default function EditWorkspaceForm({ workspace, readOnly = false }: Props
           />
         </div>
         <div className="flex flex-col w-28">
-          <label className="mb-1 text-gray-300" htmlFor={`ws-icon-${workspace.info.id}`}>Icon</label>
+          <label className="mb-1 text-gray-300" htmlFor={`ws-icon-${workspace?.info.id || 'new'}`}>Icon</label>
           <input
-            id={`ws-icon-${workspace.info.id}`}
+            id={`ws-icon-${workspace?.info.id || 'new'}`}
             className="px-2 py-1 rounded bg-gray-800 text-white border border-gray-600 disabled:text-white/50  disabled:cursor-not-allowed"
             value={icon}
             onChange={(e) => setIcon(e.target.value)}
@@ -77,9 +115,9 @@ export default function EditWorkspaceForm({ workspace, readOnly = false }: Props
       </div>
 
       <div className="flex flex-col">
-        <label className="mb-1 text-gray-300" htmlFor={`ws-slug-${workspace.info.id}`}>Slug</label>
+        <label className="mb-1 text-gray-300" htmlFor={`ws-slug-${workspace?.info.id || 'new'}`}>Slug</label>
         <input
-          id={`ws-slug-${workspace.info.id}`}
+          id={`ws-slug-${workspace?.info.id || 'new'}`}
           className={`px-2 py-1 rounded bg-gray-800 text-white border ${slugConflict ? 'border-red-600' : 'border-gray-600'} disabled:text-white/50  disabled:cursor-not-allowed`}
           value={slug}
           onChange={(e) => { setSlug(e.target.value); }}
@@ -92,9 +130,9 @@ export default function EditWorkspaceForm({ workspace, readOnly = false }: Props
       </div>
 
       <div className="flex flex-col">
-        <label className="mb-1 text-gray-300" htmlFor={`ws-desc-${workspace.info.id}`}>Description</label>
+        <label className="mb-1 text-gray-300" htmlFor={`ws-desc-${workspace?.info.id || 'new'}`}>Description</label>
         <textarea
-          id={`ws-desc-${workspace.info.id}`}
+          id={`ws-desc-${workspace?.info.id || 'new'}`}
           className="px-2 py-1 rounded bg-gray-800 text-white border border-gray-600 resize-none h-20 disabled:text-white/50  disabled:cursor-not-allowed"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
@@ -102,14 +140,21 @@ export default function EditWorkspaceForm({ workspace, readOnly = false }: Props
           placeholder="Short description"
         />
       </div>
-
-      {workspace.connection?.url !== undefined && (
+      {!isCreate && workspace!.connection?.url !== undefined && (
         <div className="flex flex-col">
-          <label className="mb-1 text-gray-300" htmlFor={`ws-url-${workspace.info.id}`}>Remote URL</label>
+          <label className="mb-1 text-gray-300" htmlFor={`ws-url-${workspace!.info.id}`}>Remote URL</label>
           <div
-            id={`ws-url-${workspace.info.id}`}
+            id={`ws-url-${workspace!.info.id}`}
             className="px-2 py-1 rounded bg-gray-800 text-white/50 border border-gray-600"
           >
+            {connectionUrl}
+          </div>
+        </div>
+      )}
+      {isCreate && connectionUrl && (
+        <div className="flex flex-col">
+          <label className="mb-1 text-gray-300" htmlFor={`ws-url-new`}>Remote URL</label>
+          <div id={`ws-url-new`} className="px-2 py-1 rounded bg-gray-800 text-white/50 border border-gray-600">
             {connectionUrl}
           </div>
         </div>
@@ -119,17 +164,10 @@ export default function EditWorkspaceForm({ workspace, readOnly = false }: Props
         <div className="flex gap-2 mt-2">
           <button
             type="submit"
-            className="px-3 py-1 bg-blue-600 text-white rounded disabled:bg-gray-600 flex items-center gap-2 cursor-pointer"
+            className="px-3 py-1 ml-auto bg-blue-600 text-white rounded disabled:bg-gray-600 flex items-center gap-2 cursor-pointer"
             disabled={disabled}
           >
-            <SaveIcon className="w-4" /> Save
-          </button>
-          <button
-            type="button"
-            onClick={handleReset}
-            className="px-3 py-1 bg-gray-600 text-white rounded flex items-center gap-2 cursor-pointer"
-          >
-            <RotateCcw className="w-4" /> Reset
+            {isCreate ? <><PlusIcon className="w-4" /> Create</> : <><SaveIcon className="w-4" /> Save</>}
           </button>
         </div>
       )}
