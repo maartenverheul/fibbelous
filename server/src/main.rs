@@ -1,8 +1,9 @@
-use axum::extract::{Path, State};
+use axum::extract::ws::{Message, WebSocket};
+use axum::extract::{Path, State, WebSocketUpgrade};
 use axum::routing::post;
 use axum::{response::IntoResponse, routing::get, serve, Json, Router};
-use lib::tracing::info;
-use lib::workspaces;
+use futures_util::StreamExt;
+use lib::tracing::{debug_span, info};
 use sea_orm::DatabaseConnection;
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -142,6 +143,8 @@ fn build_app(state: AppState) -> Router {
     Router::new()
         .route("/", get(|| async { "Hello, world!" }))
         .route("/api/hello", get(hello))
+        // WebSocket endpoint for real-time events / messages
+        .route("/ws", get(ws_handler))
         .route(
             "/api/workspaces",
             get(list_workspaces).post(create_workspace),
@@ -159,6 +162,54 @@ fn build_app(state: AppState) -> Router {
         .route("/api/workspaces/:id/toc", post(make_toc))
         .layer(cors)
         .with_state(state)
+}
+
+// Basic websocket handler that echoes messages and sends a greeting.
+async fn ws_handler(ws: WebSocketUpgrade, State(_state): State<AppState>) -> impl IntoResponse {
+    ws.on_upgrade(handle_socket)
+}
+
+async fn handle_socket(mut socket: WebSocket) {
+    debug_span!(target: "ws", "New WebSocket connection established");
+
+    // Send initial greeting
+    if socket
+        .send(Message::Text("Welcome to Fibbelous WS".into()))
+        .await
+        .is_err()
+    {
+        return;
+    }
+
+    while let Some(Ok(msg)) = socket.next().await {
+        match msg {
+            Message::Text(t) => {
+                // Simple echo with prefix
+                if socket
+                    .send(Message::Text(format!("echo: {}", t)))
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
+            }
+            Message::Binary(bin) => {
+                if socket.send(Message::Binary(bin)).await.is_err() {
+                    break;
+                }
+            }
+            Message::Close(_) => {
+                let _ = socket.send(Message::Close(None)).await; // Attempt polite close
+                break;
+            }
+            Message::Ping(p) => {
+                if socket.send(Message::Pong(p)).await.is_err() {
+                    break;
+                }
+            }
+            Message::Pong(_) => { /* ignore */ }
+        }
+    }
 }
 
 async fn start_server(app: Router) {
