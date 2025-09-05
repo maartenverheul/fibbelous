@@ -1,6 +1,6 @@
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 // import { useState } from "react"; // no local state needed after refactor
-import { ChevronRight, FolderSymlink, Link2OffIcon, Loader2Icon, PlusIcon, XIcon, RotateCcw, GlobeIcon, FolderSymlinkIcon } from "lucide-react";
+import { ChevronRight, FolderSymlink, Link2OffIcon, Loader2Icon, PlusIcon, XIcon, GlobeIcon, FolderSymlinkIcon, RefreshCwIcon } from "lucide-react";
 import { useWorkspaceManager } from "@/contexts/WorkspaceManagerContext";
 import { EyeIcon } from "lucide-react";
 import { ConnectionType, WorkspaceInfo } from "@/models";
@@ -21,7 +21,7 @@ export default function SettingsWorkspacePage() {
     loaded,
     forceRefreshRemote,
   } = useWorkspaceManager();
-  const { hashParams } = useAppNavigation(); // not currently used
+  const { hashParams, workspaceHomeLink } = useAppNavigation(); // not currently used
   const navigate = useNavigate();
 
   function handleVisit(workspace: WorkspaceInfo) {
@@ -51,10 +51,10 @@ export default function SettingsWorkspacePage() {
         <button
           type="button"
           onClick={forceRefreshRemote}
-          className="p-1 rounded-sm text-gray-300 hover:text-white hover:bg-gray-600 disabled:opacity-40"
+          className="p-1 rounded-sm text-gray-300 hover:text-white hover:bg-gray-600 disabled:opacity-40 cursor-pointer"
           title="Force refresh remote workspaces"
         >
-          <RotateCcw className="w-4 h-4" />
+          <RefreshCwIcon className="w-4 h-4" />
         </button>
       </div>
       {loaded && (
@@ -83,13 +83,14 @@ export default function SettingsWorkspacePage() {
                       </div>
                       <span className="group-data-[offline]:text-red-300/80 ml-4">{workspaceRemoteIcon(w.connection.type)}</span>
                       <div className="ml-auto flex items-center">
-                        <button
+                        <Link
+                          to={workspaceHomeLink(w.info)}
                           className="px-2 py-1 text-white opacity-40 hover:opacity-100 hover:text-white hover:bg-green-500 cursor-pointer rounded"
                           onClick={() => handleVisit(w.info)}
                           title="Load workspace"
                         >
                           <EyeIcon className="w-4" />
-                        </button>
+                        </Link>
                         {
                           IS_APP && <button
                             className="px-2 py-1 text-white opacity-40 hover:opacity-100 hover:text-white hover:bg-yellow-500 cursor-pointer rounded"

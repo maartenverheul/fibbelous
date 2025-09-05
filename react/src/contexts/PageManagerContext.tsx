@@ -25,7 +25,6 @@ export function PageManagerProvider({
   const [pages, setPages] = useState<Page[]>([]);
 
   async function createPage(parent?: string) {
-    if (!IS_APP) return null;
     console.log("Creating new page at parent", parent);
     const page = (await invoke("create_new_page", { parent })) as Page;
     setPages((prev) => [...prev, page]);
