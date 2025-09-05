@@ -34,9 +34,9 @@ export function PageProvider({ children }: Props) {
   const [content, setContent] = useState<string>("");
 
   const pageService = useMemo<PageService>(() => {
-    return workspace?.info?.connection?.url == undefined
+    return workspace?.connection?.url == undefined
       ? new LocalPageService()
-      : new RemotePageService(workspace.info.connection.url, workspace.info);
+      : new RemotePageService(workspace?.connection.url, workspace.info);
   }, []);
 
   useEffect(() => {

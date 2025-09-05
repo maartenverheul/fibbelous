@@ -1,12 +1,11 @@
 import { Page, PageWithContent, TOCItem } from "@/models";
-import { createContext, useContext, useEffect, useState } from "react";
-import { useWorkspaceManager } from "./WorkspaceManagerContext";
+import { createContext, useContext, useState } from "react";
 import { invoke } from "@tauri-apps/api/tauri";
 import { IS_APP } from "@/checks";
+import { useWorkspace } from "./WorkspaceContext";
 
 export type PageManagerContextType = {
-  pages: Page[];
-  loaded: boolean;
+  pages: Page[]
   load(id: string): Promise<PageWithContent | undefined>;
   createPage(parent?: string): Promise<Page | null>;
   deletePage(id: string): void;
@@ -22,38 +21,8 @@ export function PageManagerProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const { selectedWorkspaceId } = useWorkspaceManager();
+  const workspace = useWorkspace();
   const [pages, setPages] = useState<Page[]>([]);
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    // setPages([
-    //   {
-    //     id: "1",
-    //     title: "Test",
-    //     slug: "test",
-    //     icon: "1️⃣",
-    //     createdAt: new Date().toISOString(),
-    //   },
-    //   {
-    //     id: "2",
-    //     parentId: "1",
-    //     title: "Test 2",
-    //     slug: "test-2",
-    //     icon: "2️⃣",
-    //     createdAt: new Date().toISOString(),
-    //   },
-    //   {
-    //     id: "3",
-    //     parentId: "2",
-    //     title: "Test 3",
-    //     slug: "test-3",
-    //     icon: "3️⃣",
-    //     createdAt: new Date().toISOString(),
-    //   },
-    // ]);
-    setLoaded(true);
-  }, [selectedWorkspaceId]);
 
   async function createPage(parent?: string) {
     if (!IS_APP) return null;
@@ -70,7 +39,7 @@ export function PageManagerProvider({
 
   async function load(id: string): Promise<PageWithContent | undefined> {
     const page = (await invoke("read_page", {
-      workspace_id: selectedWorkspaceId,
+      workspace_id: workspace?.info?.id,
       page_id: id,
     })) as PageWithContent;
     return page;
@@ -97,7 +66,6 @@ export function PageManagerProvider({
     <PageManagerContext.Provider
       value={{
         pages,
-        loaded,
         load,
         createPage,
         deletePage,

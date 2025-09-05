@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Workspace, WorkspaceInfo } from "@/models";
 import { useWorkspaceManager } from "@/contexts/WorkspaceManagerContext";
-import { Check, RotateCcw, SaveIcon } from "lucide-react";
+import { RotateCcw, SaveIcon } from "lucide-react";
 import { toast } from "sonner";
 
 type Props = {
