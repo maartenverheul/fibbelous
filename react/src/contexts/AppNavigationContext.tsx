@@ -1,5 +1,5 @@
-import { createContext, useContext, useEffect, useState } from "react";
-import { TOCItem } from "@/models";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { TOCItem, WorkspaceInfo } from "@/models";
 import { usePageManager } from "./PageManagerContext";
 import { useLocation, useNavigate, useParams } from "react-router";
 import { useWorkspaceManager } from "./WorkspaceManagerContext";
@@ -10,9 +10,11 @@ export type AppNavigationContextType = {
   urlPageId: string | undefined;
   tabs: TOCItem[];
   activeTabIndex?: number;
+  hashParams: string[];
   openPage(pageId: string, newTab?: boolean): boolean;
   pageLink(toc: TOCItem): string;
-  workspaceHomeLink(): string;
+  workspaceHomeLink(workspace?: WorkspaceInfo): string;
+  workspaceSettingsLink(workspace?: WorkspaceInfo): string;
   closeTab(index: number): boolean;
   changeTab(index: number): void;
 };
@@ -41,12 +43,17 @@ export function AppNavigationProvider({
   const [activeTab, setActiveTab] = useState<number | undefined>();
   const [tabs, setTabs] = useState<TOCItem[]>([]);
 
+  const hashParams = useMemo(() => {
+    if (!hash.startsWith("#")) return [];
+    return hash.slice(1).split("/").filter((h) => h.length > 0);
+  }, [hash]);
+
   useEffect(() => {
     if (!loaded) return;
 
     // When no workspaces are loaded, navigate to the settings dialog
-    if (workspaces.length == 0 && !hash.startsWith("#settings"))
-      navigate("/#settings/workspaces");
+    if (workspaces.length == 0 && hashParams[0] != "settings")
+      navigate(settingsLink("workspaces"));
 
     // If no workspace is selected, navigate to the first workspace
     if (!workspaceSlug && workspaces.length > 0 && workspaces[0].slug != undefined) {
@@ -89,8 +96,17 @@ export function AppNavigationProvider({
     return `/${workspaceSlug}/${toc.slug}/${toc.id}`;
   }
 
-  function workspaceHomeLink() {
-    return `/${workspaceSlug ?? ""}`;
+
+  function workspaceHomeLink(workspace: WorkspaceInfo | undefined = undefined) {
+    return `/${workspace?.slug ?? workspaceSlug ?? ""}`;
+  }
+
+  function settingsLink(tab: string = "general") {
+    return workspaceHomeLink() + `/#settings/${tab}`;
+  }
+
+  function workspaceSettingsLink(workspace: WorkspaceInfo | undefined = undefined) {
+    return settingsLink("workspaces") + `/${workspace?.slug ?? workspaceSlug}`;
   }
 
   function navigateToPage(page: TOCItem) {
@@ -126,9 +142,11 @@ export function AppNavigationProvider({
         urlPageId: pageId,
         tabs,
         activeTabIndex: activeTab,
+        hashParams,
         openPage,
         pageLink,
         workspaceHomeLink,
+        workspaceSettingsLink,
         closeTab,
         changeTab,
       }}

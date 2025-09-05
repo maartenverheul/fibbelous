@@ -1,7 +1,7 @@
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import SettingsGeneralPage from "./general";
-import SettingsWorkspacesPage from "./workspaces";
+import SettingsGeneralPage from "./SettingsGeneralPage";
+import SettingsWorkspacesPage from "./SettingsWorkspacePage";
 import { FolderIcon, SettingsIcon } from "lucide-react";
 
 interface SettingsDialogProps {

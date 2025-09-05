@@ -8,8 +8,10 @@ import {
 import { Link, useNavigate } from "react-router";
 import { useWorkspaceManager } from "@/contexts/WorkspaceManagerContext";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
+import { useAppNavigation } from "@/contexts/AppNavigationContext";
 
 export default function WorkspaceSelector() {
+  const appNavigation = useAppNavigation();
   const navigate = useNavigate();
   const { list: workspaces, switchWorkspace } = useWorkspaceManager();
   const workspace = useWorkspace();
@@ -25,15 +27,15 @@ export default function WorkspaceSelector() {
 
   return (
     <Select value={workspace?.info?.id} onValueChange={changeWorkspace}>
-      <SelectTrigger className="text-white bg-gray-700 border !border-gray-900 rounded-sm select-none w-full text-center mx-auto text-lg !h-12">
+      <SelectTrigger className="relative text-white cursor-pointer bg-gray-700 border !border-gray-900 rounded-sm select-none w-full text-center mx-auto text-lg !h-12">
         <SelectValue
-          placeholder="Select an option"
+          placeholder="No workspace selected"
           className="text-center mx-auto"
         />
       </SelectTrigger>
       <SelectContent>
         {workspaces.map((workspace) => (
-          <Link to={`/${workspace.slug}`} key={workspace.id}>
+          <Link to={appNavigation.workspaceHomeLink(workspace)} key={workspace.id}>
             <SelectItem
               key={workspace.id}
               value={workspace.id}
