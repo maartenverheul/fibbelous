@@ -150,7 +150,7 @@ export function AddWorkspaceForm() {
           <RadioGroup className="flex mb-4" defaultValue="existing" value={importMode} onValueChange={(v) => setImportMode(v as any)}>
             <div className="flex items-center space-x-2">
               <RadioGroupItem className="text-white [&_*]:fill-white" value="existing" id="mode-existing" />
-              <label className="cursor-pointer" htmlFor="mode-existing">Existing</label>
+              <label className="cursor-pointer" htmlFor="mode-existing">Import existing</label>
             </div>
             <div className="flex items-center space-x-2">
               <RadioGroupItem className="text-white [&_*]:fill-white" value="new" id="mode-new" />
