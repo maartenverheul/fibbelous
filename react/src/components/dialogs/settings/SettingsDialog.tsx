@@ -3,6 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import SettingsGeneralPage from "./SettingsGeneralPage";
 import SettingsWorkspacesPage from "./SettingsWorkspacePage";
 import { FolderIcon, SettingsIcon } from "lucide-react";
+import { Description, DialogTitle } from "@radix-ui/react-dialog";
 
 interface SettingsDialogProps {
   open: boolean;
@@ -35,6 +36,8 @@ export default function SettingsDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="p-0 max-lg:rounded-[0px] overflow-hidden h-full w-full !max-w-5xl max-h-[800px] bg-gray-800 text-white border-gray-900">
+        <DialogTitle className="sr-only">Settings</DialogTitle>
+        <Description className="sr-only">Settings</Description>
         <Tabs
           value={activeTab}
           onValueChange={onTabChange}

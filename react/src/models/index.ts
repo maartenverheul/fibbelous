@@ -5,12 +5,44 @@ export type WorkspaceInfo = {
   icon?: string;
   description?: string;
   createdAt?: string;
+}
 
-  connection?: WorkspaceConnection;
+export enum ConnectionType {
+  remote = "remote",
+  local = "local",
 }
 
 export type WorkspaceConnection = {
+  type: ConnectionType;
+  git?: string;
   url?: string;
+  directory?: string;
+  cachedInfo: WorkspaceInfo;
+}
+
+export type ConnectionState = (ConnectionStatePeding | ConnectionStateSuccess | ConnectionStateError) & {
+  checking?: boolean;
+}
+type ConnectionStatePeding = {
+  success?: undefined;
+}
+type ConnectionStateSuccess = {
+  success: true;
+}
+type ConnectionStateError = {
+  success: false;
+  error: string;
+}
+
+export type Workspace = {
+  info: WorkspaceInfo;
+  connection: WorkspaceConnection;
+  connectionState: ConnectionState;
+
+
+  // TODO
+  toc?: any;
+  pages?: any;
 }
 
 export type AddLocalRepoResponse = {

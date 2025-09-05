@@ -1,5 +1,7 @@
 import {
   AddLocalRepoResponse,
+  ConnectionType,
+  Workspace,
   WorkspaceConnection,
   WorkspaceInfo,
 } from "@/models";
@@ -13,100 +15,166 @@ import {
 import { invoke } from "@tauri-apps/api/tauri";
 import { IS_APP } from "@/checks";
 import useLocalStorageState from "use-local-storage-state";
+import update from "immutability-helper";
 
 export type WorkspaceManagerContextType = {
-  list: WorkspaceInfo[];
-  selectedWorkspaceId?: string;
+  workspaces: Workspace[];
   loaded: boolean;
-  getWorkspace(id: string): WorkspaceInfo | undefined;
-  getWorkspaceBySlug(slug: string): WorkspaceInfo | undefined;
-  switchWorkspace(id: string): void;
-  addWorkspace(workspace: WorkspaceInfo): void;
+  getWorkspace(id: string): Workspace | undefined;
+  getWorkspaceBySlug(slug: string): Workspace | undefined;
+  addWorkspace(workspace: Workspace): void;
   updateWorkspace(workspace: WorkspaceInfo): void;
   removeWorkspace(id: string): void;
   pickLocal(existing: boolean): Promise<AddLocalRepoResponse>;
   fetchRemoteWorkspaces(url: string): Promise<WorkspaceInfo[]>;
   openInSystem(id: string): void;
+  forceRefreshRemote(): void;
 };
+const WorkspaceManagerContext = createContext<WorkspaceManagerContextType | undefined>(undefined);
 
-export const WorkspaceManagerContext = createContext<
-  WorkspaceManagerContextType | undefined
->(undefined);
-
+// Previously attempted to auto-select an initial workspace; logic removed.
 export function WorkspaceManagerProvider({
   children,
 }: {
   children: ReactNode;
 }) {
-  // Initial workspaces can be loaded from a static list or fetched from an API
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<
-    string | undefined
-  >(undefined);
   const [loaded, setLoaded] = useState(false);
   const [remoteWorkspaces, setRemoteWorkspaces] = useLocalStorageState<
-    WorkspaceInfo[]
+    WorkspaceConnection[]
   >("remoteWorkspaces", {
     defaultValue: [],
   });
-  const [list, setList] = useState<WorkspaceInfo[]>(
-    remoteWorkspaces
+  const [list, setList] = useState<Workspace[]>(
+    remoteWorkspaces.map((conn) => ({
+      info: conn.cachedInfo,
+      connection: conn,
+      connectionState: {},
+    } satisfies Workspace))
   );
 
   useEffect(() => {
     if (!IS_APP) {
+      refreshAllRemoteWorkspaces();
       setLoaded(true);
       return;
     }
     invoke("get_saved_workspaces")
       .then((result) => {
-        const workspaces = result as WorkspaceInfo[];
-        console.log("Saved workspaces", workspaces);
+        const workspaceInfos = result as WorkspaceInfo[];
+        console.log("Saved workspaces", workspaceInfos);
 
-        const match = location.pathname.match(/^\/(\w[\w\s-]*)/);
-        const requestedSlug = match ? match[1] : "";
-        const initialWorkspace =
-          workspaces.find((w) => w.slug === requestedSlug) ?? workspaces[0];
-
-        setSelectedWorkspaceId(initialWorkspace?.id);
-
-        setList(workspaces);
+        // Previously used to auto-select workspace based on URL slug; removed.
+        setList(workspaceInfos.map((info) => ({
+          info,
+          connection: { cachedInfo: info, url: undefined, type: ConnectionType.local },
+          connectionState: { success: true, checking: false },
+        })));
       })
       .catch((err) => {
         console.error("Failed to load saved workspaces", err);
         setList([]);
-        setSelectedWorkspaceId(undefined);
+        // setSelectedWorkspaceId(undefined);
       })
       .finally(() => setLoaded(true));
   }, []);
 
-  function switchWorkspace(id: string) {
-    if (
-      selectedWorkspaceId &&
-      !list.some((w) => w.id === selectedWorkspaceId)
-    ) {
-      setSelectedWorkspaceId(list[0]?.id);
-      return;
+  async function refreshAllRemoteWorkspaces() {
+    // Group workspaces by connection URL
+    const groups = new Map<string, WorkspaceInfo[]>();
+    list.forEach((w) => {
+      const url = w.connection?.url;
+      if (!url) return;
+      if (!groups.has(url)) groups.set(url, []);
+      groups.get(url)!.push(w.info);
+    });
+    if (groups.size === 0) return;
+    console.debug("[WorkspaceManager] Refreshing remote workspaces", {
+      groups: Array.from(groups.keys()),
+    });
+    let newList = list.slice();
+    for (const [url, workspaces] of groups.entries()) {
+      try {
+        const remoteList = await fetchRemoteWorkspaces(url);
+        newList = newList.map(w => {
+          if (!workspaces.some(ws => ws.id === w.info.id)) return w;
+          const remote = remoteList.find(r => r.id === w.info.id) || remoteList.find(r => r.slug === w.info.slug);
+          const updatedFields = remote ? {
+            title: remote.title,
+            slug: remote.slug,
+            icon: remote.icon,
+            description: remote.description,
+          } : {};
+          const urlValue = w.connection?.url || url;
+          return {
+            ...w,
+            ...updatedFields,
+            connectionState: { success: true, checking: false },
+            connection: {
+              url: urlValue,
+              cachedInfo: w.info,
+              type: url ? ConnectionType.remote : ConnectionType.local
+            },
+          } satisfies Workspace;
+        });
+      } catch (err) {
+        console.warn("[WorkspaceManager] Failed to refresh remote workspaces for", url, err);
+        newList = newList.map(w => {
+          if (!workspaces.some(ws => ws.id === w.info.id)) return w;
+          const urlValue = w.connection?.url || url;
+          return {
+            ...w,
+            connectionState: { success: false, error: (err as Error)?.message || 'Connection failed', checking: false },
+            connection: {
+              url: urlValue,
+              cachedInfo: w.info,
+              type: url ? ConnectionType.remote : ConnectionType.local
+            },
+          } satisfies Workspace;
+        });
+      }
     }
-    setSelectedWorkspaceId(id);
+    console.debug("[WorkspaceManager] Applied remote refresh results");
+    setList(newList);
+    console.log(newList);
+
+    if (!IS_APP) {
+      const updatedRemote = newList.filter((w) => w.connection?.url);
+      setRemoteWorkspaces(updatedRemote.map(w => w.connection!));
+    }
   }
 
-  function addWorkspace(workspace: WorkspaceInfo) {
+  function addWorkspace(workspace: Workspace) {
     if (workspace.connection?.url) {
       saveRemoteWorkspace(workspace);
     }
     setList((prev) => [...prev, workspace]);
   }
 
-  function getWorkspace(id: string): WorkspaceInfo | undefined {
-    return list.find((w) => w.id === id);
+  function forceRefreshRemote() {
+    // Mark remote workspaces as checking, then run refresh
+    setList(prev => prev.map(w => w.connection?.url ? { ...w, connectionState: { ...w.connectionState, checking: true } } : w));
+    refreshAllRemoteWorkspaces();
   }
 
-  function getWorkspaceBySlug(slug: string): WorkspaceInfo | undefined {
-    return list.find((w) => w.slug === slug);
+  function getWorkspace(id: string): Workspace | undefined {
+    return list.find((w) => w.info.id === id);
+  }
+
+  function getWorkspaceBySlug(slug: string): Workspace | undefined {
+    return list.find((w) => w.info.slug === slug);
   }
 
   function updateWorkspace(workspace: WorkspaceInfo) {
-    setList((prev) => prev.map((w) => (w.id === workspace.id ? workspace : w)));
+    setList(prev => {
+      const index = prev.findIndex(w => w.info.id === workspace.id);
+      if (index === -1) return prev;
+      return update(prev, {
+        [index]: {
+          info: { $set: workspace },
+          connection: { cachedInfo: { $set: workspace } }
+        }
+      });
+    });
   }
 
   async function removeWorkspace(id: string) {
@@ -119,11 +187,11 @@ export function WorkspaceManagerProvider({
         console.error("Failed to delete workspace", id, err);
       }
     } else {
-      remoteWorkspaces.splice(remoteWorkspaces.findIndex(w => w?.id === id), 1);
+      remoteWorkspaces.splice(remoteWorkspaces.findIndex(w => w.cachedInfo.id === id), 1);
       setRemoteWorkspaces(remoteWorkspaces);
     }
     if (ok) {
-      setList((prev) => prev.filter((w) => w.id !== id));
+      setList((prev) => prev.filter((w) => w.info.id !== id));
     }
   }
 
@@ -134,10 +202,14 @@ export function WorkspaceManagerProvider({
         existing,
       })) as AddLocalRepoResponse;
       if (!res.ok) return { ok: false, error: res.error };
-      const ws = res.workspace!;
-      setList((prev) => [...prev, ws]);
-      setSelectedWorkspaceId(ws.id);
-      return { ok: true, workspace: ws };
+      const workspace: Workspace = {
+        info: res.workspace!,
+        connection: { url: undefined, type: ConnectionType.local, cachedInfo: res.workspace! },
+        connectionState: { success: true },
+      };
+      setList((prev) => [...prev, workspace]);
+      // setSelectedWorkspaceId(workspace.info.id);
+      return { ok: true, workspace: res.workspace };
     } catch (err) {
       console.error("add_local_repository failed", err);
       return { ok: false };
@@ -156,11 +228,12 @@ export function WorkspaceManagerProvider({
   }
 
   async function saveRemoteWorkspace(
-    workspace: WorkspaceInfo
+    workspace: Workspace
   ): Promise<void> {
     if (!workspace.connection) throw new Error("No connection info");
     if (!IS_APP) {
-      setRemoteWorkspaces((prev) => [...prev, workspace]);
+      workspace.connection.cachedInfo = workspace.info;
+      setRemoteWorkspaces((prev) => [...prev, workspace.connection]);
     } else {
       try {
         await invoke("save_remote_workspaces", {
@@ -181,18 +254,17 @@ export function WorkspaceManagerProvider({
   return (
     <WorkspaceManagerContext.Provider
       value={{
-        list,
-        selectedWorkspaceId,
+        workspaces: list,
         loaded,
         getWorkspace,
         getWorkspaceBySlug,
-        switchWorkspace,
         addWorkspace,
         updateWorkspace,
         removeWorkspace,
         pickLocal,
         fetchRemoteWorkspaces,
         openInSystem,
+        forceRefreshRemote,
       }}
     >
       {children}

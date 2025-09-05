@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { AlertCircle, FolderOpen, Loader2, PlusIcon } from "lucide-react";
 import { useWorkspaceManager } from "@/contexts/WorkspaceManagerContext";
-import { WorkspaceInfo } from "@/models";
+import { ConnectionType, Workspace, WorkspaceInfo } from "@/models";
 import { IS_APP } from "@/checks";
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -40,6 +40,7 @@ export function AddWorkspaceForm() {
 
   async function connectToRemote() {
     setConnecting(true);
+    setError(null);
 
     const minTimeout = new Promise((resolve) => setTimeout(resolve, 500));
     const fetchPromise = fetchRemoteWorkspaces(remoteUrl).catch((err) => {
@@ -63,8 +64,18 @@ export function AddWorkspaceForm() {
     }
 
     for (const ws of selected) {
-      ws.connection = { url: remoteUrl };
-      addWorkspace(ws);
+      const workspace: Workspace = {
+        info: ws,
+        connection: {
+          url: remoteUrl,
+          type: ConnectionType.remote,
+          cachedInfo: ws
+        },
+        connectionState: {
+          success: true,
+        }
+      }
+      addWorkspace(workspace);
     }
   }
 

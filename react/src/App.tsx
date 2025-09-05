@@ -7,6 +7,7 @@ import PageTabBar from "./components/tabs/PageTabBar";
 import { useAppNavigation } from "./contexts/AppNavigationContext";
 import { Tabs } from "@radix-ui/react-tabs";
 import SettingsDialogRoute from "./router/SettingsDialogRoute";
+import { Toaster } from "sonner";
 
 function TabsShell() {
   const tabsContext = useAppNavigation();
@@ -38,7 +39,7 @@ function App() {
   return (
     <>
       <div className="w-screen h-screen bg-gray-950">
-        {workspaceContext.list.length && (
+        {workspaceContext.workspaces.length && (
           <PanelGroup direction="horizontal" className="h-full">
             <Panel
               defaultSize={20}
@@ -59,6 +60,8 @@ function App() {
           </PanelGroup>
         )}
       </div>
+
+      <Toaster position="bottom-right" />
 
       <SettingsDialogRoute />
     </>

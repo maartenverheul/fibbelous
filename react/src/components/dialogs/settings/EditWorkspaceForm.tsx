@@ -1,60 +1,45 @@
 import { useEffect, useState } from "react";
-import { WorkspaceInfo } from "@/models";
+import { Workspace, WorkspaceInfo } from "@/models";
 import { useWorkspaceManager } from "@/contexts/WorkspaceManagerContext";
-import { Check, RotateCcw } from "lucide-react";
+import { Check, RotateCcw, SaveIcon } from "lucide-react";
+import { toast } from "sonner";
 
-export default function EditWorkspaceForm({ workspace }: { workspace: WorkspaceInfo }) {
-  const { updateWorkspace, list } = useWorkspaceManager();
+type Props = {
+  workspace: Workspace;
+  readOnly?: boolean; // if true, form is read-only (for offline workspaces)
+};
 
-  const [title, setTitle] = useState(workspace.title);
-  const [slug, setSlug] = useState(workspace.slug);
-  const [description, setDescription] = useState(workspace.description ?? "");
-  const [icon, setIcon] = useState(workspace.icon ?? "");
+export default function EditWorkspaceForm({ workspace, readOnly = false }: Props) {
+  const { updateWorkspace, workspaces } = useWorkspaceManager();
+
+  const [title, setTitle] = useState(workspace.info.title);
+  const [slug, setSlug] = useState(workspace.info.slug);
+  const [description, setDescription] = useState(workspace.info.description ?? "");
+  const [icon, setIcon] = useState(workspace.info.icon ?? "");
   const [connectionUrl, setConnectionUrl] = useState(workspace.connection?.url ?? "");
-  const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
-  const [saved, setSaved] = useState(false);
 
-  // Auto-generate slug from title until user edits slug manually
-  useEffect(() => {
-    if (!slugManuallyEdited) {
-      const auto = slugify(title);
-      setSlug(auto);
-    }
-  }, [title, slugManuallyEdited]);
-
-  // Clear saved flag after a delay
-  useEffect(() => {
-    if (saved) {
-      const t = setTimeout(() => setSaved(false), 1500);
-      return () => clearTimeout(t);
-    }
-  }, [saved]);
-
-  const slugConflict = list.some(w => w.id !== workspace.id && w.slug === slug);
-  const disabled = !title.trim() || !slug.trim() || slugConflict;
+  const slugConflict = workspaces.some(w => w.info.id !== workspace.info.id && w.info.slug === slug);
+  const disabled = readOnly || !title.trim() || !slug.trim() || slugConflict;
 
   function handleSave() {
-    if (disabled) return;
+    if (disabled || readOnly) return;
     const updated: WorkspaceInfo = {
-      ...workspace,
+      ...workspace.info,
       title: title.trim(),
       slug: slug.trim(),
-      description: description.trim() || undefined,
-      icon: icon.trim() || undefined,
-      connection: connectionUrl ? { url: connectionUrl } : workspace.connection,
+      description: description.trim(),
+      icon: icon.trim(),
     };
     updateWorkspace(updated);
-    setSaved(true);
+    toast("Workspace has been updated.");
   }
 
   function handleReset() {
-    setTitle(workspace.title);
-    setSlug(workspace.slug);
-    setDescription(workspace.description ?? "");
-    setIcon(workspace.icon ?? "");
+    setTitle(workspace.info.title);
+    setSlug(workspace.info.slug);
+    setDescription(workspace.info.description ?? "");
+    setIcon(workspace.info.icon ?? "");
     setConnectionUrl(workspace.connection?.url ?? "");
-    setSlugManuallyEdited(false);
-    setSaved(false);
   }
 
   return (
@@ -67,22 +52,24 @@ export default function EditWorkspaceForm({ workspace }: { workspace: WorkspaceI
     >
       <div className="flex gap-2">
         <div className="flex flex-col flex-1">
-          <label className="mb-1 text-gray-300" htmlFor={`ws-title-${workspace.id}`}>Title</label>
+          <label className="mb-1 text-gray-300" htmlFor={`ws-title-${workspace.info.id}`}>Title</label>
           <input
-            id={`ws-title-${workspace.id}`}
-            className="px-2 py-1 rounded bg-gray-800 text-white border border-gray-600"
+            id={`ws-title-${workspace.info.id}`}
+            className="px-2 py-1 rounded bg-gray-800 text-white border border-gray-600 disabled:text-white/50  disabled:cursor-not-allowed"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
+            disabled={readOnly}
             placeholder="Workspace title"
           />
         </div>
         <div className="flex flex-col w-28">
-          <label className="mb-1 text-gray-300" htmlFor={`ws-icon-${workspace.id}`}>Icon</label>
+          <label className="mb-1 text-gray-300" htmlFor={`ws-icon-${workspace.info.id}`}>Icon</label>
           <input
-            id={`ws-icon-${workspace.id}`}
-            className="px-2 py-1 rounded bg-gray-800 text-white border border-gray-600"
+            id={`ws-icon-${workspace.info.id}`}
+            className="px-2 py-1 rounded bg-gray-800 text-white border border-gray-600 disabled:text-white/50  disabled:cursor-not-allowed"
             value={icon}
             onChange={(e) => setIcon(e.target.value)}
+            disabled={readOnly}
             placeholder="😀"
             maxLength={2}
           />
@@ -90,12 +77,13 @@ export default function EditWorkspaceForm({ workspace }: { workspace: WorkspaceI
       </div>
 
       <div className="flex flex-col">
-        <label className="mb-1 text-gray-300" htmlFor={`ws-slug-${workspace.id}`}>Slug</label>
+        <label className="mb-1 text-gray-300" htmlFor={`ws-slug-${workspace.info.id}`}>Slug</label>
         <input
-          id={`ws-slug-${workspace.id}`}
-          className={`px-2 py-1 rounded bg-gray-800 text-white border ${slugConflict ? 'border-red-600' : 'border-gray-600'}`}
+          id={`ws-slug-${workspace.info.id}`}
+          className={`px-2 py-1 rounded bg-gray-800 text-white border ${slugConflict ? 'border-red-600' : 'border-gray-600'} disabled:text-white/50  disabled:cursor-not-allowed`}
           value={slug}
-          onChange={(e) => { setSlug(e.target.value); setSlugManuallyEdited(true); }}
+          onChange={(e) => { setSlug(e.target.value); }}
+          disabled={readOnly}
           placeholder="workspace-slug"
         />
         {slugConflict && (
@@ -104,21 +92,22 @@ export default function EditWorkspaceForm({ workspace }: { workspace: WorkspaceI
       </div>
 
       <div className="flex flex-col">
-        <label className="mb-1 text-gray-300" htmlFor={`ws-desc-${workspace.id}`}>Description</label>
+        <label className="mb-1 text-gray-300" htmlFor={`ws-desc-${workspace.info.id}`}>Description</label>
         <textarea
-          id={`ws-desc-${workspace.id}`}
-          className="px-2 py-1 rounded bg-gray-800 text-white border border-gray-600 resize-none h-20"
+          id={`ws-desc-${workspace.info.id}`}
+          className="px-2 py-1 rounded bg-gray-800 text-white border border-gray-600 resize-none h-20 disabled:text-white/50  disabled:cursor-not-allowed"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
+          disabled={readOnly}
           placeholder="Short description"
         />
       </div>
 
       {workspace.connection?.url !== undefined && (
         <div className="flex flex-col">
-          <label className="mb-1 text-gray-300" htmlFor={`ws-url-${workspace.id}`}>Remote URL</label>
+          <label className="mb-1 text-gray-300" htmlFor={`ws-url-${workspace.info.id}`}>Remote URL</label>
           <div
-            id={`ws-url-${workspace.id}`}
+            id={`ws-url-${workspace.info.id}`}
             className="px-2 py-1 rounded bg-gray-800 text-white/50 border border-gray-600"
           >
             {connectionUrl}
@@ -126,31 +115,24 @@ export default function EditWorkspaceForm({ workspace }: { workspace: WorkspaceI
         </div>
       )}
 
-      <div className="flex gap-2 mt-2">
-        <button
-          type="submit"
-          className="px-3 py-1 bg-blue-600 text-white rounded disabled:bg-gray-600 flex items-center gap-2 cursor-pointer"
-          disabled={disabled}
-        >
-          <Check className="w-4" /> {saved ? 'Saved' : 'Save'}
-        </button>
-        <button
-          type="button"
-          onClick={handleReset}
-          className="px-3 py-1 bg-gray-600 text-white rounded flex items-center gap-2 cursor-pointer"
-        >
-          <RotateCcw className="w-4" /> Reset
-        </button>
-      </div>
+      {!readOnly && (
+        <div className="flex gap-2 mt-2">
+          <button
+            type="submit"
+            className="px-3 py-1 bg-blue-600 text-white rounded disabled:bg-gray-600 flex items-center gap-2 cursor-pointer"
+            disabled={disabled}
+          >
+            <SaveIcon className="w-4" /> Save
+          </button>
+          <button
+            type="button"
+            onClick={handleReset}
+            className="px-3 py-1 bg-gray-600 text-white rounded flex items-center gap-2 cursor-pointer"
+          >
+            <RotateCcw className="w-4" /> Reset
+          </button>
+        </div>
+      )}
     </form>
   );
-}
-
-function slugify(value: string) {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-");
 }

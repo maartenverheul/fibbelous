@@ -1,4 +1,4 @@
-import { WorkspaceInfo } from "@/models";
+import { Workspace, WorkspaceInfo } from "@/models";
 import {
   createContext,
   PropsWithChildren,
@@ -25,7 +25,7 @@ export function WorkspaceProvider({ children }: PropsWithChildren) {
   const { urlWorkspaceSlug } = useAppNavigation();
   const workspaceManager = useWorkspaceManager();
 
-  const info = useMemo<WorkspaceInfo | undefined>(() => {
+  const workspace = useMemo<Workspace | undefined>(() => {
     if (!urlWorkspaceSlug) return undefined;
     return workspaceManager.getWorkspaceBySlug(urlWorkspaceSlug);
   }, [urlWorkspaceSlug, workspaceManager]);
@@ -44,23 +44,23 @@ export function WorkspaceProvider({ children }: PropsWithChildren) {
       setStatus("closed");
     }
 
-    if (!info) {
+    if (!workspace) {
       currentWsIdRef.current = undefined;
       setStatus("idle");
       return;
     }
 
-    currentWsIdRef.current = info.id;
+    currentWsIdRef.current = workspace.info.id;
     setStatus("connecting");
     setLastError(undefined);
 
     const base = import.meta.env.VITE_SERVER_WS_URL ?? "ws://localhost:3001/ws";
-    const wsUrl = `${base}?workspace=${encodeURIComponent(info.id)}`;
+    const wsUrl = `${base}?workspace=${encodeURIComponent(workspace.info.id)}`;
     const ws = new WebSocket(wsUrl);
     socketRef.current = ws;
 
     ws.onopen = () => {
-      if (currentWsIdRef.current !== info.id) return;
+      if (currentWsIdRef.current !== workspace.info.id) return;
       setStatus("open");
     };
     ws.onmessage = () => {
@@ -71,7 +71,7 @@ export function WorkspaceProvider({ children }: PropsWithChildren) {
       setStatus("error");
     };
     ws.onclose = () => {
-      if (currentWsIdRef.current === info.id) {
+      if (currentWsIdRef.current === workspace.info.id) {
         setStatus("closed");
       }
     };
@@ -82,7 +82,7 @@ export function WorkspaceProvider({ children }: PropsWithChildren) {
         socketRef.current = null;
       }
     };
-  }, [info?.id]);
+  }, [workspace?.info.id]);
 
   const send = (data: unknown): boolean => {
     const ws = socketRef.current;
@@ -107,14 +107,12 @@ export function WorkspaceProvider({ children }: PropsWithChildren) {
     return () => clearInterval(id);
   }, [status]);
 
-  const value: WorkspaceContextValue = {
-    info,
+  return <WorkspaceContext.Provider value={{
+    info: workspace?.info,
     status,
     send,
     lastError,
-  };
-
-  return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>;
+  }}>{children}</WorkspaceContext.Provider>;
 }
 
 export function useWorkspace() {

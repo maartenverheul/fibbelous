@@ -13,15 +13,15 @@ import { useAppNavigation } from "@/contexts/AppNavigationContext";
 export default function WorkspaceSelector() {
   const appNavigation = useAppNavigation();
   const navigate = useNavigate();
-  const { list: workspaces, switchWorkspace } = useWorkspaceManager();
+  const { workspaces } = useWorkspaceManager();
   const workspace = useWorkspace();
 
   function changeWorkspace(id: string) {
     if (id === "$manage") navigate("#settings/workspaces");
     else {
-      const target = workspaces.find((w) => w.id === id);
-      switchWorkspace(id);
-      navigate(`/${target?.slug}`);
+      const target = workspaces.find((w) => w.info.id === id);
+      navigate(appNavigation.workspaceHomeLink(target?.info));
+      // navigate(`/${target?.slug}`);
     }
   }
 
@@ -35,19 +35,21 @@ export default function WorkspaceSelector() {
       </SelectTrigger>
       <SelectContent>
         {workspaces.map((workspace) => (
-          <Link to={appNavigation.workspaceHomeLink(workspace)} key={workspace.id}>
+          <Link to={appNavigation.workspaceHomeLink(workspace.info)} key={workspace.info.id}>
             <SelectItem
-              key={workspace.id}
-              value={workspace.id}
+              key={workspace.info.id}
+              value={workspace.info.id}
               className="cursor-pointer"
             >
-              {workspace.icon} {workspace.title}
+              {workspace.info.icon} {workspace.info.title}
             </SelectItem>
           </Link>
         ))}
-        <SelectItem value="$manage" className="font-bold cursor-pointer">
-          Manage
-        </SelectItem>
+        <Link to={appNavigation.workspaceSettingsLink()} key="$manage">
+          <SelectItem value="$manage" className="font-bold cursor-pointer">
+            Manage
+          </SelectItem>
+        </Link>
       </SelectContent>
     </Select>
   );
