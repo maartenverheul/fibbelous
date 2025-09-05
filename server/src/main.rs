@@ -1,9 +1,10 @@
+use argh::FromArgs;
 use axum::extract::ws::{Message, WebSocket};
 use axum::extract::{Path, State, WebSocketUpgrade};
 use axum::routing::post;
 use axum::{response::IntoResponse, routing::get, serve, Json, Router};
 use futures_util::StreamExt;
-use lib::tracing::{debug_span, info};
+use lib::tracing::{debug, info};
 use sea_orm::DatabaseConnection;
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -75,15 +76,34 @@ async fn make_toc(Path(id): Path<String>) -> impl IntoResponse {
     format!("Make TOC for workspace with id: {}", id)
 }
 
+#[derive(FromArgs, Debug)]
+/// Fibbelous server
+struct Cli {
+    /// enable verbose logging
+    #[argh(switch)]
+    verbose: bool,
+}
+
 #[tokio::main]
 async fn main() {
+    let cli: Cli = argh::from_env();
     // Initialize logging to ./.data/logs
     let data_dir = std::path::PathBuf::from(".data");
     let logs_dir = data_dir.join("logs");
-    lib::logging::init(logs_dir.as_path());
+    // Flag parsing precedence: CLI flag overrides env var VERBOSE if set
+    let env_verbose = std::env::var("VERBOSE")
+        .ok()
+        .map(|v| v.to_lowercase())
+        .map(|v| matches!(v.as_str(), "1" | "true" | "yes" | "on"))
+        .unwrap_or(false);
+    let verbose = if cli.verbose { true } else { env_verbose };
+    lib::logging::init(logs_dir.as_path(), verbose);
 
     info!(target: "main", "==============");
     info!(target: "main", "SERVER STARTED");
+    if verbose {
+        debug!(target: "main", "Verbose logging enabled");
+    }
 
     lib::workspaces::ensure_workspace();
     let state = init_app_state().await;
@@ -170,7 +190,7 @@ async fn ws_handler(ws: WebSocketUpgrade, State(_state): State<AppState>) -> imp
 }
 
 async fn handle_socket(mut socket: WebSocket) {
-    debug_span!(target: "ws", "New WebSocket connection established");
+    debug!(target: "ws", "New WebSocket connection established");
 
     // Send initial greeting
     if socket

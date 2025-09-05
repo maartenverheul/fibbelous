@@ -411,7 +411,12 @@ fn main() {
                 .app_data_dir()
                 .unwrap_or_else(|| std::env::temp_dir().join("fibbelous_data"));
 
-            logging::init(&log_dir);
+            let verbose = std::env::var("VERBOSE")
+                .ok()
+                .map(|v| v.to_lowercase())
+                .map(|v| matches!(v.as_str(), "1" | "true" | "yes" | "on"))
+                .unwrap_or(false);
+            logging::init(&log_dir, verbose);
 
             info!(target: "main", "===========");
             info!(target: "main", "APP STARTED");

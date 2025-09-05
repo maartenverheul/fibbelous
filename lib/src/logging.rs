@@ -6,12 +6,16 @@ use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::fmt::time::OffsetTime;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
-pub fn init(log_dir: &Path) {
-    // Resolve log directory inside the app data dir
-
+/// Initialize tracing/logging.
+///
+/// Parameters:
+/// * `log_dir` - directory where rolling log files are written
+/// * `verbose` - when true and `RUST_LOG` not set, default level is `debug`; otherwise `info`.
+pub fn init(log_dir: &Path, verbose: bool) {
+    // Ensure log directory exists
     let _ = std::fs::create_dir_all(&log_dir);
 
-    // Rolling daily file appender; ensure files end with .log (e.g., fibbelous-YYYY-MM-DD.log)
+    // Build daily rolling file appender (.log suffix)
     let file_appender: RollingFileAppender =
         tracing_appender::rolling::RollingFileAppender::builder()
             .rotation(Rotation::DAILY)
@@ -20,12 +24,12 @@ pub fn init(log_dir: &Path) {
             .build(log_dir)
             .expect("failed to create rolling file appender");
 
-    // Timer with milliseconds, e.g. 2025-08-26 14:03:12.345
+    // Timestamp format with millisecond precision
     let time_format =
         format_description!("[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:3]Z");
     let timer = OffsetTime::new(UtcOffset::UTC, time_format);
 
-    // Console layer
+    // Console (stdout) layer
     let console_layer = fmt::layer()
         .with_timer(timer.clone())
         .with_target(true)
@@ -33,7 +37,7 @@ pub fn init(log_dir: &Path) {
         .with_level(true)
         .compact();
 
-    // File layer (plain text)
+    // File layer
     let file_layer = fmt::layer()
         .with_timer(timer)
         .with_writer(file_appender)
@@ -42,8 +46,14 @@ pub fn init(log_dir: &Path) {
         .with_level(true)
         .compact();
 
-    // Env filter (default to info if RUST_LOG not set)
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    // If RUST_LOG is set we respect it. Otherwise use debug when verbose, else info.
+    let filter = if std::env::var("RUST_LOG").is_ok() {
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"))
+    } else if verbose {
+        EnvFilter::new("debug")
+    } else {
+        EnvFilter::new("info")
+    };
 
     tracing_subscriber::registry()
         .with(filter)
