@@ -25,12 +25,6 @@ export default function WorkspaceSelector() {
     }
   }
 
-  if (workspaces.length > 0) {
-    for (const w of workspaces) {
-      if (w?.info?.id === undefined) debugger;
-    }
-  }
-
   return (
     <Select value={workspace?.info?.id} onValueChange={changeWorkspace}>
       <SelectTrigger className="relative text-white cursor-pointer bg-gray-700 border !border-gray-900 rounded-sm select-none w-full text-center mx-auto text-lg !h-12">

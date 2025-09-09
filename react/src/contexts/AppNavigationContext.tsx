@@ -118,7 +118,6 @@ export function AppNavigationProvider({
     tab: string = "general",
     workspace: WorkspaceInfo | undefined = undefined
   ) {
-    debugger;
     const prefix = workspaceHomeLink(workspace);
     const slug = workspace === null ? "" : workspace?.slug ?? workspaceSlug;
     const suffix = slug ? `/${slug}` : "";
