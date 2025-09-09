@@ -1,12 +1,8 @@
 use argh::FromArgs;
 use axum::{serve, Router};
-use lib::command_handler::CommandEnv;
-use lib::state::{AppState, WorkspaceState};
+use lib::state::{init_app_state, AppState};
 use lib::tracing::{debug, info};
-use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::Arc;
-use tokio::sync::RwLock;
 
 mod routes;
 mod ws;
@@ -41,37 +37,17 @@ async fn main() {
     }
 
     let state = init_app_state().await;
+    // Kick off background indexing (handled inside lib)
+    lib::indexing::start_indexing_background(&state);
+    start_server(state).await;
+}
+
+// init_app_state moved to lib::state::init_app_state
+
+async fn start_server(state: AppState) {
     let router = routes::build_router(state);
-    start_server(router).await;
-}
-
-async fn init_app_state() -> AppState {
-    let loaded = lib::workspaces::load_all_workspaces().await;
-    let mut workspaces: HashMap<String, WorkspaceState> = HashMap::new();
-    for w in loaded {
-        workspaces.insert(
-            w.id.clone(),
-            WorkspaceState {
-                id: w.id,
-                path: w.path,
-                info: w.info,
-                db: w.db,
-            },
-        );
-    }
-    let env = CommandEnv::new(
-        workspaces.values().map(|w| w.info.clone()).collect(),
-        vec![],
-    );
-    AppState {
-        workspaces: Arc::new(RwLock::new(workspaces)),
-        env: Arc::new(RwLock::new(env)),
-    }
-}
-
-async fn start_server(app: Router) {
     let addr = SocketAddr::from(([127, 0, 0, 1], 3001));
     info!("Listening on http://{}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    serve(listener, app).await.unwrap();
+    serve(listener, router).await.unwrap();
 }

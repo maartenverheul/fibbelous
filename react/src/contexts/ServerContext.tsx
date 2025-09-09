@@ -15,6 +15,7 @@ import { invoke } from "@tauri-apps/api/tauri";
 
 export interface ServerContextValue {
   status: "idle" | "connecting" | "open" | "closed" | "error";
+  connected: boolean;
   lastError?: string;
   dispatch<T = unknown>(command: Command): Promise<T>;
 }
@@ -65,13 +66,17 @@ export function ServerProvider({
     const wsUrl = `${base}?workspace=${encodeURIComponent(workspace.info.id)}`;
     const ws = new WebSocket(wsUrl);
     socketRef.current = ws;
-    ws.onopen = () => setStatus("open");
+    ws.onopen = () => {
+      setStatus("open");
+      console.debug("Connected to websocket");
+    };
     ws.onerror = () => {
       setLastError("socket error");
       setStatus("error");
     };
     ws.onclose = () => {
       setStatus("closed");
+      console.debug("Disconnected from websocket");
     };
     ws.onmessage = (ev) => {
       try {
@@ -105,7 +110,11 @@ export function ServerProvider({
         throw new Error("Socket not open");
       }
       const id = nextId();
-      const payload = { id, ...command };
+      const payload = {
+        id,
+        type: command.type,
+        payload: command.payload ?? {},
+      };
       const p = new Promise<T>((resolve, reject) => {
         pending.current.set(id, { resolve, reject });
         setTimeout(() => {
@@ -124,6 +133,7 @@ export function ServerProvider({
     <ServerContext.Provider
       value={{
         status,
+        connected: status === "open",
         lastError,
         dispatch,
       }}

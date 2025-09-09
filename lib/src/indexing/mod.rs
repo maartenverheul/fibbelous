@@ -1,9 +1,11 @@
 use std::path::Path;
 
 use crate::migration::Migrator;
+use crate::pages::Page;
+use crate::state::{AppState, WorkspaceState};
 use chrono::{DateTime, SecondsFormat, Utc};
 use sea_orm::entity::prelude::*;
-use sea_orm::{ConnectOptions, Database, DatabaseConnection, DbErr};
+use sea_orm::{ConnectOptions, Database, DatabaseConnection, DbErr, RuntimeErr};
 use sea_orm_migration::MigratorTrait;
 use tracing::log::LevelFilter;
 use tracing::{debug, error, info};
@@ -19,7 +21,7 @@ pub async fn init_index_db(location: &Path) -> Result<DatabaseConnection, DbErr>
     if let Some(parent) = db_path.parent() {
         if let Err(e) = std::fs::create_dir_all(parent) {
             error!("Failed to create parent directory {:?}: {}", parent, e);
-            return Err(DbErr::Conn(sea_orm::RuntimeErr::Internal(e.to_string())));
+            return Err(DbErr::Conn(RuntimeErr::Internal(e.to_string())));
         }
     }
 
@@ -53,29 +55,20 @@ pub async fn init_index_db(location: &Path) -> Result<DatabaseConnection, DbErr>
 }
 
 // Repository-style helpers working with the domain Page type
-pub async fn create_page(
-    db: &DatabaseConnection,
-    page: crate::pages::Page,
-) -> Result<crate::pages::Page, DbErr> {
+pub async fn create_page(db: &DatabaseConnection, page: Page) -> Result<Page, DbErr> {
     let am: pages::ActiveModel = page.into();
     let model = am.insert(db).await?;
     Ok(model.into())
 }
 
-pub async fn get_page(
-    db: &DatabaseConnection,
-    id: &str,
-) -> Result<Option<crate::pages::Page>, DbErr> {
+pub async fn get_page(db: &DatabaseConnection, id: &str) -> Result<Option<Page>, DbErr> {
     Ok(pages::Entity::find_by_id(id.to_string())
         .one(db)
         .await?
         .map(|m| m.into()))
 }
 
-pub async fn update_page(
-    db: &DatabaseConnection,
-    page: crate::pages::Page,
-) -> Result<crate::pages::Page, DbErr> {
+pub async fn update_page(db: &DatabaseConnection, page: Page) -> Result<Page, DbErr> {
     use sea_orm::EntityTrait;
     // Ensure it exists; if not, return not found
     let exists = pages::Entity::find_by_id(page.id.clone()).one(db).await?;
@@ -97,10 +90,51 @@ pub async fn delete_page(db: &DatabaseConnection, id: &str) -> Result<(), DbErr>
     }
 }
 
+/// Kick off background indexing for every loaded workspace.
+/// Spawns a Tokio task per workspace so heavy work doesn't block the main thread.
+pub async fn start_indexing(app_state: &AppState) {
+    info!("Starting background indexing for all workspaces");
+    let workspace_refs: Vec<_> = {
+        let guard = app_state.workspaces.read().await;
+        guard.values().cloned().collect()
+    };
+    for ws_arc in workspace_refs.into_iter() {
+        let ws_ref = ws_arc.clone();
+        tokio::spawn(async move {
+            let wid = ws_ref.id.clone();
+            info!(workspace = %wid, "Indexing started");
+            if let Err(e) = index_single_workspace(&ws_ref).await {
+                error!(workspace = %wid, error = %e, "Indexing failed");
+            } else {
+                info!(workspace = %wid, "Indexing complete");
+            }
+        });
+    }
+}
+
+/// Public helper to launch indexing in the background from consumers (e.g. server main).
+/// Spawns a supervising task that in turn spawns per-workspace tasks.
+pub fn start_indexing_background(app_state: &AppState) {
+    // Shallow clone (cheap Arc bumps) moved inside lib so callers don't see a clone at callsite.
+    let owned = app_state.clone();
+    tokio::spawn(async move {
+        start_indexing(&owned).await;
+    });
+}
+
+async fn index_single_workspace(ws: &WorkspaceState) -> Result<(), String> {
+    // Placeholder: open (or ensure) index DB already present; perform a simple sanity query.
+    // Later: scan filesystem, diff pages, update DB.
+    debug!("Indexing workspace at path {:?}", ws.path);
+    // Example no-op delay to simulate work (keep fast by default)
+    // tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    Ok(())
+}
+
 pub async fn list_children(
     db: &DatabaseConnection,
     parent_id: Option<&str>,
-) -> Result<Vec<crate::pages::Page>, DbErr> {
+) -> Result<Vec<Page>, DbErr> {
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
     let mut query = pages::Entity::find();
     query = match parent_id {
@@ -139,7 +173,7 @@ mod pages {
 // Note: schema_migrations table is managed by sea-orm-migration internally
 
 // Mappers between ORM entity and domain model
-impl From<pages::Model> for crate::pages::Page {
+impl From<pages::Model> for Page {
     fn from(m: pages::Model) -> Self {
         fn parse_dt(src: &str) -> DateTime<Utc> {
             src.parse::<DateTime<Utc>>().unwrap_or_else(|_| Utc::now())
@@ -147,7 +181,7 @@ impl From<pages::Model> for crate::pages::Page {
         fn parse_opt(src: &Option<String>) -> Option<DateTime<Utc>> {
             src.as_ref().and_then(|s| s.parse::<DateTime<Utc>>().ok())
         }
-        crate::pages::Page {
+        Page {
             id: m.id,
             parent_id: m.parent_id,
             title: m.title,
@@ -161,8 +195,8 @@ impl From<pages::Model> for crate::pages::Page {
     }
 }
 
-impl From<crate::pages::Page> for pages::ActiveModel {
-    fn from(p: crate::pages::Page) -> Self {
+impl From<Page> for pages::ActiveModel {
+    fn from(p: Page) -> Self {
         use sea_orm::ActiveValue::Set;
         fn fmt_dt(dt: &DateTime<Utc>) -> String {
             dt.to_rfc3339_opts(SecondsFormat::Secs, true)

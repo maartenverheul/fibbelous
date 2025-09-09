@@ -1,5 +1,5 @@
 use crate::id::generate_hex_id;
-use crate::pages::{save_page, Page, PageWithContent};
+use crate::pages::{save_page, Page, PageWithContent, TOCItem};
 // use crate::time::now_rfc3339_seconds; // not needed here currently
 use crate::workspaces::{self, CreateWorkspaceRequest, WorkspaceConnection, WorkspaceInfo};
 use chrono::Utc;
@@ -9,29 +9,42 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "payload", rename_all = "camelCase")]
 pub enum Command {
+    #[serde(alias = "get_saved_connections")]
     GetSavedConnections,
+    #[serde(alias = "get_saved_workspaces")]
     GetSavedWorkspaces,
     Ping,
+    #[serde(alias = "add_local_repository")]
     AddLocalRepository {
         existing: bool,
         path: Option<std::path::PathBuf>,
     },
+    #[serde(alias = "open_workspace_in_system")]
     OpenWorkspaceInSystem {
         id: String,
     },
+    #[serde(alias = "get_toc")]
+    GetToc {
+        parent: Option<String>,
+    },
+    #[serde(alias = "remove_workspace")]
     RemoveWorkspace {
         id: String,
     },
+    #[serde(alias = "create_new_page")]
     CreateNewPage {
         parent: Option<String>,
     },
+    #[serde(alias = "read_page")]
     ReadPage {
         workspace_id: String,
         page_id: String,
     },
+    #[serde(alias = "save_remote_workspaces")]
     SaveRemoteWorkspaces {
         urls: Vec<String>,
     },
+    #[serde(alias = "create_workspace")]
     CreateWorkspace {
         request: CreateWorkspaceRequest,
     },
@@ -46,18 +59,50 @@ pub struct AddLocalRepoResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(tag = "type", content = "payload", rename_all = "camelCase")]
 pub enum CommandResult {
     Void,
-    Bool(bool),
-    Connections(Vec<WorkspaceConnection>),
-    Workspaces(Vec<WorkspaceInfo>),
     Pong,
+    // Wrapped payload variants to standardize JSON shape (always { "type": ..., "payload": ... })
+    Bool(BoolPayload),
+    Connections(ConnectionsPayload),
+    Workspaces(WorkspacesPayload),
+    Toc(TocPayload),
     AddLocal(AddLocalRepoResult),
     Page(Page),
     PageWithContent(PageWithContent),
     CreateWorkspace(AddLocalRepoResult),
-    Error(String),
+    Error(ErrorPayload),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BoolPayload {
+    pub value: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionsPayload {
+    pub connections: Vec<WorkspaceConnection>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspacesPayload {
+    pub workspaces: Vec<WorkspaceInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TocPayload {
+    pub toc: Vec<TOCItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ErrorPayload {
+    pub message: String,
 }
 
 /// Single standardized environment for command execution.
@@ -89,35 +134,52 @@ impl CommandEnv {
 pub async fn execute(cmd: Command, env: &CommandEnv) -> CommandResult {
     use Command::*;
     match cmd {
-        GetSavedConnections => CommandResult::Connections(env.connections.clone()),
-        GetSavedWorkspaces => CommandResult::Workspaces(env.workspaces.clone()),
+        GetSavedConnections => CommandResult::Connections(ConnectionsPayload {
+            connections: env.connections.clone(),
+        }),
+        GetSavedWorkspaces => CommandResult::Workspaces(WorkspacesPayload {
+            workspaces: env.workspaces.clone(),
+        }),
         Ping => CommandResult::Pong,
-        AddLocalRepository { .. } => {
-            CommandResult::Error("AddLocalRepository not supported".into())
-        }
-        OpenWorkspaceInSystem { .. } => {
-            CommandResult::Error("OpenWorkspaceInSystem not supported".into())
-        }
-        RemoveWorkspace { .. } => CommandResult::Error("RemoveWorkspace not supported".into()),
+        AddLocalRepository { .. } => CommandResult::Error(ErrorPayload {
+            message: "AddLocalRepository not supported".into(),
+        }),
+        OpenWorkspaceInSystem { .. } => CommandResult::Error(ErrorPayload {
+            message: "OpenWorkspaceInSystem not supported".into(),
+        }),
+        GetToc { parent: _ } => CommandResult::Toc(TocPayload {
+            toc: Vec::<TOCItem>::new(),
+        }),
+        RemoveWorkspace { .. } => CommandResult::Error(ErrorPayload {
+            message: "RemoveWorkspace not supported".into(),
+        }),
         CreateNewPage { parent } => {
             // Use first workspace in env (ws layer constrains to a single one per connection)
             if env.workspaces.is_empty() {
-                return CommandResult::Error("No workspace in environment".into());
+                return CommandResult::Error(ErrorPayload {
+                    message: "No workspace in environment".into(),
+                });
             }
             let page = Page::default(parent);
             if let Some(path) = &env.workspace_path {
                 if let Err(e) = save_page(path, &page) {
-                    return CommandResult::Error(format!("Failed to save page: {}", e));
+                    return CommandResult::Error(ErrorPayload {
+                        message: format!("Failed to save page: {}", e),
+                    });
                 }
             } else {
-                return CommandResult::Error("Workspace path unavailable".into());
+                return CommandResult::Error(ErrorPayload {
+                    message: "Workspace path unavailable".into(),
+                });
             }
             CommandResult::Page(page)
         }
-        ReadPage { .. } => CommandResult::Error("ReadPage not supported".into()),
-        SaveRemoteWorkspaces { .. } => {
-            CommandResult::Error("SaveRemoteWorkspaces not supported".into())
-        }
+        ReadPage { .. } => CommandResult::Error(ErrorPayload {
+            message: "ReadPage not supported".into(),
+        }),
+        SaveRemoteWorkspaces { .. } => CommandResult::Error(ErrorPayload {
+            message: "SaveRemoteWorkspaces not supported".into(),
+        }),
         CreateWorkspace { request } => {
             let workspace = WorkspaceInfo {
                 id: generate_hex_id(),

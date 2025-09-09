@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/tauri";
 import { usePageManager } from "./PageManagerContext";
 import { IS_APP } from "@/checks";
+import { useServer } from "./ServerContext";
 
 export type TOCContextType = {
   toc: TOCItem[];
@@ -12,14 +13,19 @@ export type TOCContextType = {
 const TOCContext = createContext<TOCContextType | undefined>(undefined);
 
 export function TOCProvider({ children }: { children: React.ReactNode }) {
+  const server = useServer();
   const pageManager = usePageManager();
 
   const [toc, setTOC] = useState<TOCItem[]>([]);
 
   useEffect(() => {
+    if (!server.connected) return;
     console.log("Rebuilding TOC from pages", pageManager.pages);
-    setTOC(buildFullTOC(pageManager.pages));
-  }, [pageManager.pages]);
+    server.dispatch({
+      type: "get_toc",
+    });
+    // setTOC(buildFullTOC(pageManager.pages));
+  }, [server.status]);
 
   async function loadTOC(parent?: string) {
     if (!IS_APP) return;

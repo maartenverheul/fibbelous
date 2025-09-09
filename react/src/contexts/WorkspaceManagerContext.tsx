@@ -171,7 +171,6 @@ export function WorkspaceManagerProvider({
     }
     console.debug("[WorkspaceManager] Applied remote refresh results");
     setList(newList);
-    console.log(newList);
 
     if (!IS_APP) {
       const updatedRemote = newList.filter((w) => w.connection?.url);
