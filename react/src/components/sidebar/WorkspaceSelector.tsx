@@ -5,23 +5,29 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Link, useNavigate } from "react-router";
+import { Link } from "react-router";
 import { useWorkspaceManager } from "@/contexts/WorkspaceManagerContext";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { useAppNavigation } from "@/contexts/AppNavigationContext";
 
 export default function WorkspaceSelector() {
   const appNavigation = useAppNavigation();
-  const navigate = useNavigate();
   const { workspaces } = useWorkspaceManager();
   const workspace = useWorkspace();
 
   function changeWorkspace(id: string) {
-    if (id === "$manage") navigate("#settings/workspaces");
+    if (id === "$manage")
+      appNavigation.navigate(appNavigation.settingsLink("workspaces", null));
     else {
       const target = workspaces.find((w) => w.info.id === id);
-      navigate(appNavigation.workspaceHomeLink(target?.info));
+      appNavigation.navigate(appNavigation.workspaceHomeLink(target?.info));
       // navigate(`/${target?.slug}`);
+    }
+  }
+
+  if (workspaces.length > 0) {
+    for (const w of workspaces) {
+      if (w?.info?.id === undefined) debugger;
     }
   }
 
@@ -35,7 +41,10 @@ export default function WorkspaceSelector() {
       </SelectTrigger>
       <SelectContent>
         {workspaces.map((workspace) => (
-          <Link to={appNavigation.workspaceHomeLink(workspace.info)} key={workspace.info.id}>
+          <Link
+            to={appNavigation.workspaceHomeLink(workspace.info)}
+            key={workspace.info.id}
+          >
             <SelectItem
               key={workspace.info.id}
               value={workspace.info.id}
@@ -45,7 +54,7 @@ export default function WorkspaceSelector() {
             </SelectItem>
           </Link>
         ))}
-        <Link to={appNavigation.workspaceSettingsLink()} key="$manage">
+        <Link to={appNavigation.settingsLink("workspaces", null)} key="$manage">
           <SelectItem value="$manage" className="font-bold cursor-pointer">
             Manage
           </SelectItem>

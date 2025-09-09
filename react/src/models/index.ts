@@ -4,7 +4,8 @@ export type WorkspaceInfo = {
   title: string;
   icon?: string;
   description?: string;
-  createdAt?: string;
+  createdAt: string;
+  version: number;
 }
 
 export enum ConnectionType {
@@ -49,6 +50,13 @@ export type AddLocalRepoResponse = {
   ok: boolean;
   error?: string;
   workspace?: WorkspaceInfo;
+}
+
+export type CreateWorkspaceRequest = {
+  slug: string;
+  title: string;
+  icon?: string;
+  description?: string;
 }
 
 export type Page = {

@@ -1,7 +1,14 @@
+// use crate::time::now_rfc3339_seconds; // no longer needed after switching to DateTime<Utc>
+use crate::pages::{save_page, Page};
+use crate::state::WorkspaceState;
 use crate::{id::generate_hex_id, indexing::init_index_db};
+use chrono::{DateTime, Utc};
 use git2::Repository;
+use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
+use std::fs;
 use std::path::{Path, PathBuf};
+use tracing::{debug, error, info};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -28,21 +35,31 @@ pub struct WorkspaceInfo {
     pub title: String,
     pub icon: Option<String>,
     pub description: Option<String>,
-    pub created_at: String,
+    // RFC3339 seconds precision via custom serializer
+    #[serde(with = "crate::time::serde_rfc3339_secs")]
+    pub created_at: DateTime<Utc>,
     pub version: u16,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateWorkspaceRequest {
+    pub slug: String,
+    pub title: String,
+    pub icon: Option<String>,
+    pub description: Option<String>,
 }
 
 impl WorkspaceInfo {
     pub fn default_workspace() -> Self {
-        let now = chrono::Utc::now();
-        let created_at = now.format("%Y-%m-%dT%H:%M:%S%:z").to_string();
+        let created_at = Utc::now();
         Self {
             id: generate_hex_id(),
             slug: "default".to_string(),
             title: "Default workspace".to_string(),
             icon: Some("📁".to_string()),
             description: Some("The default workspace".to_string()),
-            created_at: created_at,
+            created_at,
             version: 1,
         }
     }
@@ -61,48 +78,16 @@ pub fn workspace_dirs() -> Result<Vec<std::path::PathBuf>, std::io::Error> {
     Ok(dirs)
 }
 
-pub fn list() -> Result<Vec<WorkspaceInfo>, std::io::Error> {
-    let dirs = match workspace_dirs() {
-        Ok(dirs) => dirs,
-        Err(e) => return Err(e),
-    };
-    let mut infos = Vec::new();
-    for path in dirs {
-        let json_path = path.join("workspace.json");
-        match std::fs::read_to_string(&json_path) {
-            Ok(json) => match serde_json::from_str::<WorkspaceInfo>(&json) {
-                Ok(info) => infos.push(info),
-                Err(e) => eprintln!("Failed to parse {}: {}", json_path.display(), e),
-            },
-            Err(e) => eprintln!("Failed to read {}: {}", json_path.display(), e),
-        }
-    }
-    Ok(infos)
+pub const WORKSPACES_PATH: &str = ".data/workspaces";
+
+pub async fn create_default(target_path: Option<&Path>) -> Result<WorkspaceState, git2::Error> {
+    create(&WorkspaceInfo::default_workspace(), target_path).await
 }
 
-const WORKSPACES_PATH: &str = ".data/workspaces";
-
-pub fn ensure_workspace() {
-    // Ensure the workspaces directory exists
-    let workspaces_path = Path::new(WORKSPACES_PATH);
-    std::fs::create_dir_all(&workspaces_path).unwrap();
-
-    // Check if at least one workspace already exists
-    if list().unwrap().is_empty() {
-        // Create the default workspace
-        create_default(None).expect("Failed to create default workspace");
-    }
-}
-
-pub fn create_default(target_path: Option<&Path>) -> Result<git2::Repository, git2::Error> {
-    create(&WorkspaceInfo::default_workspace(), target_path)
-}
-
-pub fn create(
+pub async fn create(
     settings: &WorkspaceInfo,
     target_path: Option<&Path>,
-) -> Result<git2::Repository, git2::Error> {
-    println!("Creating workspace {:?}", settings.slug);
+) -> Result<WorkspaceState, git2::Error> {
     let repo_path: PathBuf = match target_path {
         Some(p) => p.to_path_buf(),
         None => {
@@ -110,38 +95,63 @@ pub fn create(
             workspaces_path.join(&settings.id)
         }
     };
+    info!(
+        "Creating workspace {:?} with id {:?} at {:?}",
+        settings.slug, settings.id, repo_path
+    );
 
     // Init repo
-    let repo = match Repository::init(&repo_path) {
-        Ok(repo) => repo,
+    debug!("Initializing git repo");
+    match Repository::init(&repo_path) {
+        Ok(_) => (),
         Err(e) => panic!("failed to init: {}", e),
     };
 
     // Fill repo
     write_workspace_info(&repo_path, &settings).expect("Failed to write workspace info");
     create_workspace_directories(&repo_path).expect("Failed to create workspace directories");
-    let fib_folder =
-        ensure_fibbelous_folder(&repo_path).expect("Failed to create .fibbelous folder");
+    let fib = ensure_fibbelous_folder(&repo_path).expect("Failed to create .fibbelous folder");
 
-    // Start indexing
-    // Bridge async SeaORM init into this sync function
-    match tokio::runtime::Handle::try_current() {
-        Ok(handle) => {
-            handle
-                .block_on(init_index_db(&fib_folder))
-                .expect("Failed to init index database");
-        }
-        Err(_) => {
-            let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
-            rt.block_on(init_index_db(&fib_folder))
-                .expect("Failed to init index database");
-        }
-    }
+    // Always create one default page.
+    let page = Page::default(None);
+    save_page(&repo_path, &page).expect("Failed to create default page");
 
-    Ok(repo)
+    let db = init_index_db(&fib).await.expect("Failed to init index DB");
+
+    let state = WorkspaceState {
+        id: settings.id.clone(),
+        path: repo_path,
+        info: settings.clone(),
+        db,
+    };
+
+    Ok(state)
+}
+
+/// High-level helper: create a workspace from a request, writing its metadata, initializing git repo
+/// and preparing / initializing its index database. Returns a fully loaded workspace.
+pub async fn create_workspace_from_request(
+    req: CreateWorkspaceRequest,
+) -> Result<WorkspaceState, String> {
+    let info = WorkspaceInfo {
+        id: generate_hex_id(),
+        slug: req.slug,
+        title: req.title,
+        icon: req.icon,
+        description: req.description,
+        created_at: Utc::now(),
+        version: 1,
+    };
+
+    let state = create(&info, None)
+        .await
+        .expect("Failed to create workspace");
+
+    Ok(state)
 }
 
 fn create_workspace_directories(base_path: &Path) -> Result<(), std::io::Error> {
+    debug!("Creating workspace directories");
     let dirs = ["pages", "databases", "content"];
     for dir in dirs.iter() {
         let dir_path = base_path.join(dir);
@@ -153,12 +163,14 @@ fn create_workspace_directories(base_path: &Path) -> Result<(), std::io::Error> 
 }
 
 fn write_workspace_info(path: &Path, info: &WorkspaceInfo) -> Result<(), std::io::Error> {
+    debug!("Writing workspace info");
     let json = serde_json::to_string_pretty(info)?;
     std::fs::write(path.join("workspace.json"), json)?;
     Ok(())
 }
 
 fn ensure_fibbelous_folder(path: &Path) -> Result<PathBuf, std::io::Error> {
+    debug!("Ensuring/creating .fibbelous folder");
     let app_dir = path.join(".fibbelous");
     if !app_dir.exists() {
         std::fs::create_dir_all(&app_dir)?;
@@ -170,4 +182,68 @@ fn ensure_fibbelous_folder(path: &Path) -> Result<PathBuf, std::io::Error> {
     }
 
     Ok(app_dir)
+}
+
+/// Load a workspace directory: read workspace.json and initialize its index database.
+/// Returns (WorkspaceInfo, DatabaseConnection) or an error string explaining why it failed.
+pub async fn load_workspace_dir(dir: &Path) -> Result<(WorkspaceInfo, DatabaseConnection), String> {
+    let json_path = dir.join("workspace.json");
+    let contents = fs::read_to_string(&json_path)
+        .map_err(|e| format!("failed to read {}: {}", json_path.display(), e))?;
+    let info: WorkspaceInfo = serde_json::from_str(&contents)
+        .map_err(|e| format!("failed to parse {}: {}", json_path.display(), e))?;
+
+    let fib = dir.join(".fibbelous");
+    let db = init_index_db(&fib)
+        .await
+        .map_err(|e| format!("failed to init index db: {}", e))?;
+
+    Ok((info, db))
+}
+
+/// Represents a fully initialized workspace (metadata + its index database handle)
+#[derive(Debug)]
+pub struct LoadedWorkspace {
+    pub id: String,
+    pub path: PathBuf,
+    pub info: WorkspaceInfo,
+    pub db: DatabaseConnection,
+}
+
+/// Load and initialize all workspaces found under the workspace root directory.
+/// Returns a Vec instead of a HashMap so callers can decide how to structure state.
+pub async fn load_all_workspaces() -> Vec<LoadedWorkspace> {
+    let mut result = Vec::new();
+    let dirs = match workspace_dirs() {
+        Ok(d) => d,
+        Err(e) => {
+            error!("Failed to list workspace directories: {}", e);
+            return result;
+        }
+    };
+    info!("Found {} workspace directories", dirs.len());
+    for dir in dirs.iter() {
+        info!("Loading workspace from \"{}\"", dir.display());
+        if let Some(os_id) = dir.file_name() {
+            let id = os_id.to_string_lossy().to_string();
+            match load_workspace_dir(&dir).await {
+                Ok((info, db)) => result.push(LoadedWorkspace {
+                    id,
+                    path: dir.clone(),
+                    info,
+                    db,
+                }),
+                Err(err) => {
+                    error!("Workspace failed to load: {}", err);
+                    continue;
+                }
+            }
+        }
+    }
+    info!(
+        "Succesfully loaded {}/{} workspaces",
+        result.len(),
+        dirs.len()
+    );
+    result
 }

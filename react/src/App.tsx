@@ -2,12 +2,12 @@ import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { Outlet } from "react-router";
 import Sidebar from "./components/sidebar/Sidebar";
 import "./App.css";
-import { useWorkspaceManager } from "./contexts/WorkspaceManagerContext";
 import PageTabBar from "./components/tabs/PageTabBar";
 import { useAppNavigation } from "./contexts/AppNavigationContext";
 import { Tabs } from "@radix-ui/react-tabs";
 import SettingsDialogRoute from "./router/SettingsDialogRoute";
 import { Toaster } from "sonner";
+import { useWorkspace } from "./contexts/WorkspaceContext";
 
 function TabsShell() {
   const tabsContext = useAppNavigation();
@@ -34,12 +34,12 @@ function TabsShell() {
 }
 
 function App() {
-  const workspaceContext = useWorkspaceManager();
+  const workspace = useWorkspace();
 
   return (
     <>
       <div className="w-screen h-screen bg-gray-950">
-        {workspaceContext.workspaces.length && (
+        {workspace !== undefined && (
           <PanelGroup direction="horizontal" className="h-full">
             <Panel
               defaultSize={20}

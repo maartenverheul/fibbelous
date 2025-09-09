@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use slugify::slugify;
 use tracing::{error, info};
@@ -15,13 +16,16 @@ pub struct Page {
     pub title: String,
     pub cover: Option<String>,
     pub icon: Option<String>,
-    pub created_at: String,
-    pub updated_at: Option<String>,
-    pub deleted_at: Option<String>,
+    #[serde(with = "crate::time::serde_rfc3339_secs")]
+    pub created_at: DateTime<Utc>,
+    #[serde(with = "crate::time::serde_opt_rfc3339_secs")]
+    pub updated_at: Option<DateTime<Utc>>,
+    #[serde(with = "crate::time::serde_opt_rfc3339_secs")]
+    pub deleted_at: Option<DateTime<Utc>>,
 }
 
 impl Page {
-    pub fn create_default(parent_id: Option<String>) -> Self {
+    pub fn default(parent_id: Option<String>) -> Self {
         // Replace the following with actual default initialization logic for Page
         Page {
             // Example fields; replace with actual fields of Page
@@ -30,7 +34,7 @@ impl Page {
             title: "Untitled".into(),
             cover: None,
             icon: Some("📗".into()),
-            created_at: chrono::Utc::now().to_string(),
+            created_at: chrono::Utc::now(),
             updated_at: None,
             deleted_at: None,
         }
@@ -144,4 +148,26 @@ pub fn make_toc(workspace: &WorkspaceConnection, parent_id: &str) -> Result<Vec<
     }
 
     Ok(toc)
+}
+
+pub fn walk_workspace_pages(
+    workspace: &WorkspaceConnection,
+    dir: &Path,
+) -> Result<Vec<Page>, String> {
+    let mut pages = Vec::new();
+    if dir.is_dir() {
+        for entry in fs::read_dir(dir).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let path = entry.path();
+            if path.is_dir() {
+                let mut sub_pages = walk_workspace_pages(workspace, &path)?;
+                pages.append(&mut sub_pages);
+            } else if path.extension().and_then(|s| s.to_str()) == Some("mdx") {
+                let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+                let page: Page = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+                pages.push(page);
+            }
+        }
+    }
+    Ok(pages)
 }

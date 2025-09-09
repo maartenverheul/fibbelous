@@ -12,7 +12,7 @@ interface SettingsDialogProps {
   onTabChange?: (tab: string) => void;
 }
 
-export const pages = [
+export const tabs = [
   {
     key: "general",
     label: "General",
@@ -25,7 +25,9 @@ export const pages = [
     icon: FolderIcon,
     component: <SettingsWorkspacesPage />,
   },
-];
+] as const;
+
+export type SettingsTab = (typeof tabs)[number]["key"];
 
 export default function SettingsDialog({
   open,
@@ -41,11 +43,11 @@ export default function SettingsDialog({
         <Tabs
           value={activeTab}
           onValueChange={onTabChange}
-          defaultValue={pages[0].key}
+          defaultValue={tabs[0].key}
           className="w-full h-full flex flex-row overflow-y-auto"
         >
           <TabsList className="bg-gray-900 p-2 text-white block flex-col items-start gap-1 rounded-none h-full justify-end">
-            {pages.map((page) => {
+            {tabs.map((page) => {
               const Icon = page.icon;
               return (
                 <TabsTrigger
@@ -59,8 +61,12 @@ export default function SettingsDialog({
               );
             })}
           </TabsList>
-          {pages.map((page) => (
-            <TabsContent key={page.key} value={page.key} className="overflow-y-auto h-full">
+          {tabs.map((page) => (
+            <TabsContent
+              key={page.key}
+              value={page.key}
+              className="overflow-y-auto h-full"
+            >
               {page.component}
             </TabsContent>
           ))}

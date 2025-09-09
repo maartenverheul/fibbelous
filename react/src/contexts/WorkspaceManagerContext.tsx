@@ -1,6 +1,7 @@
 import {
   AddLocalRepoResponse,
   ConnectionType,
+  CreateWorkspaceRequest,
   Workspace,
   WorkspaceConnection,
   WorkspaceInfo,
@@ -23,6 +24,10 @@ export type WorkspaceManagerContextType = {
   getWorkspace(id: string): Workspace | undefined;
   getWorkspaceBySlug(slug: string): Workspace | undefined;
   addWorkspace(workspace: Workspace): void;
+  createWorkspace(
+    request: CreateWorkspaceRequest,
+    url?: string
+  ): Promise<WorkspaceInfo>;
   updateWorkspace(workspace: WorkspaceInfo): void;
   removeWorkspace(id: string): void;
   pickLocal(existing: boolean): Promise<AddLocalRepoResponse>;
@@ -30,7 +35,9 @@ export type WorkspaceManagerContextType = {
   openInSystem(id: string): void;
   forceRefreshRemote(): void;
 };
-const WorkspaceManagerContext = createContext<WorkspaceManagerContextType | undefined>(undefined);
+const WorkspaceManagerContext = createContext<
+  WorkspaceManagerContextType | undefined
+>(undefined);
 
 // Previously attempted to auto-select an initial workspace; logic removed.
 export function WorkspaceManagerProvider({
@@ -45,11 +52,14 @@ export function WorkspaceManagerProvider({
     defaultValue: [],
   });
   const [list, setList] = useState<Workspace[]>(
-    remoteWorkspaces.map((conn) => ({
-      info: conn.cachedInfo,
-      connection: conn,
-      connectionState: {},
-    } satisfies Workspace))
+    remoteWorkspaces.map(
+      (conn) =>
+        ({
+          info: conn.cachedInfo,
+          connection: conn,
+          connectionState: {},
+        } satisfies Workspace)
+    )
   );
 
   useEffect(() => {
@@ -64,11 +74,17 @@ export function WorkspaceManagerProvider({
         console.log("Saved workspaces", workspaceInfos);
 
         // Previously used to auto-select workspace based on URL slug; removed.
-        setList(workspaceInfos.map((info) => ({
-          info,
-          connection: { cachedInfo: info, url: undefined, type: ConnectionType.local },
-          connectionState: { success: true, checking: false },
-        })));
+        setList(
+          workspaceInfos.map((info) => ({
+            info,
+            connection: {
+              cachedInfo: info,
+              url: undefined,
+              type: ConnectionType.local,
+            },
+            connectionState: { success: true, checking: false },
+          }))
+        );
       })
       .catch((err) => {
         console.error("Failed to load saved workspaces", err);
@@ -95,19 +111,25 @@ export function WorkspaceManagerProvider({
     for (const [url, workspaces] of groups.entries()) {
       try {
         const remoteList = await fetchRemoteWorkspaces(url);
-        newList = newList.map(w => {
-          if (!workspaces.some(ws => ws.id === w.info.id)) return w;
-          const remote = remoteList.find(r => r.id === w.info.id) || remoteList.find(r => r.slug === w.info.slug);
+        newList = newList.map((w) => {
+          if (!workspaces.some((ws) => ws.id === w.info.id)) return w;
+          const remote =
+            remoteList.find((r) => r.id === w.info.id) ||
+            remoteList.find((r) => r.slug === w.info.slug);
           const urlValue = w.connection?.url || url;
           if (!remote) {
             // Workspace no longer exists remotely
             return {
               ...w,
-              connectionState: { success: false, error: 'Workspace not found on server', checking: false },
+              connectionState: {
+                success: false,
+                error: "Workspace not found on server",
+                checking: false,
+              },
               connection: {
                 url: urlValue,
                 cachedInfo: w.info,
-                type: url ? ConnectionType.remote : ConnectionType.local
+                type: url ? ConnectionType.remote : ConnectionType.local,
               },
             } satisfies Workspace;
           }
@@ -118,22 +140,30 @@ export function WorkspaceManagerProvider({
             connection: {
               url: urlValue,
               cachedInfo: w.info,
-              type: url ? ConnectionType.remote : ConnectionType.local
+              type: url ? ConnectionType.remote : ConnectionType.local,
             },
           } satisfies Workspace;
         });
       } catch (err) {
-        console.warn("[WorkspaceManager] Failed to refresh remote workspaces for", url, err);
-        newList = newList.map(w => {
-          if (!workspaces.some(ws => ws.id === w.info.id)) return w;
+        console.warn(
+          "[WorkspaceManager] Failed to refresh remote workspaces for",
+          url,
+          err
+        );
+        newList = newList.map((w) => {
+          if (!workspaces.some((ws) => ws.id === w.info.id)) return w;
           const urlValue = w.connection?.url || url;
           return {
             ...w,
-            connectionState: { success: false, error: (err as Error)?.message || 'Connection failed', checking: false },
+            connectionState: {
+              success: false,
+              error: (err as Error)?.message || "Connection failed",
+              checking: false,
+            },
             connection: {
               url: urlValue,
               cachedInfo: w.info,
-              type: url ? ConnectionType.remote : ConnectionType.local
+              type: url ? ConnectionType.remote : ConnectionType.local,
             },
           } satisfies Workspace;
         });
@@ -145,7 +175,7 @@ export function WorkspaceManagerProvider({
 
     if (!IS_APP) {
       const updatedRemote = newList.filter((w) => w.connection?.url);
-      setRemoteWorkspaces(updatedRemote.map(w => w.connection!));
+      setRemoteWorkspaces(updatedRemote.map((w) => w.connection!));
     }
   }
 
@@ -158,7 +188,13 @@ export function WorkspaceManagerProvider({
 
   function forceRefreshRemote() {
     // Mark remote workspaces as checking, then run refresh
-    setList(prev => prev.map(w => w.connection?.url ? { ...w, connectionState: { ...w.connectionState, checking: true } } : w));
+    setList((prev) =>
+      prev.map((w) =>
+        w.connection?.url
+          ? { ...w, connectionState: { ...w.connectionState, checking: true } }
+          : w
+      )
+    );
     refreshAllRemoteWorkspaces();
   }
 
@@ -171,14 +207,14 @@ export function WorkspaceManagerProvider({
   }
 
   function updateWorkspace(workspace: WorkspaceInfo) {
-    setList(prev => {
-      const index = prev.findIndex(w => w.info.id === workspace.id);
+    setList((prev) => {
+      const index = prev.findIndex((w) => w.info.id === workspace.id);
       if (index === -1) return prev;
       return update(prev, {
         [index]: {
           info: { $set: workspace },
-          connection: { cachedInfo: { $set: workspace } }
-        }
+          connection: { cachedInfo: { $set: workspace } },
+        },
       });
     });
   }
@@ -193,7 +229,10 @@ export function WorkspaceManagerProvider({
         console.error("Failed to delete workspace", id, err);
       }
     } else {
-      remoteWorkspaces.splice(remoteWorkspaces.findIndex(w => w.cachedInfo.id === id), 1);
+      remoteWorkspaces.splice(
+        remoteWorkspaces.findIndex((w) => w.cachedInfo.id === id),
+        1
+      );
       setRemoteWorkspaces(remoteWorkspaces);
     }
     if (ok) {
@@ -210,7 +249,11 @@ export function WorkspaceManagerProvider({
       if (!res.ok) return { ok: false, error: res.error };
       const workspace: Workspace = {
         info: res.workspace!,
-        connection: { url: undefined, type: ConnectionType.local, cachedInfo: res.workspace! },
+        connection: {
+          url: undefined,
+          type: ConnectionType.local,
+          cachedInfo: res.workspace!,
+        },
         connectionState: { success: true },
       };
       setList((prev) => [...prev, workspace]);
@@ -233,9 +276,7 @@ export function WorkspaceManagerProvider({
     }
   }
 
-  async function saveRemoteWorkspace(
-    workspace: Workspace
-  ): Promise<void> {
+  async function saveRemoteWorkspace(workspace: Workspace): Promise<void> {
     if (!workspace.connection) throw new Error("No connection info");
     if (!IS_APP) {
       workspace.connection.cachedInfo = workspace.info;
@@ -252,6 +293,39 @@ export function WorkspaceManagerProvider({
     }
   }
 
+  async function createWorkspace(
+    request: CreateWorkspaceRequest,
+    url?: string
+  ): Promise<WorkspaceInfo> {
+    if (url === undefined) {
+      // Local workspace, just add
+      throw new Error("Not implemented for local workspaces");
+    }
+    const response = await fetch(`${url}/api/workspaces`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(request),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to create workspace: ${response.statusText}`);
+    }
+
+    const info = (await response.json()) as WorkspaceInfo;
+    const workspace: Workspace = {
+      info,
+      connection: {
+        url,
+        type: ConnectionType.remote,
+        cachedInfo: info,
+      },
+      connectionState: { success: true, checking: false },
+    };
+    addWorkspace(workspace);
+    return info;
+  }
+
   function openInSystem(id: string) {
     if (!IS_APP) throw new Error("Not implemented in web");
     invoke("open_workspace_in_system", { id });
@@ -265,6 +339,7 @@ export function WorkspaceManagerProvider({
         getWorkspace,
         getWorkspaceBySlug,
         addWorkspace,
+        createWorkspace,
         updateWorkspace,
         removeWorkspace,
         pickLocal,

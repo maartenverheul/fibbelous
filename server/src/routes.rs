@@ -1,9 +1,11 @@
-use axum::extract::{Path, State};
+use crate::ws; // Import AppState from the appropriate module
+use axum::extract::{Json, Path, State};
 use axum::routing::{get, post};
-use axum::{response::IntoResponse, Json, Router};
+use axum::{response::IntoResponse, Router};
+use hyper::StatusCode;
+use lib::state::AppState;
+use lib::workspaces::{CreateWorkspaceRequest, WorkspaceInfo};
 use tower_http::cors::{Any, CorsLayer};
-
-use crate::{ws, AppState};
 
 pub fn build_router(state: AppState) -> Router {
     let cors = CorsLayer::new()
@@ -26,37 +28,36 @@ pub fn build_router(state: AppState) -> Router {
                 .put(update_workspace)
                 .delete(remove_workspace),
         )
-        .route(
-            "/api/workspaces/:id/pages",
-            get(list_workspaces).post(create_workspace),
-        )
+        // TODO: add pages endpoints
         .route("/api/workspaces/:id/toc", post(make_toc))
         .layer(cors)
         .with_state(state)
 }
 
 pub async fn list_workspaces(State(state): State<AppState>) -> impl IntoResponse {
-    let list: Vec<lib::workspaces::WorkspaceInfo> =
-        state.workspaces.values().map(|w| w.info.clone()).collect();
+    let guard = state.workspaces.read().await;
+    let list: Vec<WorkspaceInfo> = guard.values().map(|w| w.info.clone()).collect();
     Json(list).into_response()
 }
 
 // Simple hello endpoint for connection testing
 pub async fn hello() -> impl IntoResponse {
     println!("Received hello request");
-    (axum::http::StatusCode::OK, "Hello from server!")
+    (StatusCode::OK, "Hello from server!")
 }
 
-pub async fn create_workspace(State(state): State<AppState>) -> impl IntoResponse {
-    (
-        axum::http::StatusCode::CREATED,
-        "Workspace created (placeholder)",
-    )
-        .into_response()
+pub async fn create_workspace(
+    State(state): State<AppState>,
+    Json(request): Json<CreateWorkspaceRequest>,
+) -> impl IntoResponse {
+    match state.add_workspace_from_request(request).await {
+        Ok(ws) => (StatusCode::CREATED, Json(ws)).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+    }
 }
 
 pub async fn get_workspace(
-    State(state): State<AppState>,
+    State(_state): State<AppState>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
     format!("Get workspace with id: {}", id)

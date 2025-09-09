@@ -1,26 +1,15 @@
 use argh::FromArgs;
 use axum::{serve, Router};
+use lib::command_handler::CommandEnv;
+use lib::state::{AppState, WorkspaceState};
 use lib::tracing::{debug, info};
-use sea_orm::DatabaseConnection;
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 mod routes;
 mod ws;
-
-// Placeholder handlers for CRUD endpoints
-#[derive(Clone)]
-pub(crate) struct WorkspaceState {
-    id: String,
-    path: std::path::PathBuf,
-    info: lib::workspaces::WorkspaceInfo,
-    db: DatabaseConnection,
-}
-
-#[derive(Clone)]
-pub(crate) struct AppState {
-    workspaces: HashMap<String, WorkspaceState>,
-}
 
 #[derive(FromArgs, Debug)]
 /// Fibbelous server
@@ -51,53 +40,33 @@ async fn main() {
         debug!("Verbose logging enabled");
     }
 
-    lib::workspaces::ensure_workspace();
     let state = init_app_state().await;
     let router = routes::build_router(state);
     start_server(router).await;
 }
 
-async fn init_workspaces() -> HashMap<String, WorkspaceState> {
-    info!("Initializing workspaces");
-    let dirs = lib::workspaces::workspace_dirs().unwrap_or_default();
-    let infos_vec = lib::workspaces::list().unwrap_or_default();
-    let info_map: HashMap<String, lib::workspaces::WorkspaceInfo> =
-        infos_vec.into_iter().map(|i| (i.id.clone(), i)).collect();
-
-    let mut workspaces: HashMap<String, WorkspaceState> = HashMap::new();
-    info!("Found {} workspace directories", dirs.len());
-    for dir in dirs {
-        info!("Initializing workspace at: {:?}", dir);
-        if let Some(os_id) = dir.file_name() {
-            let id = os_id.to_string_lossy().to_string();
-            let info = match info_map.get(&id) {
-                Some(i) => i.clone(),
-                None => continue,
-            };
-            let fib = dir.join(".fibbelous");
-            let db = lib::indexing::init_index_db(&fib)
-                .await
-                .unwrap_or_else(|e| panic!("Failed to init DB for workspace {}: {}", id, e));
-            workspaces.insert(
-                id.clone(),
-                WorkspaceState {
-                    id,
-                    path: dir.clone(),
-                    info,
-                    db,
-                },
-            );
-        }
-    }
-
-    workspaces
-}
-
 async fn init_app_state() -> AppState {
-    // Load workspace infos and initialize a DB per workspace in <workspace_root>/.fibbelous
-    let workspaces = init_workspaces().await;
-
-    AppState { workspaces }
+    let loaded = lib::workspaces::load_all_workspaces().await;
+    let mut workspaces: HashMap<String, WorkspaceState> = HashMap::new();
+    for w in loaded {
+        workspaces.insert(
+            w.id.clone(),
+            WorkspaceState {
+                id: w.id,
+                path: w.path,
+                info: w.info,
+                db: w.db,
+            },
+        );
+    }
+    let env = CommandEnv::new(
+        workspaces.values().map(|w| w.info.clone()).collect(),
+        vec![],
+    );
+    AppState {
+        workspaces: Arc::new(RwLock::new(workspaces)),
+        env: Arc::new(RwLock::new(env)),
+    }
 }
 
 async fn start_server(app: Router) {

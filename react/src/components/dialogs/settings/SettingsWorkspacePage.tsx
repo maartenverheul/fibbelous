@@ -1,9 +1,23 @@
-import { Link, useNavigate } from "react-router";
+import { Link } from "react-router";
 // import { useState } from "react"; // no local state needed after refactor
-import { ChevronRight, FolderSymlink, Link2OffIcon, Loader2Icon, PlusIcon, XIcon, GlobeIcon, FolderSymlinkIcon, RefreshCwIcon } from "lucide-react";
+import {
+  ChevronRight,
+  FolderSymlink,
+  Link2OffIcon,
+  Loader2Icon,
+  PlusIcon,
+  XIcon,
+  GlobeIcon,
+  FolderSymlinkIcon,
+  RefreshCwIcon,
+} from "lucide-react";
 import { useWorkspaceManager } from "@/contexts/WorkspaceManagerContext";
 import { EyeIcon } from "lucide-react";
-import { ConnectionType, WorkspaceInfo } from "@/models";
+import {
+  ConnectionType,
+  CreateWorkspaceRequest,
+  WorkspaceInfo,
+} from "@/models";
 import { Collapsible, CollapsibleContent } from "@/components/ui/collapsible";
 import { CollapsibleTrigger } from "@radix-ui/react-collapsible";
 import AddWorkspaceForm from "./AddWorkspaceForm";
@@ -22,26 +36,39 @@ export default function SettingsWorkspacePage() {
     forceRefreshRemote,
   } = useWorkspaceManager();
   const { hashParams, workspaceHomeLink } = useAppNavigation(); // not currently used
-  const navigate = useNavigate();
+  const appNavigation = useAppNavigation();
 
   function handleVisit(workspace: WorkspaceInfo) {
-    navigate(`/${workspace.slug}`);
+    appNavigation.navigate(appNavigation.workspaceHomeLink(workspace));
   }
 
   useEffect(() => {
     console.log("Workspaces updated", workspaces);
-
   }, [workspaces]);
 
-  function workspaceIcon(w: WorkspaceInfo, isOffline: boolean, isPending: boolean) {
-    if (isPending) return <Loader2Icon className="w-5 h-5 text-gray-300 animate-spin" />;
+  function workspaceIcon(
+    w: WorkspaceInfo,
+    isOffline: boolean,
+    isPending: boolean
+  ) {
+    if (isPending)
+      return <Loader2Icon className="w-5 h-5 text-gray-300 animate-spin" />;
     if (isOffline) return <Link2OffIcon className="w-5 h-5 text-red-300" />;
     return w.icon;
   }
 
   function workspaceRemoteIcon(connectionType: ConnectionType) {
-    if (connectionType === ConnectionType.remote) return <GlobeIcon className="w-4 h-4" />
-    return <FolderSymlinkIcon className="w-4 h-4" />
+    if (connectionType === ConnectionType.remote)
+      return <GlobeIcon className="w-4 h-4" />;
+    return <FolderSymlinkIcon className="w-4 h-4" />;
+  }
+
+  function handleEditSave(
+    workspace: CreateWorkspaceRequest,
+    url?: string
+  ): void {
+    console.log("EDIT", workspace);
+    throw new Error("Function not implemented.");
   }
 
   return (
@@ -61,27 +88,42 @@ export default function SettingsWorkspacePage() {
         <>
           <ul className="mb-4">
             {workspaces.map((w) => {
-              const isOffline = !w.connectionState.checking && !w.connectionState.success;
+              const isOffline =
+                !w.connectionState.checking && !w.connectionState.success;
               const isPending = w.connectionState.checking == true;
+
               return (
-                <Collapsible key={w.info.id} defaultOpen={hashParams[2] === w.info.slug} className="mb-2">
+                <Collapsible
+                  key={w.info.id}
+                  defaultOpen={hashParams[2] === w.info.slug}
+                  className="mb-2"
+                >
                   <CollapsibleTrigger asChild>
                     <li
                       data-offline={isOffline ? "true" : undefined}
-                      className={cn(`flex cursor-pointer group items-center h-14 rounded-sm p-2 data-[state=open]:rounded-b-none transition-colors border bg-gray-700 border-transparent hover:bg-gray-600 data-[offline]:bg-red-900/60 data-[offline]:hover:bg-red-800/70 data-[offline]:border-red-900`, {
-                        "": isOffline,
-                      })}
+                      className={cn(
+                        `flex cursor-pointer group items-center h-14 rounded-sm p-2 data-[state=open]:rounded-b-none transition-colors border bg-gray-700 border-transparent hover:bg-gray-600 data-[offline]:bg-red-900/60 data-[offline]:hover:bg-red-800/70 data-[offline]:border-red-900`,
+                        {
+                          "": isOffline,
+                        }
+                      )}
                     >
-                      <div
-                        className="rounded-sm border aspect-square select-none h-8 flex items-center justify-center mr-2 transition-colors hover:bg-gray-500 hover:border-gray-400 border-transparent group-data-[offline]:hover:bg-transparent group-data-[offline]:hover:border-transparent"
-                      >
+                      <div className="rounded-sm border aspect-square select-none h-8 flex items-center justify-center mr-2 transition-colors hover:bg-gray-500 hover:border-gray-400 border-transparent group-data-[offline]:hover:bg-transparent group-data-[offline]:hover:border-transparent">
                         {workspaceIcon(w.info, isOffline, isPending)}
                       </div>
                       <div className="flex flex-col">
-                        <span className="flex items-center gap-4 text-lg truncate group-data-[offline]:text-red-300/80">{w.info.title}</span>
-                        {!isPending && w.connectionState.success === false && <span className="text-sm text-red-300">Error: {w.connectionState.error}</span>}
+                        <span className="flex items-center gap-4 text-lg truncate group-data-[offline]:text-red-300/80">
+                          {w.info.title}
+                        </span>
+                        {!isPending && w.connectionState.success === false && (
+                          <span className="text-sm text-red-300">
+                            Error: {w.connectionState.error}
+                          </span>
+                        )}
                       </div>
-                      <span className="group-data-[offline]:text-red-300/80 ml-4">{workspaceRemoteIcon(w.connection.type)}</span>
+                      <span className="group-data-[offline]:text-red-300/80 ml-4">
+                        {workspaceRemoteIcon(w.connection.type)}
+                      </span>
                       <div className="ml-auto flex items-center">
                         <Link
                           to={workspaceHomeLink(w.info)}
@@ -91,15 +133,15 @@ export default function SettingsWorkspacePage() {
                         >
                           <EyeIcon className="w-4" />
                         </Link>
-                        {
-                          IS_APP && <button
+                        {IS_APP && (
+                          <button
                             className="px-2 py-1 text-white opacity-40 hover:opacity-100 hover:text-white hover:bg-yellow-500 cursor-pointer rounded"
                             onClick={() => openInSystem(w.info.id)}
                             title="Open in System"
                           >
                             <FolderSymlink className="w-4" />
                           </button>
-                        }
+                        )}
                         <button
                           className="px-2 py-1 text-white opacity-40 hover:opacity-100 hover:text-white hover:bg-red-500 cursor-pointer rounded"
                           onClick={() => removeWorkspace(w.info.id)}
@@ -111,10 +153,16 @@ export default function SettingsWorkspacePage() {
                       </div>
                     </li>
                   </CollapsibleTrigger>
-                  <CollapsibleContent className={cn("bg-gray-700 p-4 pt-2 rounded-b-sm", {
-                    "bg-red-900/60": isOffline,
-                  })}>
-                    <EditWorkspaceForm workspace={w} readOnly={!w.connectionState.success} />
+                  <CollapsibleContent
+                    className={cn("bg-gray-700 p-4 pt-2 rounded-b-sm", {
+                      "bg-red-900/60": isOffline,
+                    })}
+                  >
+                    <EditWorkspaceForm
+                      workspace={w}
+                      readOnly={!w.connectionState.success}
+                      onSave={handleEditSave}
+                    />
                   </CollapsibleContent>
                 </Collapsible>
               );

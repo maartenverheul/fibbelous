@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use crate::migration::Migrator;
+use chrono::{DateTime, SecondsFormat, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::{ConnectOptions, Database, DatabaseConnection, DbErr};
 use sea_orm_migration::MigratorTrait;
@@ -122,6 +123,7 @@ mod pages {
         pub title: String,
         pub cover: Option<String>,
         pub icon: Option<String>,
+        // Stored as RFC3339 seconds precision strings in DB
         pub created_at: String,
         pub updated_at: Option<String>,
         pub deleted_at: Option<String>,
@@ -138,15 +140,21 @@ mod pages {
 // Mappers between ORM entity and domain model
 impl From<pages::Model> for crate::pages::Page {
     fn from(m: pages::Model) -> Self {
+        fn parse_dt(src: &str) -> DateTime<Utc> {
+            src.parse::<DateTime<Utc>>().unwrap_or_else(|_| Utc::now())
+        }
+        fn parse_opt(src: &Option<String>) -> Option<DateTime<Utc>> {
+            src.as_ref().and_then(|s| s.parse::<DateTime<Utc>>().ok())
+        }
         crate::pages::Page {
             id: m.id,
             parent_id: m.parent_id,
             title: m.title,
             cover: m.cover,
             icon: m.icon,
-            created_at: m.created_at,
-            updated_at: m.updated_at,
-            deleted_at: m.deleted_at,
+            created_at: parse_dt(&m.created_at),
+            updated_at: parse_opt(&m.updated_at),
+            deleted_at: parse_opt(&m.deleted_at),
         }
     }
 }
@@ -154,15 +162,18 @@ impl From<pages::Model> for crate::pages::Page {
 impl From<crate::pages::Page> for pages::ActiveModel {
     fn from(p: crate::pages::Page) -> Self {
         use sea_orm::ActiveValue::Set;
+        fn fmt_dt(dt: &DateTime<Utc>) -> String {
+            dt.to_rfc3339_opts(SecondsFormat::Secs, true)
+        }
         pages::ActiveModel {
             id: Set(p.id),
             parent_id: Set(p.parent_id),
             title: Set(p.title),
             cover: Set(p.cover),
             icon: Set(p.icon),
-            created_at: Set(p.created_at),
-            updated_at: Set(p.updated_at),
-            deleted_at: Set(p.deleted_at),
+            created_at: Set(fmt_dt(&p.created_at)),
+            updated_at: Set(p.updated_at.map(|d| fmt_dt(&d))),
+            deleted_at: Set(p.deleted_at.map(|d| fmt_dt(&d))),
         }
     }
 }

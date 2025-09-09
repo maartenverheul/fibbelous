@@ -2,34 +2,41 @@ import { useState } from "react";
 import useLocalStorageState from "use-local-storage-state";
 import { AlertCircle, FolderOpen, Loader2, PlusIcon } from "lucide-react";
 import { useWorkspaceManager } from "@/contexts/WorkspaceManagerContext";
-import { ConnectionType, Workspace, WorkspaceInfo } from "@/models";
+import {
+  ConnectionType,
+  CreateWorkspaceRequest,
+  Workspace,
+  WorkspaceInfo,
+} from "@/models";
 import { IS_APP } from "@/checks";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import EditWorkspaceForm from "./EditWorkspaceForm";
+import { useAppNavigation } from "@/contexts/AppNavigationContext";
 
 export function AddWorkspaceForm() {
-  const {
-    pickLocal,
-    fetchRemoteWorkspaces,
-    addWorkspace,
-    workspaces,
-  } = useWorkspaceManager();
+  const appNavigation = useAppNavigation();
+  const workspaceManager = useWorkspaceManager();
 
   const [error, setError] = useState<string | null>(null);
-  const [lastRemoteUrl, setLastRemoteUrl] = useLocalStorageState<string>("lastRemoteUrl", { defaultValue: "" });
+  const [lastRemoteUrl, setLastRemoteUrl] = useLocalStorageState<string>(
+    "lastRemoteUrl",
+    { defaultValue: "" }
+  );
   const [remoteUrl, setRemoteUrl] = useState<string>(lastRemoteUrl || "");
   const [connecting, setConnecting] = useState<boolean>(false);
   const [fetchedWorkspaces, setFetchedWorkspaces] = useState<
     WorkspaceInfo[] | undefined
   >();
-  const [fetchedTotalCount, setFetchedTotalCount] = useState<number | undefined>(undefined);
+  const [fetchedTotalCount, setFetchedTotalCount] = useState<
+    number | undefined
+  >(undefined);
   const [selectedWorkspaces, setSelectedWorkspaces] = useState<string[]>([]);
-  const [importMode, setImportMode] = useState<'existing' | 'new'>('existing');
+  const [importMode, setImportMode] = useState<"existing" | "new">("existing");
 
   async function startOpenLocal() {
     setError(null);
-    const res = await pickLocal(true);
+    const res = await workspaceManager.pickLocal(true);
     if (res.error) {
       setError(res.error);
       return;
@@ -38,7 +45,7 @@ export function AddWorkspaceForm() {
 
   async function startCreateLocal() {
     setError(null);
-    const res = await pickLocal(false);
+    const res = await workspaceManager.pickLocal(false);
     if (res.error) {
       setError(res.error);
       return;
@@ -50,16 +57,20 @@ export function AddWorkspaceForm() {
     setError(null);
 
     const minTimeout = new Promise((resolve) => setTimeout(resolve, 500));
-    const fetchPromise = fetchRemoteWorkspaces(remoteUrl).catch((err) => {
-      setError(err.message || "Failed to fetch workspaces");
-      return [] as WorkspaceInfo[];
-    });
+    const fetchPromise = workspaceManager
+      .fetchRemoteWorkspaces(remoteUrl)
+      .catch((err) => {
+        setError(err.message || "Failed to fetch workspaces");
+        return [] as WorkspaceInfo[];
+      });
 
     await Promise.all([minTimeout, fetchPromise]);
     const result = await fetchPromise;
     setFetchedTotalCount(result.length);
-    const existingIds = new Set(workspaces.map(w => w.info.id));
-    const filtered = result.filter(r => !existingIds.has(r.id));
+    const existingIds = new Set(
+      workspaceManager.workspaces.map((w) => w.info.id)
+    );
+    const filtered = result.filter((r) => !existingIds.has(r.id));
     setFetchedWorkspaces(filtered);
     setConnecting(false);
   }
@@ -80,15 +91,27 @@ export function AddWorkspaceForm() {
         connection: {
           url: remoteUrl,
           type: ConnectionType.remote,
-          cachedInfo: ws
+          cachedInfo: ws,
         },
         connectionState: {
           success: true,
-        }
-      }
-      addWorkspace(workspace);
+        },
+      };
+      workspaceManager.addWorkspace(workspace);
     }
     if (remoteUrl) setLastRemoteUrl(remoteUrl);
+  }
+
+  async function handleCreateNewWorkspace(
+    request: CreateWorkspaceRequest,
+    url?: string
+  ): Promise<void> {
+    // Reset creation form state basics
+    var workspace = await workspaceManager.createWorkspace(request, url);
+    setImportMode("existing");
+    setSelectedWorkspaces([]);
+    if (remoteUrl) setLastRemoteUrl(remoteUrl);
+    appNavigation.navigate(appNavigation.workspaceHomeLink(workspace));
   }
 
   return (
@@ -146,27 +169,45 @@ export function AddWorkspaceForm() {
       </div>
       {fetchedWorkspaces && (
         <>
-
-          <RadioGroup className="flex mb-4" defaultValue="existing" value={importMode} onValueChange={(v) => setImportMode(v as any)}>
+          <RadioGroup
+            className="flex mb-4"
+            defaultValue="existing"
+            value={importMode}
+            onValueChange={(v) => setImportMode(v as any)}
+          >
             <div className="flex items-center space-x-2">
-              <RadioGroupItem className="text-white [&_*]:fill-white" value="existing" id="mode-existing" />
-              <label className="cursor-pointer" htmlFor="mode-existing">Import existing</label>
+              <RadioGroupItem
+                className="text-white [&_*]:fill-white"
+                value="existing"
+                id="mode-existing"
+              />
+              <label className="cursor-pointer" htmlFor="mode-existing">
+                Import existing
+              </label>
             </div>
             <div className="flex items-center space-x-2">
-              <RadioGroupItem className="text-white [&_*]:fill-white" value="new" id="mode-new" />
-              <label className="cursor-pointer" htmlFor="mode-new">Create new</label>
+              <RadioGroupItem
+                className="text-white [&_*]:fill-white"
+                value="new"
+                id="mode-new"
+              />
+              <label className="cursor-pointer" htmlFor="mode-new">
+                Create new
+              </label>
             </div>
           </RadioGroup>
-          {importMode === 'existing' && (
-            fetchedWorkspaces.length === 0 ? (
+          {importMode === "existing" &&
+            (fetchedWorkspaces.length === 0 ? (
               <p className="text-sm mb-2 text-gray-400 italic">
                 {fetchedTotalCount === 0
-                  ? 'Server has no workspaces.'
-                  : 'All remote workspaces are already imported.'}
+                  ? "Server has no workspaces."
+                  : "All remote workspaces are already imported."}
               </p>
             ) : (
               <>
-                <p className="text-sm mb-2 text-gray-300">Choose workspace(s) to import</p>
+                <p className="text-sm mb-2 text-gray-300">
+                  Choose workspace(s) to import
+                </p>
                 <ul className="flex gap-2">
                   {fetchedWorkspaces.map((workspace) => (
                     <li key={workspace.id} className="mb-2">
@@ -196,23 +237,19 @@ export function AddWorkspaceForm() {
                   onClick={importSelectedWorkspaces}
                   disabled={selectedWorkspaces.length === 0}
                 >
-                  {importMode === 'existing' ? 'Import' : 'Create'} ({selectedWorkspaces.length}) workspaces
+                  {importMode === "existing" ? "Import" : "Create"} (
+                  {selectedWorkspaces.length}) workspaces
                 </button>
               </>
-            )
-          )}
-          {importMode === 'new' && (
+            ))}
+          {importMode === "new" && (
             <div className="mt-2 p-3 rounded border border-gray-700 bg-gray-800/40">
-              <p className="text-sm text-gray-300 mb-3">Create a new workspace</p>
+              <p className="text-sm text-gray-300 mb-3">
+                Create a new workspace
+              </p>
               <EditWorkspaceForm
-                create
                 remoteUrl={remoteUrl || undefined}
-                onCreate={() => {
-                  // Reset creation form state basics
-                  setImportMode('existing');
-                  setSelectedWorkspaces([]);
-                  if (remoteUrl) setLastRemoteUrl(remoteUrl);
-                }}
+                onSave={handleCreateNewWorkspace}
               />
             </div>
           )}

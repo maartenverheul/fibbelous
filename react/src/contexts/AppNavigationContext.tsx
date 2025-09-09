@@ -3,6 +3,7 @@ import { TOCItem, WorkspaceInfo } from "@/models";
 import { usePageManager } from "./PageManagerContext";
 import { useLocation, useNavigate, useParams } from "react-router";
 import { useWorkspaceManager } from "./WorkspaceManagerContext";
+import { SettingsTab } from "@/components/dialogs/settings/SettingsDialog";
 
 export type AppNavigationContextType = {
   urlWorkspaceSlug: string | undefined;
@@ -14,9 +15,10 @@ export type AppNavigationContextType = {
   openPage(pageId: string, newTab?: boolean): boolean;
   pageLink(toc: TOCItem): string;
   workspaceHomeLink(workspace?: WorkspaceInfo): string;
-  workspaceSettingsLink(workspace?: WorkspaceInfo): string;
+  settingsLink(tab?: SettingsTab, workspace?: WorkspaceInfo | null): string;
   closeTab(index: number): boolean;
   changeTab(index: number): void;
+  navigate: ReturnType<typeof useNavigate>;
 };
 
 const AppNavigationContext = createContext<
@@ -44,7 +46,10 @@ export function AppNavigationProvider({
 
   const hashParams = useMemo(() => {
     if (!hash.startsWith("#")) return [];
-    return hash.slice(1).split("/").filter((h) => h.length > 0);
+    return hash
+      .slice(1)
+      .split("/")
+      .filter((h) => h.length > 0);
   }, [hash]);
 
   useEffect(() => {
@@ -55,12 +60,20 @@ export function AppNavigationProvider({
       navigate(settingsLink("workspaces"));
 
     // If no workspace is selected, navigate to the first workspace
-    if (!workspaceSlug && workspaces.length > 0 && workspaces[0].info.slug != undefined) {
-      navigate(`/${workspaces[0].info.slug}`, { replace: true });
+    if (
+      !workspaceSlug &&
+      workspaces.length > 0 &&
+      workspaces[0].info.slug != undefined
+    ) {
+      // navigate(`/${workspaces[0].info.slug}`, { replace: true });
+      navigate(settingsLink("workspaces"));
     }
 
     // If the selected workspace is invalid, redirect back
-    if (workspaceSlug && !workspaces.some((w) => w.info.slug === workspaceSlug)) {
+    if (
+      workspaceSlug &&
+      !workspaces.some((w) => w.info.slug === workspaceSlug)
+    ) {
       // Invalid workspace, redirect to first valid workspace
       navigate("/", { replace: true });
     }
@@ -95,19 +108,21 @@ export function AppNavigationProvider({
     return `/${workspaceSlug}/${toc.slug}/${toc.id}`;
   }
 
-
   function workspaceHomeLink(workspace: WorkspaceInfo | undefined = undefined) {
     const slug = workspace?.slug ?? workspaceSlug;
     if (!slug) return "";
     return `/${slug}`;
   }
 
-  function settingsLink(tab: string = "general") {
-    return workspaceHomeLink() + `/#settings/${tab}`;
-  }
-
-  function workspaceSettingsLink(workspace: WorkspaceInfo | undefined = undefined) {
-    return settingsLink("workspaces") + `/${workspace?.slug ?? workspaceSlug}`;
+  function settingsLink(
+    tab: string = "general",
+    workspace: WorkspaceInfo | undefined = undefined
+  ) {
+    debugger;
+    const prefix = workspaceHomeLink(workspace);
+    const slug = workspace === null ? "" : workspace?.slug ?? workspaceSlug;
+    const suffix = slug ? `/${slug}` : "";
+    return `${prefix}/#settings/${tab}${suffix}`;
   }
 
   function navigateToPage(page: TOCItem) {
@@ -147,9 +162,10 @@ export function AppNavigationProvider({
         openPage,
         pageLink,
         workspaceHomeLink,
-        workspaceSettingsLink,
+        settingsLink,
         closeTab,
         changeTab,
+        navigate,
       }}
     >
       {children}

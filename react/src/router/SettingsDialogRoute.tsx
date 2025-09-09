@@ -1,30 +1,34 @@
-import SettingsDialog, { pages } from "@/components/dialogs/settings/SettingsDialog";
+import SettingsDialog, {
+  tabs,
+} from "@/components/dialogs/settings/SettingsDialog";
 import { useAppNavigation } from "@/contexts/AppNavigationContext";
-import { useNavigate } from "react-router";
 
 export default function SettingsDialogRoute() {
   const appNavigation = useAppNavigation();
-  const navigate = useNavigate();
 
   const open = appNavigation.hashParams[0] == "settings";
 
   function onOpenChange(open: boolean) {
-    if (!open) navigate("#");
+    if (!open) appNavigation.navigate("#");
   }
 
   const activeTabName = appNavigation.hashParams[1];
 
   const activeTab =
-    activeTabName && pages.find((p) => p.key === activeTabName)
+    activeTabName && tabs.find((p) => p.key === activeTabName)
       ? activeTabName
-      : pages[0].key;
+      : tabs[0].key;
 
   return (
     <SettingsDialog
       open={open}
       onOpenChange={onOpenChange}
       activeTab={activeTab}
-      onTabChange={(t) => navigate(`#settings/${t}`, { replace: true })}
+      onTabChange={(t) =>
+        appNavigation.navigate(appNavigation.settingsLink(t as any, null), {
+          replace: true,
+        })
+      }
     />
   );
 }

@@ -279,7 +279,7 @@ fn create_new_page(
             .pages
             .lock()
             .map_err(|_| "mutex poisoned".to_string())?;
-        let page = Page::create_default(parent);
+        let page = Page::default(parent);
         pages.push(page.clone());
 
         // Find the connection for the active workspace

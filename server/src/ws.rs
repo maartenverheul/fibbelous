@@ -19,12 +19,15 @@ pub async fn ws_handler(
     Query(params): Query<WsConnectParams>,
 ) -> impl IntoResponse {
     // Validate workspace exists
-    if !state.workspaces.contains_key(&params.workspace) {
-        return (
-            axum::http::StatusCode::BAD_REQUEST,
-            format!("Unknown workspace id: {}", params.workspace),
-        )
-            .into_response();
+    {
+        let guard = state.workspaces.read().await;
+        if !guard.contains_key(&params.workspace) {
+            return (
+                axum::http::StatusCode::BAD_REQUEST,
+                format!("Unknown workspace id: {}", params.workspace),
+            )
+                .into_response();
+        }
     }
     let ws_id = params.workspace.clone();
     ws.on_upgrade(move |socket| handle_socket(socket, state, ws_id))
@@ -33,15 +36,6 @@ pub async fn ws_handler(
 async fn handle_socket(mut socket: WebSocket, state: AppState, workspace_id: String) {
     debug!(target: "ws", "New WebSocket connection established to workspace {}", workspace_id);
 
-    // Send initial greeting
-    // if socket
-    //     .send(Message::Text("Welcome to Fibbelous WS".into()))
-    //     .await
-    //     .is_err()
-    // {
-    //     return;
-    // }
-
     while let Some(Ok(msg)) = socket.next().await {
         match msg {
             Message::Text(t) => {
@@ -49,13 +43,15 @@ async fn handle_socket(mut socket: WebSocket, state: AppState, workspace_id: Str
                 match serde_json::from_str::<Command>(&t) {
                     Ok(cmd) => {
                         // Restrict env to the bound workspace only
-                        let workspaces: Vec<lib::workspaces::WorkspaceInfo> = state
-                            .workspaces
-                            .get(&workspace_id)
-                            .map(|w| vec![w.info.clone()])
-                            .unwrap_or_default();
+                        let workspaces: Vec<lib::workspaces::WorkspaceInfo> = {
+                            let guard = state.workspaces.read().await;
+                            guard
+                                .get(&workspace_id)
+                                .map(|w| vec![w.info.clone()])
+                                .unwrap_or_default()
+                        };
                         let env = CommandEnv::new(workspaces, vec![]);
-                        let res: CommandResult = execute(cmd, &env);
+                        let res: CommandResult = execute(cmd, &env).await;
                         let text = encode_result(&res);
                         let _ = socket.send(Message::Text(text)).await;
                     }
@@ -64,7 +60,7 @@ async fn handle_socket(mut socket: WebSocket, state: AppState, workspace_id: Str
             }
             Message::Binary(_bin) => { /* ignore */ }
             Message::Close(_) => {
-                let _ = socket.send(Message::Close(None)).await; // Attempt polite close
+                // Don't attempt another send; socket is in closing state.
                 debug!(target: "ws", "WebSocket connection closed by client");
                 break;
             }
@@ -83,8 +79,13 @@ fn encode_result(res: &CommandResult) -> String {
         CommandResult::Void => "{\"type\":\"void\"}".to_string(),
         CommandResult::Bool(b) => format!("{{\"type\":\"bool\",\"value\":{}}}", b),
         CommandResult::Connections(list) => serde_json::json!({
-            "type": "connections",
-            "connections": list
+                    "type": "connections",
+                    "connections": list
+        })
+        .to_string(),
+        CommandResult::CreateWorkspace(result) => serde_json::json!({
+            "type": "createWorkspace",
+            "result": result
         })
         .to_string(),
         CommandResult::Workspaces(list) => serde_json::json!({
