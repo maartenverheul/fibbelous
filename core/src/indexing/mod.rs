@@ -8,7 +8,7 @@ use sea_orm::entity::prelude::*;
 use sea_orm::{ConnectOptions, Database, DatabaseConnection, DbErr, RuntimeErr};
 use sea_orm_migration::MigratorTrait;
 use tracing::log::LevelFilter;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 /// Name of the app database file within a workspace directory
 pub const DB_FILE: &str = "index.sqlite";
@@ -68,6 +68,11 @@ pub async fn get_page(db: &DatabaseConnection, id: &str) -> Result<Option<Page>,
         .map(|m| m.into()))
 }
 
+pub async fn is_indexed(db: &DatabaseConnection) -> Result<bool, DbErr> {
+    let count = pages::Entity::find().count(db).await?;
+    Ok(count > 0)
+}
+
 pub async fn update_page(db: &DatabaseConnection, page: Page) -> Result<Page, DbErr> {
     use sea_orm::EntityTrait;
     // Ensure it exists; if not, return not found
@@ -101,12 +106,9 @@ pub async fn start_indexing(app_state: &AppState) {
     for ws_arc in workspace_refs.into_iter() {
         let ws_ref = ws_arc.clone();
         tokio::spawn(async move {
-            let wid = ws_ref.id.clone();
-            info!(workspace = %wid, "Indexing started");
+            // let wid = ws_ref.id.clone();
             if let Err(e) = index_single_workspace(&ws_ref).await {
-                error!(workspace = %wid, error = %e, "Indexing failed");
-            } else {
-                info!(workspace = %wid, "Indexing complete");
+                error!("Failed to index workspace {}: {}", ws_ref.id, e);
             }
         });
     }
@@ -122,12 +124,36 @@ pub fn start_indexing_background(app_state: &AppState) {
     });
 }
 
-async fn index_single_workspace(ws: &WorkspaceState) -> Result<(), String> {
-    // Placeholder: open (or ensure) index DB already present; perform a simple sanity query.
-    // Later: scan filesystem, diff pages, update DB.
-    debug!("Indexing workspace at path {:?}", ws.path);
-    // Example no-op delay to simulate work (keep fast by default)
-    // tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+async fn index_single_workspace(ws: &WorkspaceState) -> Result<(), DbErr> {
+    info!("Started indexing workspace {}", ws.id);
+
+    let partial_index = is_indexed(&ws.db).await?;
+
+    if !partial_index {
+        info!("Workspace {} not indexed yet, performing full index", ws.id);
+        let pages = crate::pages::walk_dir_pages(&ws.path);
+        info!("Discovered {} pages from filesystem", pages.len());
+        let mut inserted = 0usize;
+        let mut failed = 0usize;
+        for page in pages.into_iter() {
+            match create_page(&ws.db, page).await {
+                Ok(_p) => {
+                    inserted += 1;
+                }
+                Err(e) => {
+                    failed += 1;
+                    warn!("Failed inserting page: {}", e);
+                }
+            }
+        }
+        info!(
+            "Indexing complete. Inserted: {}, failed: {}",
+            inserted, failed
+        );
+        return Ok(());
+    } else {
+        info!("Workspace {} already indexed, skipping full reindex", ws.id);
+    }
     Ok(())
 }
 
@@ -142,6 +168,7 @@ pub async fn list_children(
         None => query.filter(pages::Column::ParentId.is_null()),
     };
     let rows = query.all(db).await?;
+    debug!("Listed {} child pages", rows.len());
     Ok(rows.into_iter().map(Into::into).collect())
 }
 

@@ -2,10 +2,12 @@ use crate::AppState;
 use axum::extract::ws::{Message, WebSocket};
 use axum::extract::{Query, State, WebSocketUpgrade};
 use axum::response::IntoResponse;
-use futures_util::StreamExt;
 use core::command_handler::{execute, Command, CommandEnv, CommandResult, ErrorPayload};
+use core::state::WorkspaceState;
 use core::tracing::debug;
+use futures_util::StreamExt;
 use serde::Deserialize;
+use std::sync::Arc;
 
 #[derive(Deserialize)]
 pub struct WsConnectParams {
@@ -43,12 +45,19 @@ pub async fn ws_handler(
                 .into_response();
         }
     }
-    let ws_id = params.workspace.clone();
-    ws.on_upgrade(move |socket| handle_socket(socket, state, ws_id))
+    // Capture the workspace state Arc now so subsequent messages don't re-lock the map.
+    let ws_state: Arc<WorkspaceState> = {
+        let guard = state.workspaces.read().await;
+        guard
+            .get(&params.workspace)
+            .cloned()
+            .expect("workspace existence checked above")
+    };
+    ws.on_upgrade(move |socket| handle_socket(socket, state, ws_state))
 }
 
-async fn handle_socket(mut socket: WebSocket, state: AppState, workspace_id: String) {
-    debug!(target: "ws", "New WebSocket connection established to workspace {}", workspace_id);
+async fn handle_socket(mut socket: WebSocket, state: AppState, workspace: Arc<WorkspaceState>) {
+    debug!(target: "ws", "New WebSocket connection established to workspace {}", workspace.id);
 
     while let Some(Ok(msg)) = socket.next().await {
         match msg {
@@ -61,15 +70,12 @@ async fn handle_socket(mut socket: WebSocket, state: AppState, workspace_id: Str
                     }
                 };
                 let cmd = raw.command.clone();
-                let (workspaces, workspace_path) = {
-                    let guard = state.workspaces.read().await;
-                    if let Some(ws) = guard.get(&workspace_id) {
-                        (vec![ws.info.clone()], Some(ws.path.clone()))
-                    } else {
-                        (Vec::new(), None)
-                    }
-                };
-                let env = CommandEnv::new(workspaces, vec![]).with_workspace_path(workspace_path);
+                // Build command environment with the active workspace's DB
+                let mut env = CommandEnv::new(vec![workspace.info.clone()], vec![])
+                    .with_workspace_path(Some(workspace.path.clone()));
+                env.workspace_dbs
+                    .insert(workspace.id.clone(), workspace.db.clone());
+                env.active_workspace_id = Some(workspace.id.clone());
                 let res: CommandResult = execute(cmd, &env).await;
                 let id_ref = raw.id.as_deref();
                 let text = match serde_json::to_string(&OutgoingEnvelope {

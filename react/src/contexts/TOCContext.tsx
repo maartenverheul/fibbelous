@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/tauri";
 import { usePageManager } from "./PageManagerContext";
 import { IS_APP } from "@/checks";
 import { useServer } from "./ServerContext";
+import { toast } from "sonner";
 
 export type TOCContextType = {
   toc: TOCItem[];
@@ -21,29 +22,30 @@ export function TOCProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!server.connected) return;
     console.log("Rebuilding TOC from pages", pageManager.pages);
-    server.dispatch({
-      type: "get_toc",
-    });
+    loadTOC();
     // setTOC(buildFullTOC(pageManager.pages));
   }, [server.status]);
 
   async function loadTOC(parent?: string) {
-    if (!IS_APP) return;
-    return invoke("load_toc", { parent })
-      .then((newTOC) => {
-        setTOC(newTOC as TOCItem[]);
+    const result = (await server
+      .dispatch({
+        type: "get_toc",
+        payload: { parent },
       })
-      .catch((error) => {
-        console.error("Failed to load TOC:", error);
-      });
+      .catch((e) => {
+        console.error("Failed to get TOC from server:", e);
+        toast.error("Failed to get TOC from server");
+      })) as any;
+
+    setTOC(buildFullTOC(result.toc as TOCItem[]));
   }
 
-  function buildFullTOC(pages: Page[]): TOCItem[] {
+  function buildFullTOC(items: TOCItem[]): TOCItem[] {
     const toc: TOCItem[] = [];
     const pageMap = new Map<string, TOCItem>();
 
     // First, create all TOC items and map them by id
-    pages.forEach((page) => {
+    items.forEach((page) => {
       pageMap.set(page.id, {
         id: page.id,
         slug: page.slug,
@@ -54,7 +56,7 @@ export function TOCProvider({ children }: { children: React.ReactNode }) {
     });
 
     // Then, assign children to their parent TOC items
-    pages.forEach((page) => {
+    items.forEach((page) => {
       if (page.parentId) {
         const parentItem = pageMap.get(page.parentId);
         const currentItem = pageMap.get(page.id);
@@ -66,7 +68,7 @@ export function TOCProvider({ children }: { children: React.ReactNode }) {
     });
 
     // Finally, collect only root items (those without a parent)
-    pages.forEach((page) => {
+    items.forEach((page) => {
       if (!page.parentId) {
         const item = pageMap.get(page.id);
         if (item) {

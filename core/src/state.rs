@@ -33,11 +33,17 @@ impl AppState {
         let info = loaded.info.clone();
         {
             let mut w_guard = self.workspaces.write().await;
-            w_guard.insert(loaded.id.clone(), Arc::new(loaded));
+            w_guard.insert(loaded.id.clone(), Arc::new(loaded.clone()));
         }
         {
             let mut env_guard = self.env.write().await;
             env_guard.workspaces.push(info.clone());
+            // Register DB and path
+            env_guard
+                .workspace_dbs
+                .insert(loaded.id.clone(), loaded.db.clone());
+            env_guard.active_workspace_id = Some(loaded.id.clone());
+            env_guard.workspace_path = Some(loaded.path.clone());
         }
         Ok(info)
     }
@@ -59,10 +65,17 @@ pub async fn init_app_state() -> AppState {
             }),
         );
     }
-    let env = CommandEnv::new(
+    let mut env = CommandEnv::new(
         workspaces_map.values().map(|w| w.info.clone()).collect(),
         vec![],
     );
+    for ws in workspaces_map.values() {
+        env.workspace_dbs.insert(ws.id.clone(), ws.db.clone());
+    }
+    if let Some(first) = workspaces_map.values().next() {
+        env.active_workspace_id = Some(first.id.clone());
+        env.workspace_path = Some(first.path.clone());
+    }
     AppState {
         workspaces: Arc::new(RwLock::new(workspaces_map)),
         env: Arc::new(RwLock::new(env)),

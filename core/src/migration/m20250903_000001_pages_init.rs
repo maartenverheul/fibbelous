@@ -21,6 +21,7 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Pages::Id).string().not_null().primary_key())
                     .col(ColumnDef::new(Pages::ParentId).string().null())
                     .col(ColumnDef::new(Pages::Title).string().not_null())
+                    .col(ColumnDef::new(Pages::Slug).string().not_null())
                     .col(ColumnDef::new(Pages::Cover).string().null())
                     .col(ColumnDef::new(Pages::Icon).string().null())
                     .col(ColumnDef::new(Pages::CreatedAt).string().not_null())
@@ -62,6 +63,7 @@ enum Pages {
     Id,
     ParentId,
     Title,
+    Slug,
     Cover,
     Icon,
     CreatedAt,

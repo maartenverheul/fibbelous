@@ -101,17 +101,20 @@ pub fn read_page(
     let slug = slugify!(page_id);
     let file_path = pages_dir.join(format!("{}-{}.mdx", page_id, slug));
 
-    let content = fs::read_to_string(&file_path).map_err(|e| {
+    let raw = fs::read_to_string(&file_path).map_err(|e| {
         error!("Failed to read .mdx file: {}", e);
         format!("Failed to read .mdx file: {}", e)
     })?;
 
-    let page: Page = serde_json::from_str(&content).map_err(|e| {
-        error!("Failed to parse .mdx file: {}", e);
-        format!("Failed to parse .mdx file: {}", e)
+    let (page_meta, body) = parse_frontmatter(&raw).map_err(|e| {
+        error!("Failed to parse frontmatter: {}", e);
+        e
     })?;
 
-    Ok(PageWithContent { page, content })
+    Ok(PageWithContent {
+        page: page_meta,
+        content: body.to_string(),
+    })
 }
 
 pub fn get_page_path(workspace: &WorkspaceConnection, page_id: &str) -> Result<PathBuf, String> {
@@ -123,8 +126,8 @@ pub fn get_page_path(workspace: &WorkspaceConnection, page_id: &str) -> Result<P
 }
 
 pub fn get_child_pages(
-    workspace: &WorkspaceConnection,
-    parent_id: &str,
+    _workspace: &WorkspaceConnection,
+    _parent_id: &str,
 ) -> Result<Vec<Page>, String> {
     // let pages = get_all_pages(workspace)?;
     // let child_pages = pages
@@ -153,24 +156,114 @@ pub fn make_toc(workspace: &WorkspaceConnection, parent_id: &str) -> Result<Vec<
     Ok(toc)
 }
 
-pub fn walk_workspace_pages(
-    workspace: &WorkspaceConnection,
-    dir: &Path,
-) -> Result<Vec<Page>, String> {
+pub fn walk_dir_pages(dir: &Path) -> Vec<Page> {
+    if !dir.is_dir() {
+        return Vec::new();
+    }
+
     let mut pages = Vec::new();
-    if dir.is_dir() {
-        for entry in fs::read_dir(dir).map_err(|e| e.to_string())? {
-            let entry = entry.map_err(|e| e.to_string())?;
-            let path = entry.path();
-            if path.is_dir() {
-                let mut sub_pages = walk_workspace_pages(workspace, &path)?;
-                pages.append(&mut sub_pages);
-            } else if path.extension().and_then(|s| s.to_str()) == Some("mdx") {
-                let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
-                let page: Page = serde_json::from_str(&content).map_err(|e| e.to_string())?;
-                pages.push(page);
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(e) => {
+            error!("Failed to read directory {:?}: {}", dir, e);
+            return pages;
+        }
+    };
+
+    for entry_result in entries {
+        let entry = match entry_result {
+            Ok(en) => en,
+            Err(e) => {
+                error!("Failed to read entry in {:?}: {}", dir, e);
+                continue;
             }
+        };
+        let path = entry.path();
+
+        if path.is_dir() {
+            pages.extend(walk_dir_pages(&path));
+            continue;
+        }
+
+        if path.extension().and_then(|s| s.to_str()) != Some("mdx") {
+            continue;
+        }
+
+        let text = match fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(e) => {
+                error!("Failed to read file {:?}: {}", path, e);
+                continue;
+            }
+        };
+        match parse_frontmatter(&text) {
+            Ok((page, _body)) => pages.push(page),
+            Err(e) => error!("Failed to parse page file {:?}: {}", path, e),
         }
     }
-    Ok(pages)
+
+    pages
+}
+
+#[derive(Debug, Deserialize)]
+struct RawFrontmatter {
+    #[serde(default)]
+    id: Option<String>,
+    #[serde(default)]
+    parent_id: Option<String>,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    slug: Option<String>,
+    #[serde(default)]
+    cover: Option<String>,
+    #[serde(default)]
+    icon: Option<String>,
+    // Timestamps may not be present in frontmatter; we'll generate if missing
+}
+
+fn parse_frontmatter(input: &str) -> Result<(Page, &str), String> {
+    let trimmed = input.trim_start();
+    let rest = if let Some(stripped) = trimmed.strip_prefix("---\n") {
+        stripped
+    } else {
+        return Err("Missing frontmatter opening '---'".into());
+    };
+    // Scan lines until closing '---'
+    // Manual scan lines
+    let mut lines = rest.lines();
+    let mut fm_lines = Vec::new();
+    let mut consumed = 0usize; // bytes consumed in rest
+    while let Some(l) = lines.next() {
+        if l.trim() == "---" {
+            break;
+        } else {
+            fm_lines.push(l);
+            consumed += l.len() + 1;
+        }
+    }
+    if fm_lines.is_empty() {
+        return Err("Empty or invalid frontmatter".into());
+    }
+    let fm_raw = fm_lines.join("\n");
+    let body_start = &rest[consumed + 4..]; // skip closing --- + newline (approx)
+    let raw: RawFrontmatter = match serde_yaml::from_str(&fm_raw) {
+        Ok(v) => v,
+        Err(e) => return Err(format!("YAML error: {}", e)),
+    };
+    let title = raw.title.unwrap_or_else(|| "Untitled".into());
+    let slug = raw.slug.unwrap_or_else(|| slugify!(&title));
+    let id = raw.id.unwrap_or_else(|| generate_hex_id());
+    let page = Page {
+        id,
+        parent_id: raw.parent_id,
+        title: title.clone(),
+        slug,
+        cover: raw.cover,
+        icon: raw.icon.or(Some("📗".into())),
+        created_at: Utc::now(),
+        updated_at: None,
+        deleted_at: None,
+    };
+    Ok((page, body_start))
 }

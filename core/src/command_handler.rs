@@ -1,9 +1,12 @@
 use crate::id::generate_hex_id;
+use crate::indexing;
 use crate::pages::{save_page, Page, PageWithContent, TOCItem};
 // use crate::time::now_rfc3339_seconds; // not needed here currently
 use crate::workspaces::{self, CreateWorkspaceRequest, WorkspaceConnection, WorkspaceInfo};
 use chrono::Utc;
+use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// Generic command enum modeling current Tauri commands.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -113,6 +116,10 @@ pub struct CommandEnv {
     pub connections: Vec<WorkspaceConnection>,
     #[serde(skip)]
     pub workspace_path: Option<std::path::PathBuf>,
+    #[serde(skip)]
+    pub active_workspace_id: Option<String>,
+    #[serde(skip)]
+    pub workspace_dbs: HashMap<String, DatabaseConnection>,
 }
 
 impl CommandEnv {
@@ -121,12 +128,30 @@ impl CommandEnv {
             workspaces,
             connections,
             workspace_path: None,
+            active_workspace_id: None,
+            workspace_dbs: HashMap::new(),
         }
     }
 
     pub fn with_workspace_path(mut self, path: Option<std::path::PathBuf>) -> Self {
         self.workspace_path = path;
         self
+    }
+}
+
+impl CommandEnv {
+    pub fn set_active_workspace(&mut self, wid: &str) {
+        if self.workspace_dbs.contains_key(wid) {
+            self.active_workspace_id = Some(wid.to_string());
+        }
+    }
+
+    pub fn get_db(&self) -> Option<&DatabaseConnection> {
+        if let Some(id) = &self.active_workspace_id {
+            return self.workspace_dbs.get(id);
+        }
+        // fallback to first available db
+        self.workspace_dbs.values().next()
     }
 }
 
@@ -147,9 +172,23 @@ pub async fn execute(cmd: Command, env: &CommandEnv) -> CommandResult {
         OpenWorkspaceInSystem { .. } => CommandResult::Error(ErrorPayload {
             message: "OpenWorkspaceInSystem not supported".into(),
         }),
-        GetToc { parent: _ } => CommandResult::Toc(TocPayload {
-            toc: Vec::<TOCItem>::new(),
-        }),
+        GetToc { parent: _ } => {
+            let db = env
+                .get_db()
+                .expect("Invariant violated: no workspace DB available");
+            let list = indexing::list_children(db, None).await.unwrap_or_default();
+            let toc_items: Vec<TOCItem> = list
+                .into_iter()
+                .map(|page| TOCItem {
+                    id: page.id,
+                    title: page.title.clone(),
+                    slug: page.slug,
+                    icon: page.icon,
+                    children: Vec::new(),
+                })
+                .collect();
+            CommandResult::Toc(TocPayload { toc: toc_items })
+        }
         RemoveWorkspace { .. } => CommandResult::Error(ErrorPayload {
             message: "RemoveWorkspace not supported".into(),
         }),
