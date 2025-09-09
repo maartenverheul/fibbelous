@@ -3,8 +3,8 @@ use axum::extract::ws::{Message, WebSocket};
 use axum::extract::{Query, State, WebSocketUpgrade};
 use axum::response::IntoResponse;
 use futures_util::StreamExt;
-use lib::command_handler::{execute, Command, CommandEnv, CommandResult, ErrorPayload};
-use lib::tracing::debug;
+use core::command_handler::{execute, Command, CommandEnv, CommandResult, ErrorPayload};
+use core::tracing::debug;
 use serde::Deserialize;
 
 #[derive(Deserialize)]

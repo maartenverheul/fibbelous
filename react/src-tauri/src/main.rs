@@ -4,10 +4,10 @@
 mod connections;
 
 use connections::{AppState, ConnectionManager};
-use lib::logging;
-use lib::pages::{Page, PageWithContent};
-use lib::tracing::{error, info, warn};
-use lib::workspaces::{WorkspaceConnection, WorkspaceInfo};
+use core::logging;
+use core::pages::{Page, PageWithContent};
+use core::tracing::{error, info, warn};
+use core::workspaces::{WorkspaceConnection, WorkspaceInfo};
 use serde::Serialize;
 use serde_json;
 use std::fs;
@@ -114,7 +114,7 @@ fn add_local_repository(
         // 2) Generate new workspace (git repo + standard folders + workspace.json) at the directory
         info!(target: "main", "Creating local workspace at {}", path.display());
         let ws = WorkspaceInfo::default_workspace();
-        if let Err(e) = lib::workspaces::create(&ws, Some(&path)) {
+        if let Err(e) = core::workspaces::create(&ws, Some(&path)) {
             let msg = format!("Failed to create workspace at {}: {}", path.display(), e);
             error!(target: "main", "{}", msg);
             return AddLocalRepoResponse {
@@ -298,7 +298,7 @@ fn create_new_page(
                 .as_ref()
                 .ok_or("Active workspace connection has no path".to_string())?,
         );
-        let _ = lib::pages::save_page(workspace_path, &page);
+        let _ = core::pages::save_page(workspace_path, &page);
         Ok(page)
     } else {
         Err("No active workspace: cannot create a new page".to_string())
@@ -322,7 +322,7 @@ fn read_page(
         .find(|c| c.id == workspace_id)
         .ok_or("Workspace connection not found".to_string())?;
 
-    lib::pages::read_page(&connection, &page_id)
+    core::pages::read_page(&connection, &page_id)
 }
 
 #[tauri::command]

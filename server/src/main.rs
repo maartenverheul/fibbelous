@@ -1,7 +1,7 @@
 use argh::FromArgs;
-use axum::{serve, Router};
-use lib::state::{init_app_state, AppState};
-use lib::tracing::{debug, info};
+use axum::{serve};
+use core::state::{init_app_state, AppState};
+use core::tracing::{debug, info};
 use std::net::SocketAddr;
 
 mod routes;
@@ -28,7 +28,7 @@ async fn main() {
         .map(|v| matches!(v.as_str(), "1" | "true" | "yes" | "on"))
         .unwrap_or(false);
     let verbose = if cli.verbose { true } else { env_verbose };
-    lib::logging::init(logs_dir.as_path(), verbose);
+    core::logging::init(logs_dir.as_path(), verbose);
 
     info!("==============");
     info!("SERVER STARTED");
@@ -37,12 +37,12 @@ async fn main() {
     }
 
     let state = init_app_state().await;
-    // Kick off background indexing (handled inside lib)
-    lib::indexing::start_indexing_background(&state);
+    // Kick off background indexing (handled inside core)
+    core::indexing::start_indexing_background(&state);
     start_server(state).await;
 }
 
-// init_app_state moved to lib::state::init_app_state
+// init_app_state moved to core::state::init_app_state
 
 async fn start_server(state: AppState) {
     let router = routes::build_router(state);

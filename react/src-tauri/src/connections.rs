@@ -1,6 +1,6 @@
-use lib::pages::Page;
-use lib::tracing::{debug, error, info, warn};
-use lib::workspaces::{WorkspaceConnection, WorkspaceInfo};
+use core::pages::Page;
+use core::tracing::{debug, error, info, warn};
+use core::workspaces::{WorkspaceConnection, WorkspaceInfo};
 use serde_json;
 use std::env;
 use std::io::Write;

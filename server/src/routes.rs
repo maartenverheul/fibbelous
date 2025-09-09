@@ -3,8 +3,8 @@ use axum::extract::{Json, Path, State};
 use axum::routing::{get, post};
 use axum::{response::IntoResponse, Router};
 use hyper::StatusCode;
-use lib::state::AppState;
-use lib::workspaces::{CreateWorkspaceRequest, WorkspaceInfo};
+use core::state::AppState;
+use core::workspaces::{CreateWorkspaceRequest, WorkspaceInfo};
 use tower_http::cors::{Any, CorsLayer};
 
 pub fn build_router(state: AppState) -> Router {

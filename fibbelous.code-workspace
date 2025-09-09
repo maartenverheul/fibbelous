@@ -1,0 +1,16 @@
+{
+  "folders": [
+    {
+      "name": "Client",
+      "path": "react"
+    },
+    {
+      "name": "Core",
+      "path": "core"
+    },
+    {
+      "name": "Server",
+      "path": "server"
+    }
+  ]
+}

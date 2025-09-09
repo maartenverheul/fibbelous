@@ -115,7 +115,7 @@ pub async fn start_indexing(app_state: &AppState) {
 /// Public helper to launch indexing in the background from consumers (e.g. server main).
 /// Spawns a supervising task that in turn spawns per-workspace tasks.
 pub fn start_indexing_background(app_state: &AppState) {
-    // Shallow clone (cheap Arc bumps) moved inside lib so callers don't see a clone at callsite.
+    // Shallow clone (cheap Arc bumps) moved inside core so callers don't see a clone at callsite.
     let owned = app_state.clone();
     tokio::spawn(async move {
         start_indexing(&owned).await;
