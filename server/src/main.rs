@@ -46,8 +46,8 @@ async fn main() {
 
 async fn start_server(state: AppState) {
     let router = routes::build_router(state);
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3001));
-    info!("Listening on http://{}", addr);
+    let addr = SocketAddr::from(([0,0,0,0], 3001));
+    info!("Listening on {}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     serve(listener, router).await.unwrap();
 }
