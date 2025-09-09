@@ -8,6 +8,8 @@ import {
 } from "react";
 import { Command } from "@/models/commands";
 import { Workspace } from "@/models";
+import { IS_APP } from "@/checks";
+import { invoke } from "@tauri-apps/api/tauri";
 
 // Result type can be imported later if needed
 
@@ -52,9 +54,14 @@ export function ServerProvider({
       setStatus("idle");
       return;
     }
+
+    // If not remote, don't connect socket
+    if (workspace.connection.url === undefined) return;
+
     setStatus("connecting");
     setLastError(undefined);
-    const base = import.meta.env.VITE_SERVER_WS_URL ?? "ws://localhost:3001/ws";
+    const url = new URL(workspace.connection.url);
+    const base = `ws://${url.host}/ws`;
     const wsUrl = `${base}?workspace=${encodeURIComponent(workspace.info.id)}`;
     const ws = new WebSocket(wsUrl);
     socketRef.current = ws;
@@ -69,12 +76,12 @@ export function ServerProvider({
     ws.onmessage = (ev) => {
       try {
         const msg = JSON.parse(ev.data);
-        const { id, result, error } = msg;
+        const { id, payload, type } = msg;
         if (id && pending.current.has(id)) {
           const { resolve, reject } = pending.current.get(id)!;
           pending.current.delete(id);
-          if (error) reject(new Error(error));
-          else resolve(result);
+          if (type === "error") reject(new Error(payload.message));
+          else resolve(payload);
         }
       } catch (e) {
         console.warn("Server message parse failed", e);
@@ -88,28 +95,39 @@ export function ServerProvider({
   }, [workspace?.info?.id]);
 
   async function dispatch<T = unknown>(command: Command): Promise<T> {
-    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
-      throw new Error("Socket not open");
+    if (IS_APP) {
+      return await invoke(command.type, command.payload);
+    } else {
+      if (
+        !socketRef.current ||
+        socketRef.current.readyState !== WebSocket.OPEN
+      ) {
+        throw new Error("Socket not open");
+      }
+      const id = nextId();
+      const payload = { id, ...command };
+      const p = new Promise<T>((resolve, reject) => {
+        pending.current.set(id, { resolve, reject });
+        setTimeout(() => {
+          if (pending.current.has(id)) {
+            pending.current.delete(id);
+            reject(new Error("Timeout"));
+          }
+        }, 15000);
+      });
+      socketRef.current.send(JSON.stringify(payload));
+      return p;
     }
-    const id = nextId();
-    const payload = { id, command };
-    const p = new Promise<T>((resolve, reject) => {
-      pending.current.set(id, { resolve, reject });
-      setTimeout(() => {
-        if (pending.current.has(id)) {
-          pending.current.delete(id);
-          reject(new Error("Timeout"));
-        }
-      }, 15000);
-    });
-    socketRef.current.send(JSON.stringify(payload));
-    return p;
   }
 
-  if (workspace) return children;
-
   return (
-    <ServerContext.Provider value={{ status, lastError, dispatch }}>
+    <ServerContext.Provider
+      value={{
+        status,
+        lastError,
+        dispatch,
+      }}
+    >
       {children}
     </ServerContext.Provider>
   );
@@ -117,6 +135,6 @@ export function ServerProvider({
 
 export function useServer() {
   const ctx = useContext(ServerContext);
-  if (!ctx) throw new Error("useServer must be used within ServerProvider");
-  return ctx;
+  if (!ctx) console.warn("useServer must be used within ServerProvider");
+  return ctx!;
 }

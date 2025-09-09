@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use slugify::slugify;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 use crate::id::generate_hex_id;
 use crate::workspaces::WorkspaceConnection;
@@ -14,6 +14,7 @@ pub struct Page {
     pub id: String,
     pub parent_id: Option<String>,
     pub title: String,
+    pub slug: String,
     pub cover: Option<String>,
     pub icon: Option<String>,
     #[serde(with = "crate::time::serde_rfc3339_secs")]
@@ -32,6 +33,7 @@ impl Page {
             id: generate_hex_id(),
             parent_id,
             title: "Untitled".into(),
+            slug: "untitled".into(),
             cover: None,
             icon: Some("📗".into()),
             created_at: chrono::Utc::now(),
@@ -60,6 +62,7 @@ pub struct TOCItem {
 
 /// Creates a new .mdx file for the given page in the workspace's `pages` directory.
 pub fn save_page(workspace_path: &Path, page: &Page) -> Result<(), String> {
+    info!("Saving page \"{:?}\"", page.id);
     let pages_dir = workspace_path.join("pages");
     if !pages_dir.exists() {
         info!("Pages directory does not exist. Creating: {:?}", pages_dir);
@@ -74,11 +77,11 @@ pub fn save_page(workspace_path: &Path, page: &Page) -> Result<(), String> {
     let file_path = pages_dir.join(filename);
 
     let content = format!(
-        "---\ntitle: \"{}\"\nid: \"{}\"\n---\n\n# {}\n",
+        "---\ntitle: {}\nid: {}\n---\n\n# {}\n",
         page.title, page.id, page.title
     );
 
-    info!(
+    debug!(
         "Writing .mdx file for page '{}' at {:?}",
         page.title, file_path
     );

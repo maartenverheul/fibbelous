@@ -1,11 +1,11 @@
 import { Page, PageWithContent, TOCItem } from "@/models";
 import { createContext, useContext, useState } from "react";
 import { invoke } from "@tauri-apps/api/tauri";
-import { IS_APP } from "@/checks";
 import { useWorkspace } from "./WorkspaceContext";
+import { useServer } from "./ServerContext";
 
 export type PageManagerContextType = {
-  pages: Page[]
+  pages: Page[];
   load(id: string): Promise<PageWithContent | undefined>;
   createPage(parent?: string): Promise<Page | null>;
   deletePage(id: string): void;
@@ -21,14 +21,20 @@ export function PageManagerProvider({
 }: {
   children: React.ReactNode;
 }) {
+  const server = useServer();
   const workspace = useWorkspace();
   const [pages, setPages] = useState<Page[]>([]);
 
-  async function createPage(parent?: string) {
-    console.log("Creating new page at parent", parent);
-    const page = (await invoke("create_new_page", { parent })) as Page;
-    setPages((prev) => [...prev, page]);
-    return page;
+  async function createPage(parent?: string): Promise<Page> {
+    console.debug("Creating new page at parent", parent);
+    const result = await server.dispatch<Page>({
+      type: "create_new_page",
+      payload: { parent: undefined },
+    });
+    console.log("NEW", [...pages, result]);
+
+    setPages((prev) => [...prev, result]);
+    return result;
   }
 
   function deletePage(id: string) {

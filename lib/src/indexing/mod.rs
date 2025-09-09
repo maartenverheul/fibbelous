@@ -121,6 +121,7 @@ mod pages {
         pub id: String,
         pub parent_id: Option<String>,
         pub title: String,
+        pub slug: String,
         pub cover: Option<String>,
         pub icon: Option<String>,
         // Stored as RFC3339 seconds precision strings in DB
@@ -150,6 +151,7 @@ impl From<pages::Model> for crate::pages::Page {
             id: m.id,
             parent_id: m.parent_id,
             title: m.title,
+            slug: m.slug,
             cover: m.cover,
             icon: m.icon,
             created_at: parse_dt(&m.created_at),
@@ -169,6 +171,7 @@ impl From<crate::pages::Page> for pages::ActiveModel {
             id: Set(p.id),
             parent_id: Set(p.parent_id),
             title: Set(p.title),
+            slug: Set(p.slug),
             cover: Set(p.cover),
             icon: Set(p.icon),
             created_at: Set(fmt_dt(&p.created_at)),

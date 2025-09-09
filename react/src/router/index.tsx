@@ -5,6 +5,8 @@ import PageViewer from "@/components/pageviewer/PageViewer";
 import { WorkspaceProvider } from "@/contexts/WorkspaceContext";
 import { AppNavigationProvider } from "@/contexts/AppNavigationContext";
 import { PageProvider } from "@/contexts/PageContext";
+import { PageManagerProvider } from "@/contexts/PageManagerContext";
+import { TOCProvider } from "@/contexts/TOCContext";
 
 const router = createBrowserRouter([
   {
@@ -12,7 +14,11 @@ const router = createBrowserRouter([
     element: (
       <AppNavigationProvider>
         <WorkspaceProvider>
-          <App />
+          <PageManagerProvider>
+            <TOCProvider>
+              <App />
+            </TOCProvider>
+          </PageManagerProvider>
         </WorkspaceProvider>
       </AppNavigationProvider>
     ),

@@ -1,6 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { TOCItem, WorkspaceInfo } from "@/models";
-import { usePageManager } from "./PageManagerContext";
+import { Page, TOCItem, WorkspaceInfo } from "@/models";
 import { useLocation, useNavigate, useParams } from "react-router";
 import { useWorkspaceManager } from "./WorkspaceManagerContext";
 import { SettingsTab } from "@/components/dialogs/settings/SettingsDialog";
@@ -12,7 +11,7 @@ export type AppNavigationContextType = {
   tabs: TOCItem[];
   activeTabIndex?: number;
   hashParams: string[];
-  openPage(pageId: string, newTab?: boolean): boolean;
+  openPage(page: Page, newTab?: boolean): boolean;
   pageLink(toc: TOCItem): string;
   workspaceHomeLink(workspace?: WorkspaceInfo): string;
   settingsLink(tab?: SettingsTab, workspace?: WorkspaceInfo | null): string;
@@ -31,7 +30,6 @@ export function AppNavigationProvider({
   children: React.ReactNode;
 }) {
   const navigate = useNavigate();
-  const pageManager = usePageManager();
   const { workspaces, loaded } = useWorkspaceManager();
   const { hash } = useLocation();
 
@@ -79,14 +77,7 @@ export function AppNavigationProvider({
     }
   }, [loaded, workspaceSlug, workspaces, hash]);
 
-  function openPage(pageId: string, newTab: boolean = false) {
-    const page = pageManager.pages.find((p) => p.id === pageId);
-
-    if (!page) {
-      console.warn("Trying to open unknown page in tab", pageId);
-      return false;
-    }
-
+  function openPage(page: Page, newTab: boolean = false) {
     const existingIndex = tabs.findIndex((tab) => tab.id === pageId);
 
     if (tabs.length == 0 || (newTab && existingIndex === -1)) {

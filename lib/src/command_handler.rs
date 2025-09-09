@@ -1,5 +1,5 @@
 use crate::id::generate_hex_id;
-use crate::pages::{Page, PageWithContent};
+use crate::pages::{save_page, Page, PageWithContent};
 // use crate::time::now_rfc3339_seconds; // not needed here currently
 use crate::workspaces::{self, CreateWorkspaceRequest, WorkspaceConnection, WorkspaceInfo};
 use chrono::Utc;
@@ -66,6 +66,8 @@ pub enum CommandResult {
 pub struct CommandEnv {
     pub workspaces: Vec<WorkspaceInfo>,
     pub connections: Vec<WorkspaceConnection>,
+    #[serde(skip)]
+    pub workspace_path: Option<std::path::PathBuf>,
 }
 
 impl CommandEnv {
@@ -73,7 +75,13 @@ impl CommandEnv {
         Self {
             workspaces,
             connections,
+            workspace_path: None,
         }
+    }
+
+    pub fn with_workspace_path(mut self, path: Option<std::path::PathBuf>) -> Self {
+        self.workspace_path = path;
+        self
     }
 }
 
@@ -91,7 +99,21 @@ pub async fn execute(cmd: Command, env: &CommandEnv) -> CommandResult {
             CommandResult::Error("OpenWorkspaceInSystem not supported".into())
         }
         RemoveWorkspace { .. } => CommandResult::Error("RemoveWorkspace not supported".into()),
-        CreateNewPage { .. } => CommandResult::Error("CreateNewPage not supported".into()),
+        CreateNewPage { parent } => {
+            // Use first workspace in env (ws layer constrains to a single one per connection)
+            if env.workspaces.is_empty() {
+                return CommandResult::Error("No workspace in environment".into());
+            }
+            let page = Page::default(parent);
+            if let Some(path) = &env.workspace_path {
+                if let Err(e) = save_page(path, &page) {
+                    return CommandResult::Error(format!("Failed to save page: {}", e));
+                }
+            } else {
+                return CommandResult::Error("Workspace path unavailable".into());
+            }
+            CommandResult::Page(page)
+        }
         ReadPage { .. } => CommandResult::Error("ReadPage not supported".into()),
         SaveRemoteWorkspaces { .. } => {
             CommandResult::Error("SaveRemoteWorkspaces not supported".into())

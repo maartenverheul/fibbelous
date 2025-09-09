@@ -2,11 +2,11 @@
 // Keep in sync with Rust enums in lib/command_handler.rs
 
 export type Command =
-  | { type: 'ping' }
-  | { type: 'getSavedWorkspaces' }
-  | { type: 'getSavedConnections' }
-  | { type: 'readPage'; payload: { workspaceId: string; pageId: string } }
-  | { type: 'createNewPage'; payload: { parent?: string } };
+  | { type: 'ping', payload?: {} }
+  | { type: 'get_saved_workspaces', payload?: {} }
+  | { type: 'get_saved_connections', payload?: {} }
+  | { type: 'read_page'; payload: { workspaceId: string; pageId: string } }
+  | { type: 'create_new_page'; payload?: { parent?: string } };
 
 export type CommandResult =
   | { kind: 'pong' }
