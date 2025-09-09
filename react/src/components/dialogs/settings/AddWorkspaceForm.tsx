@@ -208,9 +208,9 @@ export function AddWorkspaceForm() {
                 <p className="text-sm mb-2 text-gray-300">
                   Choose workspace(s) to import
                 </p>
-                <ul className="flex gap-2">
+                <ul className="flex gap-2 flex-wrap max-h-[250px] content-start overflow-y-auto">
                   {fetchedWorkspaces.map((workspace) => (
-                    <li key={workspace.id} className="mb-2">
+                    <li key={workspace.id}>
                       <label className="hover:bg-gray-700 w-max cursor-pointer flex items-center gap-3 rounded-lg border h-11 p-3 has-[[aria-checked=true]]:border-gray-600 has-[[aria-checked=true]]:bg-gray-500 dark:has-[[aria-checked=true]]:border-gray-900 dark:has-[[aria-checked=true]]:bg-gray-950">
                         <Checkbox
                           id={`import-workspace-${workspace.id}`}
