@@ -1,7 +1,7 @@
 use argh::FromArgs;
-use axum::{serve};
-use core::state::{init_app_state, AppState};
-use core::tracing::{debug, info};
+use axum::serve;
+use fib_core::state::{init_app_state, AppState};
+use fib_core::tracing::{debug, info};
 use std::net::SocketAddr;
 
 mod routes;
@@ -28,7 +28,7 @@ async fn main() {
         .map(|v| matches!(v.as_str(), "1" | "true" | "yes" | "on"))
         .unwrap_or(false);
     let verbose = if cli.verbose { true } else { env_verbose };
-    core::logging::init(logs_dir.as_path(), verbose);
+    fib_core::logging::init(logs_dir.as_path(), verbose);
 
     info!("==============");
     info!("SERVER STARTED");
@@ -38,7 +38,7 @@ async fn main() {
 
     let state = init_app_state().await;
     // Kick off background indexing (handled inside core)
-    core::indexing::start_indexing_background(&state);
+    fib_core::indexing::start_indexing_background(&state);
     start_server(state).await;
 }
 
@@ -46,7 +46,7 @@ async fn main() {
 
 async fn start_server(state: AppState) {
     let router = routes::build_router(state);
-    let addr = SocketAddr::from(([0,0,0,0], 3001));
+    let addr = SocketAddr::from(([0, 0, 0, 0], 3001));
     info!("Listening on {}", addr);
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     serve(listener, router).await.unwrap();

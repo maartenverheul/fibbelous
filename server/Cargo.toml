@@ -8,7 +8,7 @@ argh = "0.1"
 serde = { version = "1", features = ["derive"] }
 axum = { version = "0.7", features = ["ws"] }
 tokio = { version = "1", features = ["full"] }
-core = { path = "../core" }
+fib_core = { path = "../core" }
 hyper = "1.6.0"
 tower-http = { version = "0.6.6", features = ["cors"] }
 sea-orm = { version = "1", features = ["sqlx-sqlite", "runtime-tokio-rustls"] }

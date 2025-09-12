@@ -2,9 +2,9 @@ use crate::ws; // Import AppState from the appropriate module
 use axum::extract::{Json, Path, State};
 use axum::routing::{get, post};
 use axum::{response::IntoResponse, Router};
+use fib_core::state::AppState;
+use fib_core::workspaces::{CreateWorkspaceRequest, WorkspaceInfo};
 use hyper::StatusCode;
-use core::state::AppState;
-use core::workspaces::{CreateWorkspaceRequest, WorkspaceInfo};
 use tower_http::cors::{Any, CorsLayer};
 
 pub fn build_router(state: AppState) -> Router {

@@ -1,7 +1,9 @@
-use core::pages::Page;
-use core::tracing::{debug, error, info, warn};
-use core::workspaces::{WorkspaceConnection, WorkspaceInfo};
+use fib_core::pages::Page;
+use fib_core::tracing::{debug, error, info, warn};
+use fib_core::workspaces::{WorkspaceConnection, WorkspaceInfo};
+use sea_orm::DatabaseConnection;
 use serde_json;
+use std::collections::HashMap;
 use std::env;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -14,6 +16,7 @@ pub struct AppState {
     pub active_workspace: Mutex<Option<WorkspaceInfo>>,
     pub workspaces: Mutex<Vec<WorkspaceInfo>>, // resolved workspaces
     pub pages: Mutex<Vec<Page>>,               // loaded pages from active workspace
+    pub workspace_dbs: Mutex<HashMap<String, DatabaseConnection>>, // cached index DBs per workspace id
 }
 
 pub struct ConnectionManager;
