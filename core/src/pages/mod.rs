@@ -4,7 +4,7 @@ use slugify::slugify;
 use tracing::{debug, error, info};
 
 use crate::id::generate_hex_id;
-use crate::workspaces::WorkspaceConnection;
+use crate::workspaces::{LoadedWorkspace, WorkspaceConnection, WorkspaceInfo};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -56,6 +56,7 @@ pub struct TOCItem {
     pub id: String,
     pub title: String,
     pub slug: String,
+    pub url: String,
     pub icon: Option<String>,
     pub children: Vec<Page>,
 }
@@ -98,18 +99,32 @@ pub fn read_page(
 ) -> Result<PageWithContent, String> {
     let path = workspace.path.as_ref().ok_or("Workspace path is not set")?;
     let pages_dir = path.join("pages");
-    let slug = slugify!(page_id);
-    let file_path = pages_dir.join(format!("{}-{}.mdx", page_id, slug));
+    if !pages_dir.is_dir() {
+        return Err("Pages directory missing".into());
+    }
 
-    let raw = fs::read_to_string(&file_path).map_err(|e| {
-        error!("Failed to read .mdx file: {}", e);
-        format!("Failed to read .mdx file: {}", e)
-    })?;
+    // Files are stored as: <id>-<slugified-title>.mdx. We only know the id here.
+    let mut target: Option<std::path::PathBuf> = None;
+    for entry in fs::read_dir(&pages_dir).map_err(|e| format!("Failed to list pages: {}", e))? {
+        let entry = entry.map_err(|e| format!("Entry error: {}", e))?;
+        let p = entry.path();
+        if p.extension().and_then(|s| s.to_str()) != Some("mdx") {
+            continue;
+        }
+        if let Some(fname) = p.file_name().and_then(|s| s.to_str()) {
+            if fname.starts_with(page_id) && fname.as_bytes().get(page_id.len()) == Some(&b'-') {
+                target = Some(p.clone());
+                break;
+            }
+        }
+    }
+    let file_path = target.ok_or_else(|| format!("Page file for id {} not found", page_id))?;
 
-    let (page_meta, body) = parse_frontmatter(&raw).map_err(|e| {
-        error!("Failed to parse frontmatter: {}", e);
-        e
-    })?;
+    let raw =
+        fs::read_to_string(&file_path).map_err(|e| format!("Failed to read .mdx file: {}", e))?;
+
+    let (page_meta, body) =
+        parse_frontmatter(&raw).map_err(|e| format!("Failed to parse frontmatter: {}", e))?;
 
     Ok(PageWithContent {
         page: page_meta,
@@ -138,14 +153,19 @@ pub fn get_child_pages(
     Ok(vec![]) // Placeholder implementation
 }
 
-pub fn make_toc(workspace: &WorkspaceConnection, parent_id: &str) -> Result<Vec<TOCItem>, String> {
-    let pages = get_child_pages(workspace, parent_id)?;
+pub fn get_page_url(workspace: &WorkspaceInfo, page: &Page) -> String {
+    format!("/workspace/{}/{}", workspace.slug, page.slug)
+}
+
+pub fn make_toc(workspace: &LoadedWorkspace, parent_id: &str) -> Result<Vec<TOCItem>, String> {
+    let pages = get_child_pages(&workspace.connection, parent_id)?;
     let mut toc = Vec::new();
 
     for page in pages {
         let item = TOCItem {
-            id: page.id,
+            id: page.id.clone(),
             title: page.title.clone(),
+            url: get_page_url(&workspace.info, &page),
             slug: slugify!(&page.title),
             icon: page.icon,
             children: Vec::new(),

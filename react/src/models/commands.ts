@@ -5,7 +5,7 @@ export type Command =
   | { type: 'ping', payload?: {} }
   | { type: 'get_saved_workspaces', payload?: {} }
   | { type: 'get_saved_connections', payload?: {} }
-  | { type: 'read_page'; payload: { workspaceId: string; pageId: string } }
+  | { type: 'read_page'; payload: { pageId: string } }
   | { type: 'create_new_page'; payload?: { parent?: string } }
   | { type: 'get_toc'; payload?: { parent?: string } };
 

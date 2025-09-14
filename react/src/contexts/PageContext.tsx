@@ -1,12 +1,9 @@
-import { Page, TOCItem } from "@/models";
+import { Page, PageWithContent, TOCItem } from "@/models";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { usePageManager } from "./PageManagerContext";
 import { useAppNavigation } from "./AppNavigationContext";
 import { useWorkspace } from "./WorkspaceContext";
-import PageService, {
-  LocalPageService,
-  RemotePageService,
-} from "@/services/PageService";
+import { useServer } from "./ServerContext";
 
 export type PageContextType = {
   data: Page | undefined;
@@ -27,24 +24,26 @@ type Props = {
 
 export function PageProvider({ children }: Props) {
   const appNavigation = useAppNavigation();
-  const workspace = useWorkspace();
+  const server = useServer();
   const pageManager = usePageManager();
   const [data, setData] = useState<Page>();
   const [loaded, setLoaded] = useState(false);
   const [content, setContent] = useState<string>("");
 
-  const pageService = useMemo<PageService>(() => {
-    return workspace?.connection?.url == undefined
-      ? new LocalPageService()
-      : new RemotePageService(workspace?.connection.url, workspace.info);
-  }, []);
-
   useEffect(() => {
     const pageId = appNavigation.urlPageId!;
+    console.log("Loading page:", pageId);
 
-    pageService
-      .load(pageId)
-      .then((result) => {
+    server
+      .dispatch({
+        type: "read_page",
+        payload: {
+          pageId,
+        },
+      })
+      .then((result: any) => {
+        console.log(result);
+
         setData(result?.page);
         setContent(result?.content || "");
         setLoaded(true);
@@ -53,7 +52,7 @@ export function PageProvider({ children }: Props) {
         console.error("Failed to load page:", err);
         setLoaded(true);
       });
-  }, [appNavigation.urlPageSlug]);
+  }, [appNavigation.urlPageId]);
 
   const breadcrumbs = useMemo<TOCItem[]>(
     () => pageManager.buildBreadcrumbs(appNavigation.urlPageSlug!),
@@ -76,7 +75,7 @@ export function PageProvider({ children }: Props) {
     console.warn("TODO Updating icon:", newIcon);
   }
 
-  function updateContent(newContent: string) { }
+  function updateContent(newContent: string) {}
 
   return (
     <PageContext.Provider

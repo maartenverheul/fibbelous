@@ -80,6 +80,7 @@ export type TOCItem = {
   id: string;
   parentId?: string;
   title: string;
+  url: string;
   slug: string;
   icon?: string;
   /** Intentionally made optional to indicate not loaded. */

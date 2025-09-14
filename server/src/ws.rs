@@ -2,10 +2,11 @@ use crate::AppState;
 use axum::extract::ws::{Message, WebSocket};
 use axum::extract::{Query, State, WebSocketUpgrade};
 use axum::response::IntoResponse;
-use fib_core::command_handler::{execute, Command, CommandEnv, CommandResult, ErrorPayload};
-use fib_core::state::WorkspaceState;
+use fib_core::command_handler::{Command, CommandHandler, CommandResult, ErrorPayload};
 use fib_core::tracing::debug;
+use fib_core::workspaces::LoadedWorkspace;
 use futures_util::StreamExt;
+use hyper::StatusCode;
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -35,29 +36,27 @@ pub async fn ws_handler(
     Query(params): Query<WsConnectParams>,
 ) -> impl IntoResponse {
     // Validate workspace exists
-    {
+
+    let workspace = {
         let guard = state.workspaces.read().await;
-        if !guard.contains_key(&params.workspace) {
-            return (
-                axum::http::StatusCode::BAD_REQUEST,
-                format!("Unknown workspace id: {}", params.workspace),
-            )
-                .into_response();
+        guard.get(&params.workspace).cloned()
+    };
+
+    match workspace {
+        None => (
+            StatusCode::BAD_REQUEST,
+            format!("Unknown workspace id: {}", params.workspace),
+        )
+            .into_response(),
+        Some(workspace) => {
+            ws.on_upgrade(move |socket| handle_socket(socket, state.clone(), workspace))
         }
     }
-    // Capture the workspace state Arc now so subsequent messages don't re-lock the map.
-    let ws_state: Arc<WorkspaceState> = {
-        let guard = state.workspaces.read().await;
-        guard
-            .get(&params.workspace)
-            .cloned()
-            .expect("workspace existence checked above")
-    };
-    ws.on_upgrade(move |socket| handle_socket(socket, state, ws_state))
 }
 
-async fn handle_socket(mut socket: WebSocket, state: AppState, workspace: Arc<WorkspaceState>) {
+async fn handle_socket(mut socket: WebSocket, state: AppState, workspace: Arc<LoadedWorkspace>) {
     debug!(target: "ws", "New WebSocket connection established to workspace {}", workspace.id);
+    let handler = CommandHandler::new(state.clone(), workspace.clone());
 
     while let Some(Ok(msg)) = socket.next().await {
         match msg {
@@ -66,17 +65,22 @@ async fn handle_socket(mut socket: WebSocket, state: AppState, workspace: Arc<Wo
                     Ok(v) => v,
                     Err(e) => {
                         debug!(target: "ws", "Invalid message (expected envelope) : {}", e);
+                        // Build and send an error response back to client
+                        let err = CommandResult::Error(ErrorPayload {
+                            message: format!("Invalid message: {}", e),
+                        });
+                        if let Ok(text) = serde_json::to_string(&OutgoingEnvelope {
+                            id: None,
+                            result: &err,
+                        }) {
+                            // Ignore send error (client may have closed)
+                            let _ = socket.send(Message::Text(text)).await;
+                        }
                         continue;
                     }
                 };
                 let cmd = raw.command.clone();
-                // Build command environment with the active workspace's DB
-                let mut env = CommandEnv::new(vec![workspace.info.clone()], vec![])
-                    .with_workspace_path(Some(workspace.path.clone()));
-                env.workspace_dbs
-                    .insert(workspace.id.clone(), workspace.db.clone());
-                env.active_workspace_id = Some(workspace.id.clone());
-                let res: CommandResult = execute(cmd, &env).await;
+                let res: CommandResult = handler.execute(cmd).await;
                 let id_ref = raw.id.as_deref();
                 let text = match serde_json::to_string(&OutgoingEnvelope {
                     id: id_ref,

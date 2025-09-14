@@ -10,6 +10,7 @@ import { Command } from "@/models/commands";
 import { Workspace } from "@/models";
 import { IS_APP } from "@/checks";
 import { invoke } from "@tauri-apps/api/tauri";
+import { toast } from "sonner";
 
 // Result type can be imported later if needed
 
@@ -87,6 +88,12 @@ export function ServerProvider({
           pending.current.delete(id);
           if (type === "error") reject(new Error(payload.message));
           else resolve(payload);
+        }
+        if (type === "error") {
+          toast.error("Server error", {
+            description: payload.message,
+            duration: 5000,
+          });
         }
       } catch (e) {
         console.warn("Server message parse failed", e);

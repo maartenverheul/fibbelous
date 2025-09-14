@@ -1,6 +1,5 @@
 // use crate::time::now_rfc3339_seconds; // no longer needed after switching to DateTime<Utc>
 use crate::pages::{save_page, Page};
-use crate::state::WorkspaceState;
 use crate::{id::generate_hex_id, indexing::init_index_db};
 use chrono::{DateTime, Utc};
 use git2::Repository;
@@ -50,6 +49,16 @@ pub struct CreateWorkspaceRequest {
     pub description: Option<String>,
 }
 
+/// Represents a fully initialized workspace (metadata + its index database handle)
+#[derive(Debug, Clone)]
+pub struct LoadedWorkspace {
+    pub id: String,
+    pub path: PathBuf,
+    pub connection: WorkspaceConnection,
+    pub info: WorkspaceInfo,
+    pub db: DatabaseConnection,
+}
+
 impl WorkspaceInfo {
     pub fn default_workspace() -> Self {
         let created_at = Utc::now();
@@ -80,14 +89,14 @@ pub fn workspace_dirs() -> Result<Vec<std::path::PathBuf>, std::io::Error> {
 
 pub const WORKSPACES_PATH: &str = ".data/workspaces";
 
-pub async fn create_default(target_path: Option<&Path>) -> Result<WorkspaceState, git2::Error> {
+pub async fn create_default(target_path: Option<&Path>) -> Result<LoadedWorkspace, git2::Error> {
     create(&WorkspaceInfo::default_workspace(), target_path).await
 }
 
 pub async fn create(
     settings: &WorkspaceInfo,
     target_path: Option<&Path>,
-) -> Result<WorkspaceState, git2::Error> {
+) -> Result<LoadedWorkspace, git2::Error> {
     let repo_path: PathBuf = match target_path {
         Some(p) => p.to_path_buf(),
         None => {
@@ -118,9 +127,17 @@ pub async fn create(
 
     let db = init_index_db(&fib).await.expect("Failed to init index DB");
 
-    let state = WorkspaceState {
+    let connection = WorkspaceConnection {
         id: settings.id.clone(),
-        path: repo_path,
+        path: Some(repo_path.clone()),
+        url: None,
+        git: None,
+    };
+
+    let state = LoadedWorkspace {
+        id: settings.id.clone(),
+        path: repo_path.clone(),
+        connection,
         info: settings.clone(),
         db,
     };
@@ -132,7 +149,7 @@ pub async fn create(
 /// and preparing / initializing its index database. Returns a fully loaded workspace.
 pub async fn create_workspace_from_request(
     req: CreateWorkspaceRequest,
-) -> Result<WorkspaceState, String> {
+) -> Result<LoadedWorkspace, String> {
     let info = WorkspaceInfo {
         id: generate_hex_id(),
         slug: req.slug,
@@ -201,15 +218,6 @@ pub async fn load_workspace_dir(dir: &Path) -> Result<(WorkspaceInfo, DatabaseCo
     Ok((info, db))
 }
 
-/// Represents a fully initialized workspace (metadata + its index database handle)
-#[derive(Debug)]
-pub struct LoadedWorkspace {
-    pub id: String,
-    pub path: PathBuf,
-    pub info: WorkspaceInfo,
-    pub db: DatabaseConnection,
-}
-
 /// Load and initialize all workspaces found under the workspace root directory.
 /// Returns a Vec instead of a HashMap so callers can decide how to structure state.
 pub async fn load_all_workspaces() -> Vec<LoadedWorkspace> {
@@ -230,6 +238,12 @@ pub async fn load_all_workspaces() -> Vec<LoadedWorkspace> {
                 Ok((info, db)) => result.push(LoadedWorkspace {
                     id,
                     path: dir.clone(),
+                    connection: WorkspaceConnection {
+                        id: info.id.clone(),
+                        path: Some(dir.clone()),
+                        url: None,
+                        git: None,
+                    },
                     info,
                     db,
                 }),

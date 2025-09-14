@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::ws; // Import AppState from the appropriate module
 use axum::extract::{Json, Path, State};
 use axum::routing::{get, post};
@@ -50,8 +52,16 @@ pub async fn create_workspace(
     State(state): State<AppState>,
     Json(request): Json<CreateWorkspaceRequest>,
 ) -> impl IntoResponse {
-    match state.add_workspace_from_request(request).await {
-        Ok(ws) => (StatusCode::CREATED, Json(ws)).into_response(),
+    // Build WorkspaceInfo-like object first via workspaces::create_workspace_from_request
+    match fib_core::workspaces::create_workspace_from_request(request).await {
+        Ok(loaded) => {
+            let info = loaded.info.clone();
+            {
+                let mut guard = state.workspaces.write().await;
+                guard.insert(loaded.id.clone(), Arc::new(loaded));
+            }
+            (StatusCode::CREATED, Json(info)).into_response()
+        }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
     }
 }

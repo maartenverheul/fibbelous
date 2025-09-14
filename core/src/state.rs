@@ -1,83 +1,21 @@
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::RwLock;
 
-use sea_orm::DatabaseConnection;
-
-use crate::{
-    command_handler::CommandEnv,
-    workspaces::{CreateWorkspaceRequest, WorkspaceInfo},
-};
-
-// Placeholder handlers for CRUD endpoints
-#[derive(Clone)]
-pub struct WorkspaceState {
-    pub id: String,
-    pub path: std::path::PathBuf,
-    pub info: crate::workspaces::WorkspaceInfo,
-    pub db: DatabaseConnection,
-}
+use crate::workspaces::LoadedWorkspace;
 
 #[derive(Clone)]
 pub struct AppState {
-    pub workspaces: Arc<RwLock<HashMap<String, Arc<WorkspaceState>>>>,
-    pub env: Arc<RwLock<CommandEnv>>,
-}
-
-impl AppState {
-    pub async fn add_workspace_from_request(
-        &self,
-        req: CreateWorkspaceRequest,
-    ) -> Result<WorkspaceInfo, String> {
-        // Build workspace info
-        let loaded = crate::workspaces::create_workspace_from_request(req).await?;
-        let info = loaded.info.clone();
-        {
-            let mut w_guard = self.workspaces.write().await;
-            w_guard.insert(loaded.id.clone(), Arc::new(loaded.clone()));
-        }
-        {
-            let mut env_guard = self.env.write().await;
-            env_guard.workspaces.push(info.clone());
-            // Register DB and path
-            env_guard
-                .workspace_dbs
-                .insert(loaded.id.clone(), loaded.db.clone());
-            env_guard.active_workspace_id = Some(loaded.id.clone());
-            env_guard.workspace_path = Some(loaded.path.clone());
-        }
-        Ok(info)
-    }
+    pub workspaces: Arc<RwLock<HashMap<String, Arc<LoadedWorkspace>>>>,
 }
 
 /// Load all workspaces from storage and create an initial `AppState`.
 pub async fn init_app_state() -> AppState {
     let loaded = crate::workspaces::load_all_workspaces().await;
-    let mut workspaces_map: HashMap<String, Arc<WorkspaceState>> = HashMap::new();
+    let mut workspaces_map: HashMap<String, Arc<LoadedWorkspace>> = HashMap::new();
     for w in loaded {
-        let info_clone = w.info.clone();
-        workspaces_map.insert(
-            w.id.clone(),
-            Arc::new(WorkspaceState {
-                id: w.id,
-                path: w.path,
-                info: info_clone,
-                db: w.db,
-            }),
-        );
-    }
-    let mut env = CommandEnv::new(
-        workspaces_map.values().map(|w| w.info.clone()).collect(),
-        vec![],
-    );
-    for ws in workspaces_map.values() {
-        env.workspace_dbs.insert(ws.id.clone(), ws.db.clone());
-    }
-    if let Some(first) = workspaces_map.values().next() {
-        env.active_workspace_id = Some(first.id.clone());
-        env.workspace_path = Some(first.path.clone());
+        workspaces_map.insert(w.id.clone(), Arc::new(w.clone()));
     }
     AppState {
         workspaces: Arc::new(RwLock::new(workspaces_map)),
-        env: Arc::new(RwLock::new(env)),
     }
 }

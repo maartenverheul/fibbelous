@@ -29,7 +29,7 @@ export default function TOCPageItem({ item, level = 0 }: Props) {
 
   return (
     <Collapsible disabled={!hasChildren}>
-      <div className="flex items-center justify-center transition duration-75 hover:bg-gray-700 text-gray-400 gap-1 rounded relative group/page select-none text-sm">
+      <div className="TOCPageItem flex items-stretch justify-center transition duration-75 hover:bg-gray-700 text-gray-400 gap-1 rounded relative group/page select-none text-sm">
         <div
           className="p-[2px]"
           style={{
@@ -45,8 +45,9 @@ export default function TOCPageItem({ item, level = 0 }: Props) {
         </div>
         <Link
           to={appNavigation.pageLink(item)}
-          onClick={() => appNavigation.openPage(item.id)}
-          className="text-left block w-full cursor-pointer relative align-middle"
+          onClick={() => appNavigation.openPage(item)}
+          className="text-left block w-full cursor-pointer relative align-middle pt-[4px]"
+          draggable={false}
         >
           {item.title}
         </Link>
@@ -63,7 +64,7 @@ export default function TOCPageItem({ item, level = 0 }: Props) {
             </DropdownMenuTrigger>
             <DropdownMenuContent>
               <DropdownMenuItem
-                onClick={() => appNavigation.openPage(item.id, true)}
+                onClick={() => appNavigation.openPage(item, true)}
               >
                 Open in new tab
               </DropdownMenuItem>

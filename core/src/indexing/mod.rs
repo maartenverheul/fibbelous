@@ -2,7 +2,8 @@ use std::path::Path;
 
 use crate::migration::Migrator;
 use crate::pages::Page;
-use crate::state::{AppState, WorkspaceState};
+use crate::state::AppState;
+use crate::workspaces::LoadedWorkspace;
 use chrono::{DateTime, SecondsFormat, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::{ConnectOptions, Database, DatabaseConnection, DbErr, RuntimeErr};
@@ -124,7 +125,7 @@ pub fn start_indexing_background(app_state: &AppState) {
     });
 }
 
-async fn index_single_workspace(ws: &WorkspaceState) -> Result<(), DbErr> {
+async fn index_single_workspace(ws: &LoadedWorkspace) -> Result<(), DbErr> {
     info!("Started indexing workspace {}", ws.id);
 
     let partial_index = is_indexed(&ws.db).await?;

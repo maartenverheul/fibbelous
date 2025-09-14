@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { Page, TOCItem, WorkspaceInfo } from "@/models";
+import { TOCItem, WorkspaceInfo } from "@/models";
 import { useLocation, useNavigate, useParams } from "react-router";
 import { useWorkspaceManager } from "./WorkspaceManagerContext";
 import { SettingsTab } from "@/components/dialogs/settings/SettingsDialog";
@@ -11,7 +11,7 @@ export type AppNavigationContextType = {
   tabs: TOCItem[];
   activeTabIndex?: number;
   hashParams: string[];
-  openPage(page: Page, newTab?: boolean): boolean;
+  openPage(page: TOCItem, newTab?: boolean): boolean;
   pageLink(toc: TOCItem): string;
   workspaceHomeLink(workspace?: WorkspaceInfo): string;
   settingsLink(tab?: SettingsTab, workspace?: WorkspaceInfo | null): string;
@@ -35,9 +35,16 @@ export function AppNavigationProvider({
 
   const params = useParams();
   const { workspaceSlug } = params;
-  const pageString = params["*"]?.split("/");
-  const pageId = pageString?.[pageString.length - 1];
-  const pageSlug = pageString?.[pageString.length - 2];
+  const pageString = useMemo(() => {
+    const parts = params["*"]?.split("/");
+    return parts ? parts[parts.length - 1] : undefined;
+  }, [params]);
+  const pageParts = useMemo(() => pageString?.split("-"), [pageString]);
+  const urlPageId = useMemo(() => pageParts?.[0], [pageParts]);
+  const urlPageSlug = useMemo(() => {
+    console.log("pageSlug", pageParts);
+    return pageParts?.slice(1).join("-");
+  }, [pageParts]);
 
   const [activeTab, setActiveTab] = useState<number | undefined>();
   const [tabs, setTabs] = useState<TOCItem[]>([]);
@@ -77,8 +84,8 @@ export function AppNavigationProvider({
     }
   }, [loaded, workspaceSlug, workspaces, hash]);
 
-  function openPage(page: Page, newTab: boolean = false) {
-    const existingIndex = tabs.findIndex((tab) => tab.id === pageId);
+  function openPage(page: TOCItem, newTab: boolean = false) {
+    const existingIndex = tabs.findIndex((tab) => tab.id === page.id);
 
     if (tabs.length == 0 || (newTab && existingIndex === -1)) {
       setTabs([...tabs, page]);
@@ -96,7 +103,7 @@ export function AppNavigationProvider({
   }
 
   function pageLink(toc: TOCItem) {
-    return `/${workspaceSlug}/${toc.slug}/${toc.id}`;
+    return `/${workspaceSlug}/${toc.id}-${toc.slug}`;
   }
 
   function workspaceHomeLink(workspace: WorkspaceInfo | undefined = undefined) {
@@ -144,8 +151,8 @@ export function AppNavigationProvider({
     <AppNavigationContext.Provider
       value={{
         urlWorkspaceSlug: workspaceSlug,
-        urlPageSlug: pageSlug,
-        urlPageId: pageId,
+        urlPageSlug,
+        urlPageId,
         tabs,
         activeTabIndex: activeTab,
         hashParams,

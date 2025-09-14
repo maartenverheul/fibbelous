@@ -4,7 +4,7 @@
 mod connections;
 
 use connections::{AppState, ConnectionManager};
-use fib_core::command_handler::{execute, Command, CommandEnv, CommandResult};
+use fib_core::command_handler::{Command, CommandHandler, CommandResult};
 use fib_core::indexing::init_index_db;
 use fib_core::logging;
 use fib_core::tracing::info;
@@ -71,6 +71,7 @@ async fn invoke_command(
 
     let mut env = CommandEnv::new(workspaces.clone(), connections.clone())
         .with_workspace_path(workspace_path_opt);
+    env.workspace = active_ws.clone();
     env.active_workspace_id = active_workspace_id;
     {
         let dbs = state.workspace_dbs.lock().expect("mutex poisoned");

@@ -61,7 +61,7 @@ function App() {
         )}
       </div>
 
-      <Toaster position="bottom-right" />
+      <Toaster position="bottom-right" richColors />
 
       <SettingsDialogRoute />
     </>
