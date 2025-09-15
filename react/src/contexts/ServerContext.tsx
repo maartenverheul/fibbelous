@@ -83,17 +83,17 @@ export function ServerProvider({
       try {
         const msg = JSON.parse(ev.data);
         const { id, payload, type } = msg;
-        if (id && pending.current.has(id)) {
-          const { resolve, reject } = pending.current.get(id)!;
-          pending.current.delete(id);
-          if (type === "error") reject(new Error(payload.message));
-          else resolve(payload);
-        }
         if (type === "error") {
           toast.error("Server error", {
             description: payload.message,
             duration: 5000,
           });
+        }
+        if (id && pending.current.has(id)) {
+          const { resolve, reject } = pending.current.get(id)!;
+          pending.current.delete(id);
+          if (type === "error") reject(new Error(payload.message));
+          else resolve(payload);
         }
       } catch (e) {
         console.warn("Server message parse failed", e);

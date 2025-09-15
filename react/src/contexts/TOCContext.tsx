@@ -1,8 +1,6 @@
-import { Page, TOCItem } from "@/models";
+import { TOCItem } from "@/models";
 import { createContext, useContext, useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/tauri";
 import { usePageManager } from "./PageManagerContext";
-import { IS_APP } from "@/checks";
 import { useServer } from "./ServerContext";
 import { toast } from "sonner";
 
@@ -50,6 +48,7 @@ export function TOCProvider({ children }: { children: React.ReactNode }) {
         id: page.id,
         slug: page.slug,
         title: page.title,
+        url: page.url,
         icon: page.icon,
         children: [],
       });

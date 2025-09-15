@@ -38,7 +38,7 @@ pub async fn ws_handler(
     // Validate workspace exists
 
     let workspace = {
-        let guard = state.workspaces.read().await;
+        let guard = state.workspace_manager.workspaces.read().await;
         guard.get(&params.workspace).cloned()
     };
 
@@ -56,7 +56,7 @@ pub async fn ws_handler(
 
 async fn handle_socket(mut socket: WebSocket, state: AppState, workspace: Arc<LoadedWorkspace>) {
     debug!(target: "ws", "New WebSocket connection established to workspace {}", workspace.id);
-    let handler = CommandHandler::new(state.clone(), workspace.clone());
+    let handler = CommandHandler::new(state.clone(), workspace);
 
     while let Some(Ok(msg)) = socket.next().await {
         match msg {

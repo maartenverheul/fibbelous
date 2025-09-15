@@ -37,9 +37,12 @@ export function PageManagerProvider({
     return result;
   }
 
-  function deletePage(id: string) {
-    console.log("Deleting page:", id);
-    setPages((prev) => prev.filter((p) => p.id !== id));
+  async function deletePage(pageId: string) {
+    await server.dispatch({
+      type: "delete_page",
+      payload: { pageId },
+    });
+    setPages((prev) => prev.filter((p) => p.id !== pageId));
   }
 
   async function load(id: string): Promise<PageWithContent | undefined> {
@@ -58,6 +61,7 @@ export function PageManagerProvider({
         id: currentPage.id,
         slug: currentPage.slug,
         title: currentPage.title,
+        url: "",
         icon: currentPage.icon,
       });
       currentPage = currentPage.parentId

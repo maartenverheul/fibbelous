@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::sync::Arc;
 
 use crate::migration::Migrator;
 use crate::pages::Page;
@@ -86,7 +87,7 @@ pub async fn update_page(db: &DatabaseConnection, page: Page) -> Result<Page, Db
     Ok(model.into())
 }
 
-pub async fn delete_page(db: &DatabaseConnection, id: &str) -> Result<(), DbErr> {
+pub async fn remove_page(db: &DatabaseConnection, id: &str) -> Result<(), DbErr> {
     use sea_orm::EntityTrait;
     let res = pages::Entity::delete_by_id(id.to_string()).exec(db).await?;
     if res.rows_affected == 0 {
@@ -98,30 +99,34 @@ pub async fn delete_page(db: &DatabaseConnection, id: &str) -> Result<(), DbErr>
 
 /// Kick off background indexing for every loaded workspace.
 /// Spawns a Tokio task per workspace so heavy work doesn't block the main thread.
-pub async fn start_indexing(app_state: &AppState) {
+pub async fn start_indexing(app_state: Arc<AppState>) {
     info!("Starting background indexing for all workspaces");
-    let workspace_refs: Vec<_> = {
-        let guard = app_state.workspaces.read().await;
-        guard.values().cloned().collect()
-    };
-    for ws_arc in workspace_refs.into_iter() {
-        let ws_ref = ws_arc.clone();
-        tokio::spawn(async move {
-            // let wid = ws_ref.id.clone();
-            if let Err(e) = index_single_workspace(&ws_ref).await {
-                error!("Failed to index workspace {}: {}", ws_ref.id, e);
-            }
-        });
-    }
+
+    // for ws_arc in app_state
+    //     .workspace_manager
+    //     .workspaces
+    //     .read()
+    //     .await
+    //     .values()
+    //     .collect::<Vec<_>>()
+    // {
+    //     let ws_ref = ws_arc.clone();
+    //     tokio::spawn(async move {
+    //         // let wid = ws_ref.id.clone();
+    //         if let Err(e) = index_single_workspace(&ws_ref).await {
+    //             error!("Failed to index workspace {}: {}", ws_ref.id, e);
+    //         }
+    //     });
+    // }
 }
 
 /// Public helper to launch indexing in the background from consumers (e.g. server main).
 /// Spawns a supervising task that in turn spawns per-workspace tasks.
-pub fn start_indexing_background(app_state: &AppState) {
+pub fn start_indexing_background(app_state: Arc<AppState>) {
     // Shallow clone (cheap Arc bumps) moved inside core so callers don't see a clone at callsite.
     let owned = app_state.clone();
     tokio::spawn(async move {
-        start_indexing(&owned).await;
+        start_indexing(owned).await;
     });
 }
 
@@ -132,7 +137,7 @@ async fn index_single_workspace(ws: &LoadedWorkspace) -> Result<(), DbErr> {
 
     if !partial_index {
         info!("Workspace {} not indexed yet, performing full index", ws.id);
-        let pages = crate::pages::walk_dir_pages(&ws.path);
+        let pages = ws.page_manager.walk_dir_pages(&ws.path);
         info!("Discovered {} pages from filesystem", pages.len());
         let mut inserted = 0usize;
         let mut failed = 0usize;

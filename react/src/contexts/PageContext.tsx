@@ -34,6 +34,8 @@ export function PageProvider({ children }: Props) {
     const pageId = appNavigation.urlPageId!;
     console.log("Loading page:", pageId);
 
+    if (!server.connected) return;
+
     server
       .dispatch({
         type: "read_page",
@@ -52,7 +54,7 @@ export function PageProvider({ children }: Props) {
         console.error("Failed to load page:", err);
         setLoaded(true);
       });
-  }, [appNavigation.urlPageId]);
+  }, [appNavigation.urlPageId, server.connected]);
 
   const breadcrumbs = useMemo<TOCItem[]>(
     () => pageManager.buildBreadcrumbs(appNavigation.urlPageSlug!),

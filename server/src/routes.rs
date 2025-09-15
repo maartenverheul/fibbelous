@@ -37,7 +37,7 @@ pub fn build_router(state: AppState) -> Router {
 }
 
 pub async fn list_workspaces(State(state): State<AppState>) -> impl IntoResponse {
-    let guard = state.workspaces.read().await;
+    let guard = state.workspace_manager.workspaces.read().await;
     let list: Vec<WorkspaceInfo> = guard.values().map(|w| w.info.clone()).collect();
     Json(list).into_response()
 }
@@ -53,11 +53,15 @@ pub async fn create_workspace(
     Json(request): Json<CreateWorkspaceRequest>,
 ) -> impl IntoResponse {
     // Build WorkspaceInfo-like object first via workspaces::create_workspace_from_request
-    match fib_core::workspaces::create_workspace_from_request(request).await {
+    match state
+        .workspace_manager
+        .create_workspace_from_request(request)
+        .await
+    {
         Ok(loaded) => {
             let info = loaded.info.clone();
             {
-                let mut guard = state.workspaces.write().await;
+                let mut guard = state.workspace_manager.workspaces.write().await;
                 guard.insert(loaded.id.clone(), Arc::new(loaded));
             }
             (StatusCode::CREATED, Json(info)).into_response()

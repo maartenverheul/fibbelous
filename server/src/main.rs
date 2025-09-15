@@ -37,8 +37,6 @@ async fn main() {
     }
 
     let state = init_app_state().await;
-    // Kick off background indexing (handled inside core)
-    fib_core::indexing::start_indexing_background(&state);
     start_server(state).await;
 }
 
