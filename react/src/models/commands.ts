@@ -1,14 +1,27 @@
 // Command & CommandResult TypeScript definitions extracted from ServerContext
 // Keep in sync with Rust enums in lib/command_handler.rs
 
-export type Command =
-  | { type: 'ping', payload?: {} }
-  | { type: 'get_saved_workspaces', payload?: {} }
-  | { type: 'get_saved_connections', payload?: {} }
-  | { type: 'create_new_page'; payload?: { parent?: string } }
-  | { type: 'get_toc'; payload?: { parent?: string } }
-  | { type: 'read_page'; payload: { pageId: string } }
-  | { type: 'delete_page'; payload: { pageId: string } };
+import { Page, PageWithContent, TOCItem } from ".";
+
+type TOCUpdateAction = 'add' | 'remove' | 'update';
+
+export type CommandList = {
+  ping: { payload?: {}, returnType: { kind: 'pong' } }
+  getSavedWorkspaces: { payload?: {}, returnType: { kind: 'pong' } }
+  getSavedConnections: { payload?: {}, returnType: { kind: 'pong' } }
+  createNewPage: { payload?: { parent?: string }, returnType: Page }
+  getToc: { payload?: { parent?: string }, returnType: { toc: TOCItem[] } }
+  readPage: { payload: { pageId: string }, returnType: PageWithContent }
+  deletePage: { payload: { pageId: string }, returnType: { kind: 'pong' } }
+};
+
+export type EventList = {
+  tocUpdated: {
+    id: string,
+    item?: TOCItem;
+    action: TOCUpdateAction;
+  }
+}
 
 export type CommandResult =
   | { kind: 'pong' }

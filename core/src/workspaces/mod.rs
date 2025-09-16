@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use tokio::sync::broadcast;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info};
 
@@ -62,6 +63,7 @@ pub struct LoadedWorkspace {
     pub db: DatabaseConnection,
 
     pub page_manager: Arc<PageManager>,
+    pub events_tx: broadcast::Sender<crate::events::Event>,
 }
 
 impl WorkspaceInfo {
@@ -118,6 +120,7 @@ impl WorkspaceManager {
                     Ok((info, db)) => {
                         let page_manager = Arc::new(PageManager::new(dir.clone()));
                         let _ = page_manager.index_pages().await;
+                        let (events_tx, _rx) = broadcast::channel(100);
                         let loaded = LoadedWorkspace {
                             id,
                             path: dir.clone(),
@@ -131,6 +134,7 @@ impl WorkspaceManager {
                             db,
 
                             page_manager,
+                            events_tx,
                         };
                         result.push(loaded);
                     }
@@ -230,6 +234,7 @@ impl WorkspaceManager {
             db,
 
             page_manager,
+            events_tx: broadcast::channel(100).0,
         };
 
         // self.workspaces

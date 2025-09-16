@@ -54,67 +54,61 @@ pub async fn ws_handler(
     }
 }
 
-async fn handle_socket(mut socket: WebSocket, state: AppState, workspace: Arc<LoadedWorkspace>) {
+async fn handle_socket(socket: WebSocket, state: AppState, workspace: Arc<LoadedWorkspace>) {
     debug!(target: "ws", "New WebSocket connection established to workspace {}", workspace.id);
-    let handler = CommandHandler::new(state.clone(), workspace);
+    let handler = CommandHandler::new(state.clone(), workspace.clone());
+    let mut ws_stream = socket;
+    let mut events_rx = workspace.events_tx.subscribe();
 
-    while let Some(Ok(msg)) = socket.next().await {
-        match msg {
-            Message::Text(t) => {
-                let raw: IncomingEnvelope = match serde_json::from_str(&t) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        debug!(target: "ws", "Invalid message (expected envelope) : {}", e);
-                        // Build and send an error response back to client
-                        let err = CommandResult::Error(ErrorPayload {
-                            message: format!("Invalid message: {}", e),
-                        });
-                        if let Ok(text) = serde_json::to_string(&OutgoingEnvelope {
-                            id: None,
-                            result: &err,
-                        }) {
-                            // Ignore send error (client may have closed)
-                            let _ = socket.send(Message::Text(text)).await;
+    loop {
+        tokio::select! {
+            maybe_msg = ws_stream.next() => {
+                match maybe_msg {
+                    Some(Ok(Message::Text(t))) => {
+                        let raw: IncomingEnvelope = match serde_json::from_str(&t) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                debug!(target: "ws", "Invalid message (expected envelope) : {}", e);
+                                let err = CommandResult::Error(ErrorPayload { message: format!("Invalid message: {}", e) });
+                                if let Ok(text) = serde_json::to_string(&OutgoingEnvelope { id: None, result: &err }) {
+                                    let _ = ws_stream.send(Message::Text(text)).await;
+                                }
+                                continue;
+                            }
+                        };
+                        let cmd = raw.command.clone();
+                        let res: CommandResult = handler.execute(cmd).await;
+                        let id_ref = raw.id.as_deref();
+                        let text = match serde_json::to_string(&OutgoingEnvelope { id: id_ref, result: &res }) {
+                            Ok(s) => s,
+                            Err(e) => {
+                                let fallback = CommandResult::Error(ErrorPayload { message: format!("Serialization error: {}", e) });
+                                serde_json::to_string(&OutgoingEnvelope { id: id_ref, result: &fallback }).unwrap_or_else(|_| "{}".into())
+                            }
+                        };
+                        if let Err(e) = ws_stream.send(Message::Text(text)).await { debug!(target: "ws", "Send failed (closing): {}", e); break; }
+                    }
+                    Some(Ok(Message::Binary(_))) => {/* ignore */}
+                    Some(Ok(Message::Close(_))) => { debug!(target: "ws", "WebSocket connection closed by client"); break; }
+                    Some(Ok(Message::Ping(p))) => { if ws_stream.send(Message::Pong(p)).await.is_err() { break; } }
+                    Some(Ok(Message::Pong(_))) => {/* ignore */}
+                    Some(Err(e)) => { debug!(target: "ws", "WebSocket error: {}", e); break; }
+                    None => break,
+                }
+            },
+            evt = events_rx.recv() => {
+                match evt {
+                    Ok(event) => {
+                        if let Ok(text) = serde_json::to_string(&event) {
+                            if ws_stream.send(Message::Text(text)).await.is_err() { break; }
                         }
-                        continue;
                     }
-                };
-                let cmd = raw.command.clone();
-                let res: CommandResult = handler.execute(cmd).await;
-                let id_ref = raw.id.as_deref();
-                let text = match serde_json::to_string(&OutgoingEnvelope {
-                    id: id_ref,
-                    result: &res,
-                }) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        let fallback = CommandResult::Error(ErrorPayload {
-                            message: format!("Serialization error: {}", e),
-                        });
-                        serde_json::to_string(&OutgoingEnvelope {
-                            id: id_ref,
-                            result: &fallback,
-                        })
-                        .unwrap_or_else(|_| "{}".into())
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                        debug!(target: "ws", "Lagged over {} events", skipped);
                     }
-                };
-                if let Err(e) = socket.send(Message::Text(text)).await {
-                    debug!(target: "ws", "Send failed (closing): {}", e);
-                    break;
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                 }
             }
-            Message::Binary(_bin) => { /* ignore */ }
-            Message::Close(_) => {
-                // Don't attempt another send; socket is in closing state.
-                debug!(target: "ws", "WebSocket connection closed by client");
-                break;
-            }
-            Message::Ping(p) => {
-                if socket.send(Message::Pong(p)).await.is_err() {
-                    break;
-                }
-            }
-            Message::Pong(_) => { /* ignore */ }
         }
     }
 }

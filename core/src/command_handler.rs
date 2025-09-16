@@ -1,3 +1,4 @@
+use crate::events::{Event, TOCUpdateAction};
 use crate::id::generate_hex_id;
 use crate::pages::{Page, PageWithContent, TOCItem};
 use crate::state::AppState;
@@ -12,43 +13,43 @@ use std::sync::Arc;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "payload", rename_all = "camelCase")]
 pub enum Command {
-    #[serde(alias = "add_local_repository", rename_all = "camelCase")]
+    #[serde(rename_all = "camelCase")]
     AddLocalRepository {
         existing: bool,
         path: Option<std::path::PathBuf>,
     },
-    #[serde(alias = "create_new_page", rename_all = "camelCase")]
+    #[serde(rename_all = "camelCase")]
     CreateNewPage {
         parent: Option<String>,
     },
-    #[serde(alias = "create_workspace", rename_all = "camelCase")]
+    #[serde(rename_all = "camelCase")]
     CreateWorkspace {
         request: CreateWorkspaceRequest,
     },
-    #[serde(alias = "delete_page", rename_all = "camelCase")]
+    #[serde(rename_all = "camelCase")]
     DeletePage {
         page_id: String,
     },
-    #[serde(alias = "get_saved_workspaces", rename_all = "camelCase")]
+    #[serde(rename_all = "camelCase")]
     GetSavedWorkspaces,
-    #[serde(alias = "get_toc", rename_all = "camelCase")]
+    #[serde(rename_all = "camelCase")]
     GetToc {
         parent: Option<String>,
     },
-    #[serde(alias = "open_workspace_in_system", rename_all = "camelCase")]
+    #[serde(rename_all = "camelCase")]
     OpenWorkspaceInSystem {
         id: String,
     },
     Ping,
-    #[serde(alias = "read_page", rename_all = "camelCase")]
+    #[serde(rename_all = "camelCase")]
     ReadPage {
         page_id: String,
     },
-    #[serde(alias = "remove_workspace", rename_all = "camelCase")]
+    #[serde(rename_all = "camelCase")]
     RemoveWorkspace {
         id: String,
     },
-    #[serde(alias = "save_remote_workspaces", rename_all = "camelCase")]
+    #[serde(rename_all = "camelCase")]
     SaveRemoteWorkspaces {
         urls: Vec<String>,
     },
@@ -132,6 +133,12 @@ impl CommandHandler {
                         message: format!("Failed to save page: {}", e),
                     });
                 }
+                // Broadcast TOC updated event (parent of created page)
+                let _ = self.workspace.events_tx.send(Event::TocUpdated {
+                    id: page.id.clone(),
+                    item: Some(self.workspace.page_manager.make_toc_item(&page).await),
+                    action: TOCUpdateAction::Add,
+                });
                 CommandResult::Page(page)
             }
             CreateWorkspace { request } => {
@@ -159,7 +166,15 @@ impl CommandHandler {
             }
             DeletePage { page_id } => {
                 match self.workspace.page_manager.delete_page(&page_id).await {
-                    Ok(_) => CommandResult::Void,
+                    Ok(_) => {
+                        let _ = self.workspace.events_tx.send(Event::TocUpdated {
+                            id: page_id,
+                            item: None,
+                            action: TOCUpdateAction::Remove,
+                        });
+
+                        CommandResult::Void
+                    }
                     Err(e) => CommandResult::Error(ErrorPayload { message: e }),
                 }
             }

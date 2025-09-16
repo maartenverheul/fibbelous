@@ -1,24 +1,25 @@
 import TOC from "./TOC";
-import { useTOCContext } from "@/contexts/TOCContext";
 import { usePageManager } from "@/contexts/PageManagerContext";
 import { useAppNavigation } from "@/contexts/AppNavigationContext";
 import WorkspaceSelector from "./WorkspaceSelector";
+import { TOCItem } from "@/models";
+import { useTOCContext } from "@/contexts/TOCContext";
 
 export default function Sidebar() {
-  const { openPage } = useAppNavigation();
-  const { createPage, deletePage } = usePageManager();
+  const appNavigation = useAppNavigation();
+  const pageManager = usePageManager();
   const { toc, loadTOC } = useTOCContext();
 
-  function handlePageClick(id: string) {
-    openPage(id);
+  function handlePageClick(item: TOCItem) {
+    appNavigation.openPage(item);
   }
 
   function handlePageDelete(id: string) {
-    deletePage(id);
+    pageManager.deletePage(id);
   }
 
   function handleCreatePage(parent?: string | undefined): void {
-    createPage(parent);
+    pageManager.createPage(parent);
   }
 
   return (

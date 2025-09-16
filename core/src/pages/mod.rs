@@ -332,6 +332,17 @@ impl PageManager {
         pages
     }
 
+    pub async fn make_toc_item(&self, page: &Page) -> TOCItem {
+        TOCItem {
+            id: page.id.clone(),
+            title: page.title.clone(),
+            slug: page.slug.clone(),
+            url: self.get_page_url(page).await.unwrap_or("".into()),
+            icon: page.icon.clone(),
+            children: Vec::new(),
+        }
+    }
+
     fn parse_frontmatter<'a>(&self, input: &'a str) -> Result<(Page, &'a str), String> {
         let trimmed = input.trim_start();
         let rest = if let Some(stripped) = trimmed.strip_prefix("---\n") {

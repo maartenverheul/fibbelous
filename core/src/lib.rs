@@ -1,5 +1,6 @@
 pub mod command_handler;
 pub mod databases;
+pub mod events;
 pub mod id;
 pub mod indexing;
 pub mod logging;

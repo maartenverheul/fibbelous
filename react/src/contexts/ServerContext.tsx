@@ -6,7 +6,7 @@ import {
   useEffect,
   ReactNode,
 } from "react";
-import { Command } from "@/models/commands";
+import { CommandList, EventList } from "@/models/commands";
 import { Workspace } from "@/models";
 import { IS_APP } from "@/checks";
 import { invoke } from "@tauri-apps/api/tauri";
@@ -18,7 +18,14 @@ export interface ServerContextValue {
   status: "idle" | "connecting" | "open" | "closed" | "error";
   connected: boolean;
   lastError?: string;
-  dispatch<T = unknown>(command: Command): Promise<T>;
+  dispatch<C extends keyof CommandList>(
+    type: C,
+    payload: CommandList[C]["payload"]
+  ): Promise<CommandList[C]["returnType"]>;
+  subscribe<C extends keyof EventList>(
+    event: C,
+    handler: (payload: EventList[C]) => void
+  ): () => void;
 }
 
 export const ServerContext = createContext<ServerContextValue | undefined>(
@@ -38,6 +45,7 @@ export function ServerProvider({
   const pending = useRef(
     new Map<string, { resolve: (v: any) => void; reject: (e: any) => void }>()
   );
+  const listeners = useRef(new Map<string, Set<(payload: any) => void>>());
 
   // Simple id generator
   function nextId() {
@@ -94,6 +102,18 @@ export function ServerProvider({
           pending.current.delete(id);
           if (type === "error") reject(new Error(payload.message));
           else resolve(payload);
+          return;
+        }
+        // Non-response message: treat 'type' as event name and dispatch to listeners
+        if (!id && type && listeners.current.has(type)) {
+          console.debug("Event received:", type, payload);
+          for (const handler of listeners.current.get(type)!) {
+            try {
+              handler(payload);
+            } catch (e) {
+              console.warn("Listener error", e);
+            }
+          }
         }
       } catch (e) {
         console.warn("Server message parse failed", e);
@@ -106,9 +126,12 @@ export function ServerProvider({
     };
   }, [workspace?.info?.id]);
 
-  async function dispatch<T = unknown>(command: Command): Promise<T> {
+  async function dispatch<C extends keyof CommandList>(
+    type: C,
+    payload: CommandList[C]["payload"]
+  ): Promise<CommandList[C]["returnType"]> {
     if (IS_APP) {
-      return await invoke(command.type, command.payload);
+      return await invoke(type, payload);
     } else {
       if (
         !socketRef.current ||
@@ -117,12 +140,12 @@ export function ServerProvider({
         throw new Error("Socket not open");
       }
       const id = nextId();
-      const payload = {
+      const message = {
         id,
-        type: command.type,
-        payload: command.payload ?? {},
+        type: type,
+        payload: payload ?? {},
       };
-      const p = new Promise<T>((resolve, reject) => {
+      const p = new Promise<CommandList[C]["returnType"]>((resolve, reject) => {
         pending.current.set(id, { resolve, reject });
         setTimeout(() => {
           if (pending.current.has(id)) {
@@ -131,9 +154,27 @@ export function ServerProvider({
           }
         }, 15000);
       });
-      socketRef.current.send(JSON.stringify(payload));
+      socketRef.current.send(JSON.stringify(message));
       return p;
     }
+  }
+
+  function subscribe<C extends keyof EventList>(
+    event: C,
+    handler: (payload: EventList[C]) => void
+  ) {
+    console.debug("Subscribing to event:", event);
+    if (!listeners.current.has(event)) {
+      listeners.current.set(event, new Set());
+    }
+    listeners.current.get(event)!.add(handler as any);
+    return () => {
+      console.debug("Unsubscribing from event: ", event);
+      const set = listeners.current.get(event);
+      if (!set) return;
+      set.delete(handler as any);
+      if (set.size === 0) listeners.current.delete(event);
+    };
   }
 
   return (
@@ -143,6 +184,7 @@ export function ServerProvider({
         connected: status === "open",
         lastError,
         dispatch,
+        subscribe,
       }}
     >
       {children}

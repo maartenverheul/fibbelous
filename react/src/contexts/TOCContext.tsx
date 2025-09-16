@@ -1,6 +1,5 @@
 import { TOCItem } from "@/models";
-import { createContext, useContext, useEffect, useState } from "react";
-import { usePageManager } from "./PageManagerContext";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useServer } from "./ServerContext";
 import { toast } from "sonner";
 
@@ -13,32 +12,40 @@ const TOCContext = createContext<TOCContextType | undefined>(undefined);
 
 export function TOCProvider({ children }: { children: React.ReactNode }) {
   const server = useServer();
-  const pageManager = usePageManager();
 
-  const [toc, setTOC] = useState<TOCItem[]>([]);
+  const [cached, setCached] = useState<TOCItem[]>([]);
+  const toc = useMemo(() => buildFullTOC(cached), [cached]);
 
   useEffect(() => {
     if (!server.connected) return;
-    console.log("Rebuilding TOC from pages", pageManager.pages);
     loadTOC();
-    // setTOC(buildFullTOC(pageManager.pages));
-  }, [server.status]);
+
+    const unsubscribe = server.subscribe("tocUpdated", (data) => {
+      if (data.action === "add") setCached((prev) => [...prev, data.item!]);
+      if (data.action === "remove")
+        setCached((prev) => prev.filter((i) => i.id !== data.id));
+      if (data.action === "update")
+        setCached((prev) =>
+          prev.map((i) => (i.id === data.id ? data.item! : i))
+        );
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [server.connected]);
 
   async function loadTOC(parent?: string) {
-    const result = (await server
-      .dispatch({
-        type: "get_toc",
-        payload: { parent },
-      })
+    return await server
+      .dispatch("getToc", { parent })
+      .then((res) => setCached(res.toc))
       .catch((e) => {
         console.error("Failed to get TOC from server:", e);
         toast.error("Failed to get TOC from server");
-      })) as any;
-
-    setTOC(buildFullTOC(result.toc as TOCItem[]));
+      });
   }
 
   function buildFullTOC(items: TOCItem[]): TOCItem[] {
+    console.debug("Building full TOC from items:", items);
     const toc: TOCItem[] = [];
     const pageMap = new Map<string, TOCItem>();
 

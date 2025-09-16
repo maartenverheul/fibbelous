@@ -1,8 +1,7 @@
-import { Page, PageWithContent, TOCItem } from "@/models";
+import { Page, TOCItem } from "@/models";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { usePageManager } from "./PageManagerContext";
 import { useAppNavigation } from "./AppNavigationContext";
-import { useWorkspace } from "./WorkspaceContext";
 import { useServer } from "./ServerContext";
 
 export type PageContextType = {
@@ -37,12 +36,7 @@ export function PageProvider({ children }: Props) {
     if (!server.connected) return;
 
     server
-      .dispatch({
-        type: "read_page",
-        payload: {
-          pageId,
-        },
-      })
+      .dispatch("readPage", { pageId })
       .then((result: any) => {
         console.log(result);
 
