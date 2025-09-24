@@ -13,6 +13,8 @@ use tokio::sync::broadcast;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info};
 
+pub use crate::icon::normalize_icon;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NewWorkspace {
@@ -170,15 +172,18 @@ impl WorkspaceManager {
         &self,
         target_path: Option<&Path>,
     ) -> Result<LoadedWorkspace, git2::Error> {
-        self.create(&WorkspaceInfo::default_workspace(), target_path)
+        self.create(WorkspaceInfo::default_workspace(), target_path)
             .await
     }
 
     pub async fn create(
         &self,
-        settings: &WorkspaceInfo,
+        mut settings: WorkspaceInfo,
         target_path: Option<&Path>,
     ) -> Result<LoadedWorkspace, git2::Error> {
+        // Clone and normalize icon via helper
+        settings.icon = normalize_icon(&settings.icon);
+
         let repo_path: PathBuf = match target_path {
             Some(p) => p.to_path_buf(),
             None => {
@@ -262,7 +267,7 @@ impl WorkspaceManager {
         };
 
         let state = self
-            .create(&info, None)
+            .create(info, None)
             .await
             .expect("Failed to create workspace");
 
@@ -326,3 +331,5 @@ impl WorkspaceManager {
         Ok((info, db))
     }
 }
+
+// normalize_icon & emoji validation moved to icon.rs

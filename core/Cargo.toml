@@ -29,3 +29,4 @@ tracing-subscriber = { version = "0.3", features = [
   "fmt",
   "time",
 ] }
+emojis = "0.6"

@@ -151,11 +151,11 @@ impl CommandHandler {
                     created_at: Utc::now(),
                     version: 1,
                 };
-                match self.app.workspace_manager.create(&info, None).await {
-                    Ok(_) => CommandResult::CreateWorkspace(AddLocalRepoResult {
+                match self.app.workspace_manager.create(info, None).await {
+                    Ok(loaded_workspace) => CommandResult::CreateWorkspace(AddLocalRepoResult {
                         ok: true,
                         error: None,
-                        workspace: Some(info),
+                        workspace: Some(loaded_workspace.info),
                     }),
                     Err(e) => CommandResult::CreateWorkspace(AddLocalRepoResult {
                         ok: false,

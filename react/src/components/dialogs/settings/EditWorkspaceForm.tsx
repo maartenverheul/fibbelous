@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { Workspace, CreateWorkspaceRequest } from "@/models";
 import { useWorkspaceManager } from "@/contexts/WorkspaceManagerContext";
-import { SaveIcon, PlusIcon, RotateCcw } from "lucide-react";
+import { SaveIcon, RotateCcw } from "lucide-react";
 import { IS_APP } from "@/checks";
 
 type Props = {
@@ -37,36 +37,27 @@ export default function EditWorkspaceForm({
     remoteUrl ?? workspace?.connection?.url ?? ""
   );
 
-  const slugConflict =
-    !!slug &&
-    workspaces.some(
-      (w) =>
-        (!isCreate ? w.info.id !== workspace?.info.id : true) &&
-        w.info.slug === slug
-    );
+  // Detect slug conflicts. When editing, allow keeping the original slug even if it matches.
+  const slugConflict = useMemo(() => {
+    if (!slug) return false;
+    // If editing and slug hasn't changed, it's never a conflict
+    if (!isCreate && slug === workspace!.info.slug) return false;
+    return workspaces.some((w) => {
+      if (!isCreate && w.info.id === workspace!.info.id) return false; // ignore the workspace being edited
+      return w.info.slug === slug;
+    });
+  }, [slug, workspaces, isCreate, workspace]);
   const disabled = readOnly || !title.trim() || !slug.trim() || slugConflict;
-
-  function buildWorkspaceRequest(): CreateWorkspaceRequest {
-    if (isCreate) {
-      return {
-        title: title.trim(),
-        slug: slug.trim(),
-        description: description.trim() || undefined,
-        icon: icon.trim() || undefined,
-      };
-    }
-    return {
-      ...workspace!.info,
-      title: title.trim(),
-      slug: slug.trim(),
-      description: description.trim(),
-      icon: icon.trim(),
-    };
-  }
 
   function handleSave() {
     if (disabled) return;
-    const info = buildWorkspaceRequest();
+    let info: CreateWorkspaceRequest = {
+      title: title.trim(),
+      slug: slug.trim(),
+      description: description.trim() || undefined,
+      icon: icon.trim() || undefined,
+    }
+    if (!isCreate) info = { ...workspace!.info, ...info }
     onSave?.(info, connectionUrl);
   }
 
@@ -155,9 +146,8 @@ export default function EditWorkspaceForm({
         <div className="relative">
           <input
             id={`ws-slug-${workspace?.info.id || "new"}`}
-            className={`w-full pr-7 px-2 py-1 rounded bg-gray-800 text-white border ${
-              slugConflict ? "border-red-600" : "border-gray-600"
-            } disabled:text-white/50  disabled:cursor-not-allowed`}
+            className={`w-full pr-7 px-2 py-1 rounded bg-gray-800 text-white border ${slugConflict ? "border-red-600" : "border-gray-600"
+              } disabled:text-white/50  disabled:cursor-not-allowed`}
             value={slug}
             onChange={(e) => {
               setSlug(sanitizeSlug(e.target.value));
@@ -229,13 +219,13 @@ export default function EditWorkspaceForm({
         <div className="flex gap-2 mt-2">
           <button
             type="submit"
-            className="px-3 py-1 ml-auto bg-blue-600 text-white rounded disabled:bg-gray-600 flex items-center gap-2 cursor-pointer"
+            className="px-3 py-1 ml-auto bg-emerald-600 text-white rounded disabled:bg-gray-600 flex items-center gap-2 cursor-pointer"
             disabled={disabled}
           >
             {isCreate ? (
-              <>
-                <PlusIcon className="w-4" /> Create
-              </>
+              <span>
+                Create workspace
+              </span>
             ) : (
               <>
                 <SaveIcon className="w-4" /> Save

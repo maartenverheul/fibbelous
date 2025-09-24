@@ -1,6 +1,7 @@
 pub mod command_handler;
 pub mod databases;
 pub mod events;
+mod icon;
 pub mod id;
 pub mod indexing;
 pub mod logging;
