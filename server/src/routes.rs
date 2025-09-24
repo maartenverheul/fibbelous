@@ -4,6 +4,7 @@ use crate::ws; // Import AppState from the appropriate module
 use axum::extract::{Json, Path, State};
 use axum::routing::{get, post};
 use axum::{response::IntoResponse, Router};
+use fib_core::command_handler::{Command, CommandHandler, CommandResult};
 use fib_core::state::AppState;
 use fib_core::workspaces::{CreateWorkspaceRequest, WorkspaceInfo};
 use hyper::StatusCode;
@@ -37,9 +38,26 @@ pub fn build_router(state: AppState) -> Router {
 }
 
 pub async fn list_workspaces(State(state): State<AppState>) -> impl IntoResponse {
-    let guard = state.workspace_manager.workspaces.read().await;
-    let list: Vec<WorkspaceInfo> = guard.values().map(|w| w.info.clone()).collect();
-    Json(list).into_response()
+    let first = {
+        let guard = state.workspace_manager.workspaces.read().await;
+        guard.values().next().cloned()
+    };
+    if let Some(ws) = first {
+        let handler = CommandHandler::new(state.clone(), ws);
+        match handler.execute(Command::GetSavedWorkspaces).await {
+            CommandResult::Workspaces(w) => Json(w.workspaces).into_response(),
+            CommandResult::Error(e) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, e.message).into_response()
+            }
+            other => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Unexpected result: {:?}", other),
+            )
+                .into_response(),
+        }
+    } else {
+        Json(Vec::<WorkspaceInfo>::new()).into_response()
+    }
 }
 
 // Simple hello endpoint for connection testing
@@ -71,10 +89,36 @@ pub async fn create_workspace(
 }
 
 pub async fn get_workspace(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    format!("Get workspace with id: {}", id)
+    let ws_arc = {
+        let guard = state.workspace_manager.workspaces.read().await;
+        guard
+            .get(&id)
+            .cloned()
+            .or_else(|| guard.values().next().cloned())
+    };
+    if let Some(ws) = ws_arc {
+        let handler = CommandHandler::new(state.clone(), ws);
+        match handler.execute(Command::GetWorkspace { id }).await {
+            CommandResult::Workspace(info) => Json(info).into_response(),
+            CommandResult::Error(e) => {
+                if e.message.contains("removed (file missing)") || e.message.contains("not found") {
+                    (StatusCode::NOT_FOUND, e.message).into_response()
+                } else {
+                    (StatusCode::INTERNAL_SERVER_ERROR, e.message).into_response()
+                }
+            }
+            other => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Unexpected result: {:?}", other),
+            )
+                .into_response(),
+        }
+    } else {
+        (StatusCode::NOT_FOUND, "workspace not found").into_response()
+    }
 }
 
 pub async fn update_workspace(Path(id): Path<String>) -> impl IntoResponse {

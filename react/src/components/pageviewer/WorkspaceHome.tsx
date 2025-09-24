@@ -2,12 +2,14 @@ import { useAppNavigation } from "@/contexts/AppNavigationContext";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { SettingsIcon } from "lucide-react";
 import { Link } from "react-router";
+import WorkspaceErrorView from "@/components/workspace/WorkspaceErrorView";
 
 export default function WorkspaceHome() {
   const workspace = useWorkspace();
   const appNavigation = useAppNavigation();
 
   if (!workspace) return null;
+  if (workspace.connectionState.success === false) return <WorkspaceErrorView />;
 
   return (
     <div className="w-full h-full bg-gray-700 p-10">

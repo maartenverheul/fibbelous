@@ -33,6 +33,10 @@ pub enum Command {
     #[serde(rename_all = "camelCase")]
     GetSavedWorkspaces,
     #[serde(rename_all = "camelCase")]
+    GetWorkspace {
+        id: String,
+    },
+    #[serde(rename_all = "camelCase")]
     GetToc {
         parent: Option<String>,
     },
@@ -72,6 +76,7 @@ pub enum CommandResult {
     Bool(BoolPayload),
     Connections(ConnectionsPayload),
     Workspaces(WorkspacesPayload),
+    Workspace(WorkspaceInfo),
     Toc(TocPayload),
     AddLocal(AddLocalRepoResult),
     Page(Page),
@@ -182,6 +187,13 @@ impl CommandHandler {
                 let guard = self.app.workspace_manager.workspaces.read().await;
                 let list: Vec<WorkspaceInfo> = guard.values().map(|ws| ws.info.clone()).collect();
                 CommandResult::Workspaces(WorkspacesPayload { workspaces: list })
+            }
+            GetWorkspace { id } => {
+                // Try fresh reload (ensures file changes are reflected)
+                match self.app.workspace_manager.reload_workspace_info(&id).await {
+                    Ok(info) => CommandResult::Workspace(info),
+                    Err(e) => CommandResult::Error(ErrorPayload { message: e }),
+                }
             }
             GetToc { parent } => {
                 match self

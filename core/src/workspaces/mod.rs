@@ -6,7 +6,6 @@ use git2::Repository;
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -317,11 +316,9 @@ impl WorkspaceManager {
     pub async fn load_workspace_dir(
         dir: &Path,
     ) -> Result<(WorkspaceInfo, DatabaseConnection), String> {
-        let json_path = dir.join("workspace.json");
-        let contents = fs::read_to_string(&json_path)
-            .map_err(|e| format!("failed to read {}: {}", json_path.display(), e))?;
-        let info: WorkspaceInfo = serde_json::from_str(&contents)
-            .map_err(|e| format!("failed to parse {}: {}", json_path.display(), e))?;
+        let info = Self::load_workspace_info_file(dir)
+            .await
+            .map_err(|e| format!("failed to load {}: {}", dir.display(), e))?;
 
         let fib = dir.join(".fibbelous");
         let db = init_index_db(&fib)
@@ -329,6 +326,64 @@ impl WorkspaceManager {
             .map_err(|e| format!("failed to init index db: {}", e))?;
 
         Ok((info, db))
+    }
+
+    /// Reload a workspace's info from disk (workspace.json). If the file is missing, the workspace
+    /// is removed from memory. Returns the fresh WorkspaceInfo on success.
+    pub async fn reload_workspace_info(&self, id: &str) -> Result<WorkspaceInfo, String> {
+        use std::io::ErrorKind;
+        // First grab path (and existing loaded workspace) under a read lock
+        let path = {
+            let guard = self.workspaces.read().await;
+            let loaded = guard
+                .get(id)
+                .ok_or_else(|| format!("workspace {id} not found"))?;
+            loaded.path.clone()
+        };
+        let info = match Self::load_workspace_info_file(&path).await {
+            Ok(i) => i,
+            Err(e) => {
+                if e.kind() == ErrorKind::NotFound {
+                    let mut guard = self.workspaces.write().await;
+                    guard.remove(id);
+                    return Err(format!("workspace {id} removed (file missing)"));
+                } else {
+                    return Err(format!("failed to load workspace {id}: {e}"));
+                }
+            }
+        };
+
+        // Update in-memory copy so future accesses see fresh info
+        {
+            let mut guard = self.workspaces.write().await;
+            if let Some(existing) = guard.get(id) {
+                // Rebuild LoadedWorkspace with updated info, keeping other handles identical
+                let new_loaded = LoadedWorkspace {
+                    id: existing.id.clone(),
+                    path: existing.path.clone(),
+                    connection: existing.connection.clone(),
+                    info: info.clone(),
+                    db: existing.db.clone(),
+                    page_manager: existing.page_manager.clone(),
+                    events_tx: existing.events_tx.clone(),
+                };
+                guard.insert(id.to_string(), Arc::new(new_loaded));
+            } else {
+                // It may have been removed meanwhile; ignore.
+            }
+        }
+
+        Ok(info)
+    }
+
+    /// Internal helper to load & parse a workspace.json file asynchronously.
+    async fn load_workspace_info_file(dir: &Path) -> Result<WorkspaceInfo, std::io::Error> {
+        let json_path = dir.join("workspace.json");
+        let contents = tokio::fs::read_to_string(&json_path).await?;
+        let info: WorkspaceInfo = serde_json::from_str(&contents).map_err(|e| {
+            std::io::Error::new(std::io::ErrorKind::InvalidData, format!("parse error: {e}"))
+        })?;
+        Ok(info)
     }
 }
 

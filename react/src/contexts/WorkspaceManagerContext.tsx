@@ -54,11 +54,11 @@ export function WorkspaceManagerProvider({
   const [list, setList] = useState<Workspace[]>(
     remoteWorkspaces.map(
       (conn) =>
-        ({
-          info: conn.cachedInfo,
-          connection: conn,
-          connectionState: {},
-        } satisfies Workspace)
+      ({
+        info: conn.cachedInfo,
+        connection: conn,
+        connectionState: {},
+      } satisfies Workspace)
     )
   );
 
@@ -95,85 +95,76 @@ export function WorkspaceManagerProvider({
   }, []);
 
   async function refreshAllRemoteWorkspaces() {
-    // Group workspaces by connection URL
-    const groups = new Map<string, WorkspaceInfo[]>();
-    list.forEach((w) => {
+    // Build map of URL -> workspaces to refresh
+    const groups = new Map<string, Workspace[]>();
+    for (const w of list) {
       const url = w.connection?.url;
-      if (!url) return;
+      if (!url) continue;
       if (!groups.has(url)) groups.set(url, []);
-      groups.get(url)!.push(w.info);
-    });
+      groups.get(url)!.push(w);
+    }
     if (groups.size === 0) return;
-    console.debug("[WorkspaceManager] Refreshing remote workspaces", {
+    console.debug("[WorkspaceManager] Refreshing remote workspaces (per workspace)", {
       groups: Array.from(groups.keys()),
     });
-    let newList = list.slice();
+
+    // We'll construct an updated list progressively
+    let updated = [...list];
     for (const [url, workspaces] of groups.entries()) {
-      try {
-        const remoteList = await fetchRemoteWorkspaces(url);
-        newList = newList.map((w) => {
-          if (!workspaces.some((ws) => ws.id === w.info.id)) return w;
-          const remote =
-            remoteList.find((r) => r.id === w.info.id) ||
-            remoteList.find((r) => r.slug === w.info.slug);
-          const urlValue = w.connection?.url || url;
-          if (!remote) {
-            // Workspace no longer exists remotely
+      // Fetch each workspace individually in parallel
+      const results = await Promise.all(
+        workspaces.map(async (w) => {
+          try {
+            const remote = await fetchRemoteWorkspace(url, w.info.id);
+            if (!remote) {
+              return {
+                id: w.info.id,
+                state: {
+                  success: false,
+                  error: "Workspace not found on server",
+                  checking: false,
+                },
+              } as const;
+            }
             return {
-              ...w,
-              connectionState: {
+              id: w.info.id,
+              state: { success: true, checking: false } as const,
+            } as const;
+          } catch (err) {
+            return {
+              id: w.info.id,
+              state: {
                 success: false,
-                error: "Workspace not found on server",
+                error: (err as Error)?.message || "Connection failed",
                 checking: false,
               },
-              connection: {
-                url: urlValue,
-                cachedInfo: w.info,
-                type: url ? ConnectionType.remote : ConnectionType.local,
-              },
-            } satisfies Workspace;
+            } as const;
           }
-          // Remote exists – keep cached info but mark success
-          return {
-            ...w,
-            connectionState: { success: true, checking: false },
-            connection: {
-              url: urlValue,
-              cachedInfo: w.info,
-              type: url ? ConnectionType.remote : ConnectionType.local,
-            },
-          } satisfies Workspace;
-        });
-      } catch (err) {
-        console.warn(
-          "[WorkspaceManager] Failed to refresh remote workspaces for",
-          url,
-          err
-        );
-        newList = newList.map((w) => {
-          if (!workspaces.some((ws) => ws.id === w.info.id)) return w;
-          const urlValue = w.connection?.url || url;
-          return {
-            ...w,
-            connectionState: {
-              success: false,
-              error: (err as Error)?.message || "Connection failed",
-              checking: false,
-            },
-            connection: {
-              url: urlValue,
-              cachedInfo: w.info,
-              type: url ? ConnectionType.remote : ConnectionType.local,
-            },
-          } satisfies Workspace;
-        });
-      }
-    }
-    console.debug("[WorkspaceManager] Applied remote refresh results");
-    setList(newList);
+        })
+      );
 
+      // Apply results
+      updated = updated.map((w) => {
+        if (!workspaces.some((ww) => ww.info.id === w.info.id)) return w;
+        const res = results.find((r) => r.id === w.info.id);
+        if (!res) return w;
+        const urlValue = w.connection?.url || url;
+        return {
+          ...w,
+          connectionState: res.state,
+          connection: {
+            url: urlValue,
+            cachedInfo: w.info, // keep existing cached info
+            type: url ? ConnectionType.remote : ConnectionType.local,
+          },
+        } satisfies Workspace;
+      });
+    }
+
+    console.debug("[WorkspaceManager] Applied per-workspace remote refresh results");
+    setList(updated);
     if (!IS_APP) {
-      const updatedRemote = newList.filter((w) => w.connection?.url);
+      const updatedRemote = updated.filter((w) => w.connection?.url);
       setRemoteWorkspaces(updatedRemote.map((w) => w.connection!));
     }
   }
@@ -271,6 +262,21 @@ export function WorkspaceManagerProvider({
       return await res.json();
     } catch (err) {
       console.error("fetch_remote_workspaces failed", err);
+      throw err;
+    }
+  }
+
+  async function fetchRemoteWorkspace(
+    url: string,
+    id: string
+  ): Promise<WorkspaceInfo | null> {
+    try {
+      const res = await fetch(`${url}/api/workspaces/${id}`);
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error(res.statusText);
+      return (await res.json()) as WorkspaceInfo;
+    } catch (err) {
+      console.error("fetch_remote_workspace failed", id, err);
       throw err;
     }
   }
