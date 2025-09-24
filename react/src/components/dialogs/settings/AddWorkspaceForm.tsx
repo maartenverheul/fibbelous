@@ -100,6 +100,12 @@ export function AddWorkspaceForm() {
       workspaceManager.addWorkspace(workspace);
     }
     if (remoteUrl) setLastRemoteUrl(remoteUrl);
+
+    if (selected.length === 1) {
+      setTimeout(() => {
+        appNavigation.navigate(appNavigation.workspaceHomeLink(selected[0]));
+      }, 0);
+    }
   }
 
   async function handleCreateNewWorkspace(
@@ -107,6 +113,7 @@ export function AddWorkspaceForm() {
     url?: string
   ): Promise<void> {
     // Reset creation form state basics
+    await new Promise((resolve) => setTimeout(resolve, 500)); // wait a bit to ensure FS is ready
     var workspace = await workspaceManager.createWorkspace(request, url);
     setImportMode("existing");
     setSelectedWorkspaces([]);
