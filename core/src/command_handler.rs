@@ -7,6 +7,7 @@ use crate::workspaces::{
 };
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use slugify::slugify;
 use std::sync::Arc;
 use tracing::debug;
 
@@ -40,6 +41,7 @@ pub enum Command {
     #[serde(rename_all = "camelCase")]
     GetToc {
         parent: Option<String>,
+        depth: Option<i8>,
     },
     #[serde(rename_all = "camelCase")]
     OpenWorkspaceInSystem {
@@ -203,11 +205,11 @@ impl CommandHandler {
                     Err(e) => CommandResult::Error(ErrorPayload { message: e }),
                 }
             }
-            GetToc { parent } => {
+            GetToc { parent, depth } => {
                 match self
                     .workspace
                     .page_manager
-                    .make_toc(parent.as_deref())
+                    .make_toc(parent.as_deref(), depth)
                     .await
                 {
                     Ok(items) => CommandResult::Toc(TocPayload { toc: items }),
@@ -243,6 +245,11 @@ impl CommandHandler {
                 if let Some(t) = title {
                     if t != page.title {
                         page.title = t;
+                        // Always recompute slug from (new) title
+                        let new_slug = slugify!(&page.title);
+                        if new_slug != page.slug {
+                            page.slug = new_slug;
+                        }
                         metadata_changed = true;
                     }
                 }

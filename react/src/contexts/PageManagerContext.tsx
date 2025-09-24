@@ -25,9 +25,8 @@ export function PageManagerProvider({
   async function createPage(parent?: string): Promise<Page> {
     console.debug("Creating new page at parent", parent);
     const result = await server.dispatch("createNewPage", {
-      parent: undefined,
+      parent: parent,
     });
-    console.log("NEW", [...pages, result]);
 
     setPages((prev) => [...prev, result]);
     return result;
@@ -53,7 +52,7 @@ export function PageManagerProvider({
         id: currentPage.id,
         slug: currentPage.slug,
         title: currentPage.title,
-        url: "",
+        url: `/${currentPage.id}-${currentPage.slug}`,
         icon: currentPage.icon,
       });
       currentPage = currentPage.parentId

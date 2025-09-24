@@ -17,10 +17,10 @@ export type CommandList = {
   getSavedWorkspaces: { payload?: {}, returnType: { kind: 'pong' } }
   getSavedConnections: { payload?: {}, returnType: { kind: 'pong' } }
   createNewPage: { payload?: { parent?: string }, returnType: Page }
-  getToc: { payload?: { parent?: string }, returnType: { toc: TOCItem[] } }
+  getToc: { payload?: { parent?: string, depth?: number }, returnType: { toc: TOCItem[] } }
   readPage: { payload: { pageId: string }, returnType: PageWithContent }
   deletePage: { payload: { pageId: string }, returnType: { kind: 'pong' } }
-  updatePage: { payload: UpdatePageCommand, returnType: void }
+  updatePage: { payload: UpdatePageCommand, returnType: Page }
 };
 
 export type EventList = {

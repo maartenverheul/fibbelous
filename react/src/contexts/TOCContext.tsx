@@ -36,7 +36,7 @@ export function TOCProvider({ children }: { children: React.ReactNode }) {
 
   async function loadTOC(parent?: string) {
     return await server
-      .dispatch("getToc", { parent })
+      .dispatch("getToc", { parent, depth: 2 })
       .then((res) => setCached(res.toc))
       .catch((e) => {
         console.error("Failed to get TOC from server:", e);

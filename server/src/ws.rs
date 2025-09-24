@@ -56,7 +56,7 @@ pub async fn ws_handler(
 }
 
 async fn handle_socket(socket: WebSocket, state: AppState, workspace: Arc<LoadedWorkspace>) {
-    debug!(target: "ws", "New WebSocket connection established to workspace {}", workspace.id);
+    debug!(target: "ws", "New WebSocket connection established to workspace {:?}", workspace.info.slug);
     let handler = CommandHandler::new(state.clone(), workspace.clone());
     let mut ws_stream = socket;
     let mut events_rx = workspace.events_tx.subscribe();

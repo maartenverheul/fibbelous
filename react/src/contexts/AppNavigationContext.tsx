@@ -102,7 +102,9 @@ export function AppNavigationProvider({
     return true;
   }
 
+  // Canonical page URL pattern: /:workspaceSlug/:pageId-:pageSlug
   function pageLink(toc: TOCItem) {
+    if (!workspaceSlug) return "";
     return `/${workspaceSlug}/${toc.id}-${toc.slug}`;
   }
 
@@ -123,8 +125,9 @@ export function AppNavigationProvider({
   }
 
   function navigateToPage(page: TOCItem) {
-    if (!workspaceSlug) return;
-    navigate(`/${workspaceSlug}/${page.slug}/${page.id}`);
+    const link = pageLink(page);
+    if (!link) return;
+    navigate(link);
   }
 
   function closeTab(index: number) {

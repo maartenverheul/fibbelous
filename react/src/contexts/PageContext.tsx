@@ -1,5 +1,5 @@
 import { Page, TOCItem } from "@/models";
-import { createContext, useContext, useEffect, useMemo, useState, useRef, useCallback } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, useRef } from "react";
 import { useDebouncedCallback } from "use-debounce";
 import { usePageManager } from "./PageManagerContext";
 import { useAppNavigation } from "./AppNavigationContext";
@@ -65,32 +65,68 @@ export function PageProvider({ children }: Props) {
     await server.dispatch("deletePage", { pageId: id });
   }
 
+  // Apply authoritative fields (title, slug, icon) from backend result into current page data
+  // Inlined instead of separate helper to reduce indirection.
+
+  // If active page slug changed, update URL (replace history entry).
+  function adjustUrlIfSlugChanged(pageId: string, result: any) {
+    if (
+      appNavigation.urlPageId === pageId &&
+      result?.slug &&
+      result.slug !== appNavigation.urlPageSlug
+    ) {
+      try {
+        const newUrl = appNavigation.pageLink({ id: pageId, slug: result.slug } as any);
+        if (newUrl) appNavigation.navigate(newUrl, { replace: true });
+      } catch (e) {
+        console.warn("Failed to adjust URL after backend slug update", e);
+      }
+    }
+  }
+
+  // Perform remote update (debounced)
+  async function performUpdate(pageId: string, patch: any) {
+    if (!server.connected) {
+      setSyncStatus("error");
+      return;
+    }
+    try {
+      const result = await server.dispatch("updatePage", { pageId, ...patch });
+      setData((prev: Page | undefined) => {
+        if (!prev || prev.id !== pageId) return prev;
+        const updated: Page = {
+          ...prev,
+          title: result.title,
+          slug: result.slug,
+          icon: result.icon,
+        };
+        return updated;
+      });
+      adjustUrlIfSlugChanged(pageId, result);
+      setSyncStatus("up-to-date");
+    } catch (e) {
+      console.error("updatePage failed", e);
+      setSyncStatus("error");
+    }
+  }
+
   const debouncedUpdate = useDebouncedCallback(
     (pageId: string, patch: any) => {
       setSyncStatus("pending");
-      if (!server.connected) {
-        setSyncStatus("error");
-        return;
-      }
-      server
-        .dispatch("updatePage", { pageId, ...patch })
-        .then(() => setSyncStatus("up-to-date"))
-        .catch((e) => {
-          console.error("updatePage failed", e);
-          setSyncStatus("error");
-        });
+      performUpdate(pageId, patch);
     },
-    800, // debounce window (ms)
+    800,
     { maxWait: 2000 }
   );
 
   // Flush on unmount or page change
-  const flushDebounce = useCallback(() => {
+  function flushDebounce() {
     debouncedUpdate.flush();
-  }, [debouncedUpdate]);
+  }
 
   function updateTitle(newTitle: string) {
     if (!data) return;
+    // Only update title locally; wait for server response to adjust slug & URL.
     queuePatch(() => setData({ ...data, title: newTitle }), { title: newTitle });
   }
 
@@ -113,6 +149,8 @@ export function PageProvider({ children }: Props) {
     debouncedUpdate(data.id, patch);
   }
 
+  // Slug updates are now authoritative from backend; we no longer compute them optimistically here.
+
   // If page id changes, flush queued updates first
   const lastPageIdRef = useRef<string | undefined>(undefined);
   useEffect(() => {
@@ -122,7 +160,11 @@ export function PageProvider({ children }: Props) {
     lastPageIdRef.current = appNavigation.urlPageId;
   }, [appNavigation.urlPageId, flushDebounce]);
 
-  useEffect(() => flushDebounce, [flushDebounce]);
+  useEffect(() => {
+    return () => {
+      debouncedUpdate.flush();
+    };
+  }, [debouncedUpdate]);
 
   return (
     <PageContext.Provider

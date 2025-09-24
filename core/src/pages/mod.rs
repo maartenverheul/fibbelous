@@ -55,11 +55,11 @@ pub struct PageWithContent {
 #[serde(rename_all = "camelCase")]
 pub struct TOCItem {
     pub id: String,
+    pub parent_id: Option<String>,
     pub title: String,
     pub slug: String,
     pub url: String,
     pub icon: Option<String>,
-    pub children: Vec<Page>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -110,33 +110,28 @@ impl PageManager {
         if !self.pages_dir.is_dir() {
             return Err("Pages directory missing".into());
         }
-
-        // Files are stored as: <id>-<slugified-title>.mdx. We only know the id here.
-        let mut target: Option<std::path::PathBuf> = None;
-        for entry in
-            fs::read_dir(&self.pages_dir).map_err(|e| format!("Failed to list pages: {}", e))?
-        {
-            let entry = entry.map_err(|e| format!("Entry error: {}", e))?;
-            let p = entry.path();
-            if p.extension().and_then(|s| s.to_str()) != Some("mdx") {
-                continue;
-            }
-            if let Some(fname) = p.file_name().and_then(|s| s.to_str()) {
-                if fname.starts_with(page_id) && fname.as_bytes().get(page_id.len()) == Some(&b'-')
-                {
-                    target = Some(p.clone());
-                    break;
-                }
-            }
-        }
-        let file_path = target.ok_or_else(|| format!("Page file for id {} not found", page_id))?;
+        // Use recursive search to locate file anywhere in hierarchy.
+        let file_path = self
+            .find_page_file(page_id)
+            .ok_or_else(|| format!("Page file for id {} not found", page_id))?;
 
         let raw = fs::read_to_string(&file_path)
             .map_err(|e| format!("Failed to read .mdx file: {}", e))?;
 
-        let (page_meta, body) = self
+        let (page_meta_tmp, body) = self
             .parse_frontmatter(&raw)
             .map_err(|e| format!("Failed to parse frontmatter: {}", e))?;
+        let mut page_meta = page_meta_tmp;
+        // Derive parent_id from directory structure if not already set (or to override legacy value)
+        if let Ok(rel) = file_path.strip_prefix(&self.pages_dir) {
+            if let Some(parent_dir) = rel.parent().and_then(|p| p.file_name()) {
+                if let Some(pid) = parent_dir.to_str() {
+                    if !pid.is_empty() {
+                        page_meta.parent_id = Some(pid.to_string());
+                    }
+                }
+            }
+        }
         // Remove the first blank line after the frontmatter (we always enforce exactly one blank line on write).
         let trimmed_body = if body.starts_with("\r\n") {
             &body[2..]
@@ -154,7 +149,7 @@ impl PageManager {
 
     /// Creates a new .mdx file for the given page in the workspace's `pages` directory.
     pub async fn save_page(&self, page: &Page) -> Result<(), String> {
-        info!("Saving page \"{:?}\"", page.id);
+        info!("Saving page {:?}", page.id);
         if !self.pages_dir.exists() {
             info!(
                 "Pages directory does not exist. Creating: {:?}",
@@ -166,13 +161,21 @@ impl PageManager {
             }
         }
 
+        // Determine parent directory chain based on ancestor ids (not slugs) so we can later derive parent_id from path.
+        let parent_dir = self.parent_dir_for(page).await;
         let slug = slugify!(&page.title);
         let filename = format!("{}-{}.mdx", page.id, slug);
-        let file_path = self.pages_dir.join(filename);
-
+        let file_path = parent_dir.join(filename);
+        if let Some(dir) = file_path.parent() {
+            if !dir.exists() {
+                fs::create_dir_all(dir)
+                    .map_err(|e| format!("Failed to create parent directories: {e}"))?;
+            }
+        }
+        // Minimal frontmatter: omit parent_id (derivable from path hierarchy).
         let content = format!(
-            "---\ntitle: {}\nid: {}\n---\n\n# {}\n",
-            page.title, page.id, page.title
+            "---\ntitle: {}\nid: {}\nslug: {}\n---\n\n# {}\n",
+            page.title, page.id, slug, page.title
         );
 
         debug!(
@@ -216,28 +219,21 @@ impl PageManager {
                 .map_err(|e| format!("Failed creating pages dir: {e}"))?;
         }
 
-        // Remove any existing file matching the page id (old slug) to avoid stale duplicates.
-        if let Ok(entries) = fs::read_dir(&self.pages_dir) {
-            for entry in entries.flatten() {
-                let p = entry.path();
-                if p.extension().and_then(|s| s.to_str()) == Some("mdx") {
-                    if let Some(fname) = p.file_name().and_then(|s| s.to_str()) {
-                        if fname.starts_with(&page.id)
-                            && fname.as_bytes().get(page.id.len()) == Some(&b'-')
-                        {
-                            // This is an old file for the page; remove so we can rewrite with new slug
-                            let _ = fs::remove_file(&p);
-                        }
-                    }
-                }
-            }
+        // Remove any existing file (in any subdirectory) matching the page id (old slug) to avoid stale duplicates.
+        if let Some(existing) = self.find_page_file(&page.id) {
+            let _ = fs::remove_file(existing);
         }
 
+        // Build hierarchical directory path from parent chain (ids).
+        let parent_dir = self.parent_dir_for(page).await;
+        if !parent_dir.exists() {
+            fs::create_dir_all(&parent_dir)
+                .map_err(|e| format!("Failed to create parent directory chain: {e}"))?;
+        }
         let filename = format!("{}-{}.mdx", page.id, page.slug);
-        let file_path = self.pages_dir.join(filename);
+        let file_path = parent_dir.join(filename);
         let fm_value = serde_json::json!({
             "id": page.id,
-            "parent_id": page.parent_id,
             "title": page.title,
             "slug": page.slug,
             "cover": page.cover,
@@ -262,28 +258,23 @@ impl PageManager {
     }
 
     pub async fn build_page_tree(&self, page_id: &str) -> Result<Vec<Page>, String> {
+        // Collect chain leaf->root, then reverse to root->leaf.
         let guard = self.indexed_pages.read().await;
-        let mut tree = Vec::new();
-        let mut current = match guard.get(page_id) {
-            Some(p) => p,
-            None => return Err(format!("Page {} not found in index", page_id)),
-        };
-        while let Some(parent_id) = &current.parent_id {
-            tree.push(current.clone());
-            current = match guard.get(parent_id) {
-                Some(p) => p,
-                None => {
-                    return Err(format!(
-                        "Parent page {} (referenced by {}) not found in index",
-                        parent_id, current.id
-                    ))
-                }
-            };
+        let mut chain: Vec<Page> = Vec::new();
+        let mut current_id = page_id;
+        loop {
+            let page = guard
+                .get(current_id)
+                .ok_or_else(|| format!("Page {} not found in index", current_id))?;
+            chain.push(page.clone());
+            if let Some(pid) = &page.parent_id {
+                current_id = pid;
+            } else {
+                break;
+            }
         }
-
-        tree.reverse();
-        tree.push(current.clone());
-        Ok(tree)
+        chain.reverse();
+        Ok(chain)
     }
 
     pub async fn get_page_path(&self, page_id: &str) -> Result<PathBuf, String> {
@@ -311,37 +302,65 @@ impl PageManager {
     }
 
     pub async fn get_page_url(&self, page: &Page) -> Result<String, String> {
-        let tree = self.build_page_tree(&page.id).await?;
-        let middle = tree
-            .iter()
-            .map(|page| page.slug.as_str())
-            .collect::<Vec<_>>()
-            .join("/");
-        let slug = tree
-            .last()
-            .map(|p| p.slug.as_str())
-            .ok_or_else(|| "Unexpected empty tree when accessing slug".to_string())?;
-        Ok(format!("/workspace/{}/{}-{}.mdx", middle, page.id, slug))
+        let tree = self.build_page_tree(&page.id).await?; // root..leaf
+        if tree.is_empty() {
+            return Err("Page tree empty".into());
+        }
+        let mut slugs: Vec<&str> = tree.iter().map(|p| p.slug.as_str()).collect();
+        let leaf_slug = slugs.pop().unwrap();
+        let prefix = if slugs.is_empty() {
+            String::new()
+        } else {
+            format!("{}/", slugs.join("/"))
+        };
+        Ok(format!(
+            "/workspace/{}{}-{}.mdx",
+            prefix, page.id, leaf_slug
+        ))
     }
 
-    pub async fn make_toc(&self, parent_id: Option<&str>) -> Result<Vec<TOCItem>, String> {
-        let pages = self.get_child_pages(parent_id).await?;
-        let mut toc = Vec::new();
-
-        for page in pages {
-            let item = TOCItem {
-                id: page.id.clone(),
-                title: page.title.clone(),
-                url: self.get_page_url(&page).await.unwrap_or("".into()),
-                slug: page.slug,
-                icon: page.icon,
-                children: Vec::new(),
-            };
-            toc.push(item);
+    pub async fn make_toc(
+        &self,
+        parent_id: Option<&str>,
+        depth: Option<i8>,
+    ) -> Result<Vec<TOCItem>, String> {
+        // depth = number of child layers to return (1 => direct children only).
+        // If depth <= 0, return empty.
+        let max_layers = depth.unwrap_or(1); // preserve previous default of 1 layer
+        if max_layers <= 0 {
+            return Ok(Vec::new());
         }
 
-        Ok(toc)
+        use std::collections::VecDeque;
+        let mut queue: VecDeque<(Option<String>, i8)> = VecDeque::new();
+        queue.push_back((parent_id.map(|s| s.to_string()), 0)); // level 0 is the starting parent placeholder
+        let mut results: Vec<TOCItem> = Vec::new();
+
+        while let Some((current_parent, level)) = queue.pop_front() {
+            if level == max_layers {
+                continue;
+            } // reached requested depth; do not expand further
+            let children = self.get_child_pages(current_parent.as_deref()).await?;
+            for child in children {
+                // level+1 is this child's depth relative to starting parent
+                results.push(TOCItem {
+                    id: child.id.clone(),
+                    parent_id: child.parent_id.clone(),
+                    title: child.title.clone(),
+                    slug: child.slug.clone(),
+                    url: self.get_page_url(&child).await.unwrap_or_default(),
+                    icon: child.icon.clone(),
+                });
+                if level + 1 < max_layers {
+                    // still can go deeper
+                    queue.push_back((Some(child.id.clone()), level + 1));
+                }
+            }
+        }
+        Ok(results)
     }
+
+    // collect_descendants removed: TOC now flattened; each item carries parent_id.
 
     pub fn walk_dir_pages(&self, dir: &Path) -> Vec<Page> {
         if !dir.is_dir() {
@@ -384,7 +403,19 @@ impl PageManager {
                 }
             };
             match self.parse_frontmatter(&text) {
-                Ok((page, _body)) => pages.push(page),
+                Ok((mut page, _body)) => {
+                    // Derive parent_id from relative directory structure: pages/<parent_id>/<parent_id>/<id-slug>.mdx
+                    if let Ok(rel) = path.strip_prefix(&self.pages_dir) {
+                        if let Some(parent_component) = rel.parent().and_then(|p| p.file_name()) {
+                            if let Some(parent_id) = parent_component.to_str() {
+                                if !parent_id.is_empty() {
+                                    page.parent_id = Some(parent_id.to_string());
+                                }
+                            }
+                        }
+                    }
+                    pages.push(page)
+                }
                 Err(e) => error!("Failed to parse page file {:?}: {}", path, e),
             }
         }
@@ -395,11 +426,11 @@ impl PageManager {
     pub async fn make_toc_item(&self, page: &Page) -> TOCItem {
         TOCItem {
             id: page.id.clone(),
+            parent_id: page.parent_id.clone(),
             title: page.title.clone(),
             slug: page.slug.clone(),
             url: self.get_page_url(page).await.unwrap_or("".into()),
             icon: page.icon.clone(),
-            children: Vec::new(),
         }
     }
 
@@ -437,7 +468,8 @@ impl PageManager {
         let id = raw.id.unwrap_or_else(|| generate_hex_id());
         let page = Page {
             id,
-            parent_id: raw.parent_id,
+            // parent_id is no longer stored in frontmatter; will be derived from directory path during indexing.
+            parent_id: raw.parent_id, // keep optional read for backward compatibility
             title: title.clone(),
             slug,
             cover: raw.cover,
@@ -447,5 +479,50 @@ impl PageManager {
             deleted_at: None,
         };
         Ok((page, body_start))
+    }
+
+    // Helper: recursively search for an existing page file by id anywhere under pages_dir.
+    fn find_page_file(&self, page_id: &str) -> Option<PathBuf> {
+        fn recurse(dir: &Path, page_id: &str) -> Option<PathBuf> {
+            let entries = fs::read_dir(dir).ok()?;
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_dir() {
+                    if let Some(found) = recurse(&p, page_id) {
+                        return Some(found);
+                    }
+                } else if p.extension().and_then(|s| s.to_str()) == Some("mdx") {
+                    if let Some(fname) = p.file_name().and_then(|s| s.to_str()) {
+                        if fname.starts_with(page_id)
+                            && fname.as_bytes().get(page_id.len()) == Some(&b'-')
+                        {
+                            return Some(p);
+                        }
+                    }
+                }
+            }
+            None
+        }
+        recurse(&self.pages_dir, page_id)
+    }
+
+    // Build the parent directory path (pages_dir / <ancestor_id>/...) for a page.
+    async fn parent_dir_for(&self, page: &Page) -> PathBuf {
+        // Gather chain of ancestor ids (root first) by following parent_id links in the current index.
+        let mut chain: Vec<String> = Vec::new();
+        if page.parent_id.is_some() {
+            let guard = self.indexed_pages.read().await;
+            let mut current = page.parent_id.clone();
+            while let Some(pid) = current {
+                chain.push(pid.clone());
+                current = guard.get(&pid).and_then(|p| p.parent_id.clone());
+            }
+            chain.reverse();
+        }
+        let mut dir = self.pages_dir.clone();
+        for id in chain {
+            dir = dir.join(id);
+        }
+        dir
     }
 }
