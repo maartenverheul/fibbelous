@@ -12,15 +12,11 @@ export default function Breadcrumbs({ items }: Props) {
   const appNavigation = useAppNavigation();
   const page = usePage();
 
-  function goToPage(id: string) {
-    appNavigation.openPage(id);
-  }
-
   return (
     <div className="text-white flex items-center opacity-35 hover:opacity-100 transition-opacity delay-75 w-full">
       {(items ?? page.breadcrumbs).map(item => (
         <React.Fragment key={item.id}>
-          <button className="cursor-pointer hover:bg-gray-700 p-1 pr-1.5 rounded text-sm" onClick={() => goToPage(item.id)}>
+          <button className="cursor-pointer hover:bg-gray-700 p-1 pr-1.5 rounded text-sm" onClick={() => appNavigation.openPage(item)}>
             <span className="mr-1">{item.icon}</span>
             {item.title}
           </button>

@@ -6,14 +6,9 @@ import PageNotFound from "./PageNotFound";
 export default function PageViewer() {
   const page = usePage();
 
-  function removeCover() {}
+  function removeCover() { }
 
-  function changeCover() {}
-
-  function changeTitle(newTitle: string) {
-    // Update the page title
-    console.log(newTitle);
-  }
+  function changeCover() { }
 
   if (!page.loaded) return <p>Loading...</p>;
   if (!page.data) return <PageNotFound />;
@@ -58,9 +53,9 @@ export default function PageViewer() {
           <input
             type="text"
             className="text-white focus:outline-0 text-5xl font-bold placeholder:text-gray-600 w-full"
-            placeholder="No title"
+            placeholder="Untitled"
             value={page.data.title}
-            onChange={(e) => changeTitle(e.target.value)}
+            onChange={(e) => page.updateTitle(e.target.value)}
           />
         </div>
         <div className="PageContent w-full max-w-[1000px] mx-auto p-4">
@@ -68,9 +63,7 @@ export default function PageViewer() {
             name="content"
             className="w-full border min-h-[300px] border-gray-600 rounded focus:outline-none text-white font-mono"
             value={page.content}
-            onChange={() => {
-              console.warn("TODO content change");
-            }}
+            onChange={(e) => page.updateContent(e.target.value)}
           ></textarea>
         </div>
       </div>

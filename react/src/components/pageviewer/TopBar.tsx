@@ -1,6 +1,6 @@
-import { CircleCheckBig } from "lucide-react";
 import Breadcrumbs from "./Breadcrumbs";
 import { cn } from "@/lib/utils";
+import SyncStatus from "./SyncStatus";
 
 type Props = {
   className?: string;
@@ -15,9 +15,9 @@ export default function TopBar({ className }: Props) {
       )}
     >
       <Breadcrumbs />
-      <button className="cursor-pointer block ml-auto px-6">
-        <CircleCheckBig className="w-4 h-4 text-emerald-500" />
-      </button>
+      <div className="ml-auto px-6">
+        <SyncStatus />
+      </div>
     </div>
   );
 }

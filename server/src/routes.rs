@@ -31,6 +31,10 @@ pub fn build_router(state: AppState) -> Router {
                 .put(update_workspace)
                 .delete(remove_workspace),
         )
+        .route(
+            "/api/workspaces/:id/pages/:page_id",
+            axum::routing::patch(update_page),
+        )
         // TODO: add pages endpoints
         .route("/api/workspaces/:id/toc", post(make_toc))
         .layer(cors)
@@ -131,4 +135,57 @@ pub async fn remove_workspace(Path(id): Path<String>) -> impl IntoResponse {
 
 pub async fn make_toc(Path(id): Path<String>) -> impl IntoResponse {
     format!("Make TOC for workspace with id: {}", id)
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdatePageRequest {
+    pub title: Option<String>,
+    pub content: Option<String>,
+    pub icon: Option<String>,
+}
+
+pub async fn update_page(
+    State(state): State<AppState>,
+    Path((workspace_id, page_id)): Path<(String, String)>,
+    Json(req): Json<UpdatePageRequest>,
+) -> impl IntoResponse {
+    // Find workspace arc
+    let workspace = {
+        let guard = state.workspace_manager.workspaces.read().await;
+        guard.get(&workspace_id).cloned()
+    };
+    let Some(ws) = workspace else {
+        return (
+            StatusCode::NOT_FOUND,
+            format!("Workspace {} not found", workspace_id),
+        )
+            .into_response();
+    };
+
+    let handler = CommandHandler::new(state.clone(), ws);
+    let result = handler
+        .execute(Command::UpdatePage {
+            page_id: page_id.clone(),
+            title: req.title,
+            content: req.content,
+            icon: req.icon,
+        })
+        .await;
+
+    match result {
+        CommandResult::Page(page) => (StatusCode::OK, Json(page)).into_response(),
+        CommandResult::Error(e) => {
+            if e.message.contains("not found") {
+                (StatusCode::NOT_FOUND, e.message).into_response()
+            } else {
+                (StatusCode::INTERNAL_SERVER_ERROR, e.message).into_response()
+            }
+        }
+        other => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Unexpected result: {:?}", other),
+        )
+            .into_response(),
+    }
 }

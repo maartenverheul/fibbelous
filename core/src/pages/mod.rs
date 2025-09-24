@@ -137,10 +137,18 @@ impl PageManager {
         let (page_meta, body) = self
             .parse_frontmatter(&raw)
             .map_err(|e| format!("Failed to parse frontmatter: {}", e))?;
+        // Remove the first blank line after the frontmatter (we always enforce exactly one blank line on write).
+        let trimmed_body = if body.starts_with("\r\n") {
+            &body[2..]
+        } else if body.starts_with('\n') {
+            &body[1..]
+        } else {
+            body
+        };
 
         Ok(PageWithContent {
             page: page_meta,
-            content: body.to_string(),
+            content: trimmed_body.to_string(),
         })
     }
 
@@ -198,6 +206,58 @@ impl PageManager {
 
         self.indexed_pages.write().await.remove(page_id);
 
+        Ok(())
+    }
+
+    /// Write full page (frontmatter + body). Rewrites file (may rename if title/slug changed).
+    pub async fn write_full_page(&self, page: &Page, body: &str) -> Result<(), String> {
+        if !self.pages_dir.exists() {
+            fs::create_dir_all(&self.pages_dir)
+                .map_err(|e| format!("Failed creating pages dir: {e}"))?;
+        }
+
+        // Remove any existing file matching the page id (old slug) to avoid stale duplicates.
+        if let Ok(entries) = fs::read_dir(&self.pages_dir) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.extension().and_then(|s| s.to_str()) == Some("mdx") {
+                    if let Some(fname) = p.file_name().and_then(|s| s.to_str()) {
+                        if fname.starts_with(&page.id)
+                            && fname.as_bytes().get(page.id.len()) == Some(&b'-')
+                        {
+                            // This is an old file for the page; remove so we can rewrite with new slug
+                            let _ = fs::remove_file(&p);
+                        }
+                    }
+                }
+            }
+        }
+
+        let filename = format!("{}-{}.mdx", page.id, page.slug);
+        let file_path = self.pages_dir.join(filename);
+        let fm_value = serde_json::json!({
+            "id": page.id,
+            "parent_id": page.parent_id,
+            "title": page.title,
+            "slug": page.slug,
+            "cover": page.cover,
+            "icon": page.icon,
+        });
+        let frontmatter = serde_yaml::to_string(&fm_value)
+            .map_err(|e| format!("Failed to serialize frontmatter: {e}"))?;
+        // Ensure single blank line separating frontmatter and content.
+        // 1. Remove trailing newlines from serialized frontmatter.
+        let frontmatter_clean = frontmatter.trim_end_matches(['\n', '\r'].as_ref());
+        // 2. Trim leading blank lines from body to avoid accumulating empties over successive writes.
+        let body_clean = body.trim_start_matches(|c| c == '\n' || c == '\r');
+        // Final layout:
+        // ---\n<frontmatter>\n---\n\n<body>
+        let data = format!("---\n{}\n---\n\n{}", frontmatter_clean, body_clean);
+        fs::write(&file_path, data).map_err(|e| format!("Failed to write page file: {e}"))?;
+        self.indexed_pages
+            .write()
+            .await
+            .insert(page.id.clone(), page.clone());
         Ok(())
     }
 

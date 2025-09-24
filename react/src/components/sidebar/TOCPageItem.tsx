@@ -49,7 +49,7 @@ export default function TOCPageItem({ item, level = 0 }: Props) {
           className="text-left block w-full cursor-pointer relative align-middle pt-[4px]"
           draggable={false}
         >
-          {item.title}
+          {item.title.length ? item.title : <span className="text-gray-600">Untitled</span>}
         </Link>
         <div className="opacity-0 group-hover/page:opacity-100 flex p-[2px] rounded">
           <button

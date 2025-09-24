@@ -8,6 +8,7 @@ use crate::workspaces::{
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tracing::debug;
 
 /// Generic command enum modeling current Tauri commands.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,6 +49,13 @@ pub enum Command {
     #[serde(rename_all = "camelCase")]
     ReadPage {
         page_id: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    UpdatePage {
+        page_id: String,
+        title: Option<String>,
+        content: Option<String>,
+        icon: Option<String>,
     },
     #[serde(rename_all = "camelCase")]
     RemoveWorkspace {
@@ -217,6 +225,64 @@ impl CommandHandler {
                 Ok(pwc) => CommandResult::PageWithContent(pwc),
                 Err(e) => CommandResult::Error(ErrorPayload { message: e }),
             },
+            UpdatePage {
+                page_id,
+                title,
+                content,
+                icon,
+            } => {
+                debug!("Updating page {}", page_id);
+                // Load existing full page (metadata + body)
+                let original = match self.workspace.page_manager.read_page(&page_id) {
+                    Ok(p) => p,
+                    Err(e) => return CommandResult::Error(ErrorPayload { message: e }),
+                };
+
+                let mut page = original.page.clone();
+                let mut metadata_changed = false;
+                if let Some(t) = title {
+                    if t != page.title {
+                        page.title = t;
+                        metadata_changed = true;
+                    }
+                }
+                if let Some(ic) = icon {
+                    if ic != page.icon.clone().unwrap_or_default() {
+                        page.icon = Some(ic);
+                        metadata_changed = true;
+                    }
+                }
+                if metadata_changed {
+                    page.updated_at = Some(Utc::now());
+                }
+
+                let new_body = content.unwrap_or(original.content.clone());
+
+                // Persist (metadata and/or body) if anything changed
+                if metadata_changed || new_body != original.content {
+                    if let Err(e) = self
+                        .workspace
+                        .page_manager
+                        .write_full_page(&page, &new_body)
+                        .await
+                    {
+                        return CommandResult::Error(ErrorPayload {
+                            message: format!("Failed to save page: {e}"),
+                        });
+                    }
+
+                    // If metadata changed (title/icon) broadcast TOC update (Update action)
+                    if metadata_changed {
+                        let _ = self.workspace.events_tx.send(Event::TocUpdated {
+                            id: page.id.clone(),
+                            item: Some(self.workspace.page_manager.make_toc_item(&page).await),
+                            action: TOCUpdateAction::Update,
+                        });
+                    }
+                }
+
+                CommandResult::Page(page)
+            }
             SaveRemoteWorkspaces { .. } => CommandResult::Error(ErrorPayload {
                 message: "SaveRemoteWorkspaces not supported".into(),
             }),

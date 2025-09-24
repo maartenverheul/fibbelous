@@ -5,6 +5,13 @@ import { Page, PageWithContent, TOCItem } from ".";
 
 type TOCUpdateAction = 'add' | 'remove' | 'update';
 
+export type UpdatePageCommand = {
+  pageId: string;
+  title?: string;
+  content?: string;
+  icon?: string;
+}
+
 export type CommandList = {
   ping: { payload?: {}, returnType: { kind: 'pong' } }
   getSavedWorkspaces: { payload?: {}, returnType: { kind: 'pong' } }
@@ -13,6 +20,7 @@ export type CommandList = {
   getToc: { payload?: { parent?: string }, returnType: { toc: TOCItem[] } }
   readPage: { payload: { pageId: string }, returnType: PageWithContent }
   deletePage: { payload: { pageId: string }, returnType: { kind: 'pong' } }
+  updatePage: { payload: UpdatePageCommand, returnType: void }
 };
 
 export type EventList = {

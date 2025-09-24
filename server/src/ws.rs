@@ -9,6 +9,7 @@ use futures_util::StreamExt;
 use hyper::StatusCode;
 use serde::Deserialize;
 use std::sync::Arc;
+use tokio::sync::broadcast::error::RecvError;
 
 #[derive(Deserialize)]
 pub struct WsConnectParams {
@@ -103,10 +104,10 @@ async fn handle_socket(socket: WebSocket, state: AppState, workspace: Arc<Loaded
                             if ws_stream.send(Message::Text(text)).await.is_err() { break; }
                         }
                     }
-                    Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                    Err(RecvError::Lagged(skipped)) => {
                         debug!(target: "ws", "Lagged over {} events", skipped);
                     }
-                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                    Err(RecvError::Closed) => break,
                 }
             }
         }
