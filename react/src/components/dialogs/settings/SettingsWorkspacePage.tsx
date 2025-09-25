@@ -26,6 +26,7 @@ import { useAppNavigation } from "@/contexts/AppNavigationContext";
 import { cn } from "@/lib/utils";
 import { IS_APP } from "@/checks";
 import { useEffect } from "react";
+import { useServer } from "@/contexts/ServerContext";
 
 export default function SettingsWorkspacePage() {
   const {
@@ -37,6 +38,7 @@ export default function SettingsWorkspacePage() {
   } = useWorkspaceManager();
   const { hashParams, workspaceHomeLink } = useAppNavigation(); // not currently used
   const appNavigation = useAppNavigation();
+  const server = useServer();
 
   function handleVisit(workspace: WorkspaceInfo) {
     appNavigation.navigate(appNavigation.workspaceHomeLink(workspace.slug));
@@ -63,11 +65,10 @@ export default function SettingsWorkspacePage() {
     return <FolderSymlinkIcon className="w-4 h-4" />;
   }
 
-  function handleEditSave(
+  async function handleEditSave(
     workspace: CreateWorkspaceRequest
-  ): void {
-    console.log("EDIT", workspace);
-    throw new Error("Function not implemented.");
+  ): Promise<void> {
+    await server.dispatch("editWorkspace", { workspace });
   }
 
   return (

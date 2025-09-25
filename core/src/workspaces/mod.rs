@@ -286,7 +286,7 @@ impl WorkspaceManager {
         Ok(())
     }
 
-    fn write_workspace_info(
+    pub fn write_workspace_info(
         &self,
         path: &Path,
         info: &WorkspaceInfo,

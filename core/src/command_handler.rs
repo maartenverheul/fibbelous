@@ -33,6 +33,10 @@ pub enum Command {
         page_id: String,
     },
     #[serde(rename_all = "camelCase")]
+    EditWorkspace {
+        workspace: crate::workspaces::WorkspaceInfo,
+    },
+    #[serde(rename_all = "camelCase")]
     GetSavedWorkspaces,
     #[serde(rename_all = "camelCase")]
     GetWorkspace {
@@ -192,6 +196,31 @@ impl CommandHandler {
                         CommandResult::Void
                     }
                     Err(e) => CommandResult::Error(ErrorPayload { message: e }),
+                }
+            }
+            EditWorkspace { workspace } => {
+                // Find the workspace by id and update its info
+                let id = workspace.id.clone();
+                let mut guard = self.app.workspace_manager.workspaces.write().await;
+                if let Some(existing) = guard.get_mut(&id) {
+                    let path = existing.path.clone();
+                    // Write new info to disk
+                    if let Err(e) = self
+                        .app
+                        .workspace_manager
+                        .write_workspace_info(&path, &workspace)
+                    {
+                        return CommandResult::Error(ErrorPayload {
+                            message: format!("Failed to write workspace info: {e}"),
+                        });
+                    }
+                    // Update in-memory info only
+                    Arc::get_mut(existing).map(|loaded| loaded.info = workspace.clone());
+                    CommandResult::Workspace(workspace)
+                } else {
+                    CommandResult::Error(ErrorPayload {
+                        message: format!("Workspace not found: {id}"),
+                    })
                 }
             }
             GetSavedWorkspaces => {
