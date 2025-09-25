@@ -96,3 +96,8 @@ export type Database = {
   updatedAt?: string;
   deletedAt?: string;
 }
+
+export type LastVisited = {
+  itemId?: string;
+  workspaceId: string;
+}

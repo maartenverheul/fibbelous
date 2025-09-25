@@ -39,7 +39,7 @@ export default function SettingsWorkspacePage() {
   const appNavigation = useAppNavigation();
 
   function handleVisit(workspace: WorkspaceInfo) {
-    appNavigation.navigate(appNavigation.workspaceHomeLink(workspace));
+    appNavigation.navigate(appNavigation.workspaceHomeLink(workspace.slug));
   }
 
   useEffect(() => {
@@ -125,7 +125,7 @@ export default function SettingsWorkspacePage() {
                       </span>
                       <div className="ml-auto flex items-center">
                         <Link
-                          to={workspaceHomeLink(w.info)}
+                          to={workspaceHomeLink(w.info.slug)}
                           className="px-2 py-1 text-white opacity-40 hover:opacity-100 hover:text-white hover:bg-green-500 cursor-pointer rounded"
                           onClick={() => handleVisit(w.info)}
                           title="Load workspace"

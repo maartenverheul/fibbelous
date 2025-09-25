@@ -23,7 +23,7 @@ export default function WorkspaceSelector() {
       appNavigation.navigate(appNavigation.settingsLink("workspaces", null));
     else {
       const target = workspaces.find((w) => w.info.id === id);
-      appNavigation.navigate(appNavigation.workspaceHomeLink(target?.info));
+      appNavigation.navigate(appNavigation.workspaceHomeLink(target?.info.slug));
     }
   }
 
@@ -53,7 +53,7 @@ export default function WorkspaceSelector() {
             );
             return (
               <Link
-                to={appNavigation.workspaceHomeLink(w.info)}
+                to={appNavigation.workspaceHomeLink(w.info.slug)}
                 key={w.info.id}
               >
                 <SelectItem

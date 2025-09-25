@@ -103,7 +103,7 @@ export function AddWorkspaceForm() {
 
     if (selected.length === 1) {
       setTimeout(() => {
-        appNavigation.navigate(appNavigation.workspaceHomeLink(selected[0]));
+        appNavigation.navigate(appNavigation.workspaceHomeLink(selected[0].slug));
       }, 0);
     }
   }
@@ -118,7 +118,7 @@ export function AddWorkspaceForm() {
     setImportMode("existing");
     setSelectedWorkspaces([]);
     if (remoteUrl) setLastRemoteUrl(remoteUrl);
-    appNavigation.navigate(appNavigation.workspaceHomeLink(workspace));
+    appNavigation.navigate(appNavigation.workspaceHomeLink(workspace.slug));
   }
 
   return (

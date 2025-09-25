@@ -1,8 +1,9 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { Page, TOCItem, WorkspaceInfo } from "@/models";
+import { LastVisited, Page, TOCItem, WorkspaceInfo } from "@/models";
 import { useLocation, useNavigate, useParams } from "react-router";
 import { useWorkspaceManager } from "./WorkspaceManagerContext";
 import { SettingsTab } from "@/components/dialogs/settings/SettingsDialog";
+import useLocalStorageState from "use-local-storage-state";
 
 export type AppNavigationContextType = {
   urlWorkspaceSlug: string | undefined;
@@ -13,7 +14,7 @@ export type AppNavigationContextType = {
   hashParams: string[];
   openTOCItem(page: TOCItem, newTab?: boolean): boolean;
   toTOCITem(tree: Page[]): TOCItem;
-  workspaceHomeLink(workspace?: WorkspaceInfo): string;
+  workspaceHomeLink(workspaceSlug?: string): string;
   settingsLink(tab?: SettingsTab, workspace?: WorkspaceInfo | null): string;
   closeTab(index: number): boolean;
   changeTab(index: number): void;
@@ -30,7 +31,7 @@ export function AppNavigationProvider({
   children: React.ReactNode;
 }) {
   const navigate = useNavigate();
-  const { workspaces, loaded } = useWorkspaceManager();
+  const { workspaces, loaded, getWorkspaceBySlug, getWorkspace } = useWorkspaceManager();
   const { hash } = useLocation();
 
   const params = useParams();
@@ -39,6 +40,7 @@ export function AppNavigationProvider({
     const parts = params["*"]?.split("/");
     return parts ? parts[parts.length - 1] : undefined;
   })();
+  const workspaceId = getWorkspaceBySlug(workspaceSlug || "")?.info.id;
   const pageParts = pageString?.split("-");
   const urlPageId = pageParts?.[0];
   const urlPageSlug = (() => pageParts?.slice(1).join("-"))();
@@ -46,36 +48,52 @@ export function AppNavigationProvider({
   const [activeTab, setActiveTab] = useState<number | undefined>();
   const [tabs, setTabs] = useState<TOCItem[]>([]);
 
+  const [lastVisited, setLastVisited] = useLocalStorageState<LastVisited | undefined>("lastVisited", undefined);
+
   const hashParams = hash.startsWith("#") ? hash.slice(1).split("/").filter((h) => h.length > 0) : [];
 
   useEffect(() => {
     if (!loaded) return;
 
-    // When no workspaces are loaded, navigate to the settings dialog
-    if (workspaces.length == 0 && hashParams[0] != "settings")
-      navigate(settingsLink("workspaces"));
+    (() => {
+      // When no workspaces are loaded, navigate to the settings dialog
+      if (workspaces.length == 0 && hashParams[0] != "settings")
+        return navigate(settingsLink("workspaces"));
 
-    // If no workspace is selected, navigate to the first workspace
-    if (
-      !workspaceSlug &&
-      workspaces.length > 0 &&
-      workspaces[0].info.slug != undefined
-    ) {
-      // navigate(`/${workspaces[0].info.slug}`, { replace: true });
-      navigate(settingsLink("workspaces"));
-    }
+      // If no workspace is selected, navigate to the first workspace
+      if (
+        !workspaceSlug &&
+        workspaces.length > 0 &&
+        workspaces[0].info.slug != undefined
+      ) {
+        if (lastVisited) {
+          const w = getWorkspace(lastVisited.workspaceId);
+          if (lastVisited.itemId) {
+            console.log("Navigating to last visited item", lastVisited.itemId, "in workspace", w?.info.slug);
 
-    // If the selected workspace is invalid, redirect back
-    if (
-      workspaceSlug &&
-      !workspaces.some((w) => w.info.slug === workspaceSlug)
-    ) {
-      // Invalid workspace, redirect to first valid workspace
-      navigate("/", { replace: true });
-    }
+            return navigate(pageLink([], w?.info.slug), { replace: true });
+          }
+          else {
+            if (w) return navigate(workspaceHomeLink(w.info.slug), { replace: true });
+          }
+        }
+
+        return navigate(settingsLink("workspaces"), { replace: true });
+      }
+
+      // If the selected workspace is invalid, redirect back
+      if (
+        workspaceSlug &&
+        !workspaces.some((w) => w.info.slug === workspaceSlug)
+      ) {
+        // Invalid workspace, redirect to first valid workspace
+        return navigate("/", { replace: true });
+      }
+    })();
   }, [loaded, workspaceSlug, workspaces, hash]);
 
   function openTOCItem(item: TOCItem, newTab: boolean = false) {
+    if (!workspaceId) return false;
     const existingIndex = tabs.findIndex((tab) => tab.id === item.id);
 
     if (tabs.length == 0 || (newTab && existingIndex === -1)) {
@@ -89,6 +107,7 @@ export function AppNavigationProvider({
       setActiveTab(activeTab);
     }
 
+    setLastVisited({ workspaceId, itemId: item.id });
     navigate(item.url);
     return true;
   }
@@ -99,8 +118,8 @@ export function AppNavigationProvider({
     return { ...target, url, children: [] };
   }
 
-  function pageLink(ancestors: Page[]) {
-    const base = `/${workspaceSlug}`;
+  function pageLink(ancestors: Page[], _workspaceSlug?: string) {
+    const base = `/${_workspaceSlug ?? workspaceSlug}`;
     const path = ancestors
       .map((p) => `${p.id}-${p.slug}`)
       .filter((s) => s.length > 0)
@@ -108,8 +127,8 @@ export function AppNavigationProvider({
     return `${base}/${path}`;
   }
 
-  function workspaceHomeLink(workspace: WorkspaceInfo | undefined = undefined) {
-    const slug = workspace?.slug ?? workspaceSlug;
+  function workspaceHomeLink(_workspaceSlug: string | undefined = undefined) {
+    const slug = _workspaceSlug ?? workspaceSlug;
     if (!slug) return "";
     return `/${slug}`;
   }
@@ -118,7 +137,7 @@ export function AppNavigationProvider({
     tab: string = "general",
     workspace: WorkspaceInfo | undefined = undefined
   ) {
-    const prefix = workspaceHomeLink(workspace);
+    const prefix = workspaceHomeLink(workspace?.slug);
     const slug = workspace === null ? "" : workspace?.slug ?? workspaceSlug;
     const suffix = slug ? `/${slug}` : "";
     return `${prefix}/#settings/${tab}${suffix}`;
