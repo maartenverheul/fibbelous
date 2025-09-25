@@ -41,7 +41,7 @@ export function PageManagerProvider({
     return result;
   }
 
-  function getAncestors(id: string, list: Page[]): Page[] {
+  function getAncestors(id: string, list?: Page[]): Page[] {
     list ??= pages;
     const ancestors: Page[] = [];
     let currentPage = list.find((p) => p.id === id);

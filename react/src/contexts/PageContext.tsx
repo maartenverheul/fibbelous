@@ -1,5 +1,5 @@
 import { Page, TOCItem } from "@/models";
-import { createContext, useContext, useEffect, useMemo, useState, useRef } from "react";
+import { createContext, useContext, useEffect, useState, useRef } from "react";
 import { useDebouncedCallback } from "use-debounce";
 import { usePageManager } from "./PageManagerContext";
 import { useAppNavigation } from "./AppNavigationContext";
@@ -55,9 +55,8 @@ export function PageProvider({ children }: Props) {
       });
   }, [appNavigation.urlPageId, server.connected]);
 
-  const breadcrumbs = useMemo<TOCItem[]>(
-    () => pageManager.buildBreadcrumbs(appNavigation.urlPageSlug!),
-    [appNavigation.urlPageSlug]
+  const breadcrumbs: TOCItem[] = pageManager.buildBreadcrumbs(
+    appNavigation.urlPageSlug!
   );
 
 

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { Workspace, CreateWorkspaceRequest } from "@/models";
 import { useWorkspaceManager } from "@/contexts/WorkspaceManagerContext";
 import { SaveIcon, RotateCcw } from "lucide-react";
@@ -38,15 +38,15 @@ export default function EditWorkspaceForm({
   );
 
   // Detect slug conflicts. When editing, allow keeping the original slug even if it matches.
-  const slugConflict = useMemo(() => {
+  const slugConflict = (() => {
     if (!slug) return false;
-    // If editing and slug hasn't changed, it's never a conflict
     if (!isCreate && slug === workspace!.info.slug) return false;
     return workspaces.some((w) => {
-      if (!isCreate && w.info.id === workspace!.info.id) return false; // ignore the workspace being edited
+      if (!isCreate && w.info.id === workspace!.info.id) return false;
       return w.info.slug === slug;
     });
-  }, [slug, workspaces, isCreate, workspace]);
+  })();
+
   const disabled = readOnly || !title.trim() || !slug.trim() || slugConflict;
 
   function handleSave() {
@@ -76,15 +76,15 @@ export default function EditWorkspaceForm({
     setSlugManuallyEdited(false);
   }
 
-  const fullWorkspaceUrl = useMemo(() => {
+  let fullWorkspaceUrl = (() => {
     let base = (connectionUrl || remoteUrl || "").replace(/\/$/, "");
     if (!base && !IS_APP && typeof window !== "undefined") {
       base = window.location.origin.replace(/\/$/, "");
     }
     let previewSlug = slug || (title ? sanitizeSlug(title) : "<slug>");
-    previewSlug = previewSlug.replace(/-+$/, ""); // remove trailing dashes
+    previewSlug = previewSlug.replace(/-+$/, "");
     return base ? `${base}/${previewSlug}` : `/${previewSlug}`;
-  }, [connectionUrl, remoteUrl, slug, title]);
+  })();
 
   return (
     <form

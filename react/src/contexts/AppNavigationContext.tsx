@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { Page, TOCItem, WorkspaceInfo } from "@/models";
 import { useLocation, useNavigate, useParams } from "react-router";
 import { useWorkspaceManager } from "./WorkspaceManagerContext";
@@ -35,27 +35,18 @@ export function AppNavigationProvider({
 
   const params = useParams();
   const { workspaceSlug } = params;
-  const pageString = useMemo(() => {
+  const pageString = (() => {
     const parts = params["*"]?.split("/");
     return parts ? parts[parts.length - 1] : undefined;
-  }, [params]);
-  const pageParts = useMemo(() => pageString?.split("-"), [pageString]);
-  const urlPageId = useMemo(() => pageParts?.[0], [pageParts]);
-  const urlPageSlug = useMemo(() => {
-    console.log("pageSlug", pageParts);
-    return pageParts?.slice(1).join("-");
-  }, [pageParts]);
+  })();
+  const pageParts = pageString?.split("-");
+  const urlPageId = pageParts?.[0];
+  const urlPageSlug = (() => pageParts?.slice(1).join("-"))();
 
   const [activeTab, setActiveTab] = useState<number | undefined>();
   const [tabs, setTabs] = useState<TOCItem[]>([]);
 
-  const hashParams = useMemo(() => {
-    if (!hash.startsWith("#")) return [];
-    return hash
-      .slice(1)
-      .split("/")
-      .filter((h) => h.length > 0);
-  }, [hash]);
+  const hashParams = hash.startsWith("#") ? hash.slice(1).split("/").filter((h) => h.length > 0) : [];
 
   useEffect(() => {
     if (!loaded) return;

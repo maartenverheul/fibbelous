@@ -1,5 +1,5 @@
 import { TOCItem } from "@/models";
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { useServer } from "./ServerContext";
 import { toast } from "sonner";
 
@@ -14,7 +14,7 @@ export function TOCProvider({ children }: { children: React.ReactNode }) {
   const server = useServer();
 
   const [cached, setCached] = useState<TOCItem[]>([]);
-  const toc = useMemo(() => buildFullTOC(cached), [cached]);
+  const toc = buildFullTOC(cached);
 
   useEffect(() => {
     if (!server.connected) return;
