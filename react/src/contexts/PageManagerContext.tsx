@@ -67,21 +67,23 @@ export function PageManagerProvider({
   }
 
   function buildBreadcrumbs(pageId: string): TOCItem[] {
-    const breadcrumbs: TOCItem[] = [];
-    let currentPage = pages.find((p) => p.id === pageId);
-    while (currentPage) {
-      breadcrumbs.unshift({
-        id: currentPage.id,
-        slug: currentPage.slug,
-        title: currentPage.title,
-        url: `/${currentPage.id}-${currentPage.slug}`,
-        icon: currentPage.icon,
-      });
-      currentPage = currentPage.parentId
-        ? pages.find((p) => p.id === currentPage!.parentId)
-        : undefined;
-    }
-    return breadcrumbs;
+    // Build ancestor chain root..target
+    const ancestors = getAncestors(pageId);
+    if (ancestors.length === 0) return [];
+    const wsSlug = appNavigation.urlWorkspaceSlug;
+    const base = wsSlug ? `/${wsSlug}` : "";
+    const pathSegments: string[] = [];
+    return ancestors.map((p) => {
+      pathSegments.push(`${p.id}-${p.slug}`);
+      return {
+        id: p.id,
+        parentId: p.parentId,
+        slug: p.slug,
+        title: p.title,
+        url: `${base}/${pathSegments.join('/')}`,
+        icon: p.icon,
+      } as TOCItem;
+    });
   }
 
   return (

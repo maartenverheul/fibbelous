@@ -74,6 +74,7 @@ export type Page = {
 export type PageWithContent = {
   page: Page;
   content: string;
+  breadcrumbs: TOCItem[];
 }
 
 export type TOCItem = {

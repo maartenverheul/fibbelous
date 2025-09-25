@@ -49,6 +49,8 @@ impl Page {
 pub struct PageWithContent {
     pub page: Page,
     pub content: String,
+    // Breadcrumb chain root->leaf as TOCItem entries (id, title, slug, url, icon)
+    pub breadcrumbs: Vec<TOCItem>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -108,7 +110,7 @@ impl PageManager {
         Ok(())
     }
 
-    pub fn read_page(&self, page_id: &str) -> Result<PageWithContent, String> {
+    pub async fn read_page(&self, page_id: &str) -> Result<PageWithContent, String> {
         if !self.pages_dir.is_dir() {
             return Err("Pages directory missing".into());
         }
@@ -143,9 +145,20 @@ impl PageManager {
             body
         };
 
+        // Build breadcrumb chain (Pages) then map to TOCItems including URLs.
+        let breadcrumb_pages = self
+            .build_page_tree(&page_meta.id)
+            .await
+            .unwrap_or_else(|_| vec![page_meta.clone()]);
+        let mut breadcrumbs: Vec<TOCItem> = Vec::with_capacity(breadcrumb_pages.len());
+        for p in &breadcrumb_pages {
+            breadcrumbs.push(self.make_toc_item(p).await);
+        }
+
         Ok(PageWithContent {
             page: page_meta,
             content: trimmed_body.to_string(),
+            breadcrumbs,
         })
     }
 

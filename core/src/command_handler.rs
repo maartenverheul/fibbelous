@@ -224,7 +224,7 @@ impl CommandHandler {
             RemoveWorkspace { .. } => CommandResult::Error(ErrorPayload {
                 message: "RemoveWorkspace not supported".into(),
             }),
-            ReadPage { page_id } => match self.workspace.page_manager.read_page(&page_id) {
+            ReadPage { page_id } => match self.workspace.page_manager.read_page(&page_id).await {
                 Ok(pwc) => CommandResult::PageWithContent(pwc),
                 Err(e) => CommandResult::Error(ErrorPayload { message: e }),
             },
@@ -236,7 +236,7 @@ impl CommandHandler {
             } => {
                 debug!("Updating page {}", page_id);
                 // Load existing full page (metadata + body)
-                let original = match self.workspace.page_manager.read_page(&page_id) {
+                let original = match self.workspace.page_manager.read_page(&page_id).await {
                     Ok(p) => p,
                     Err(e) => return CommandResult::Error(ErrorPayload { message: e }),
                 };

@@ -1,7 +1,6 @@
 import { Page, TOCItem } from "@/models";
 import { createContext, useContext, useEffect, useState, useRef } from "react";
 import { useDebouncedCallback } from "use-debounce";
-import { usePageManager } from "./PageManagerContext";
 import { useAppNavigation } from "./AppNavigationContext";
 import { useServer } from "./ServerContext";
 
@@ -28,9 +27,9 @@ type Props = {
 export function PageProvider({ children }: Props) {
   const appNavigation = useAppNavigation();
   const server = useServer();
-  const pageManager = usePageManager();
   const [data, setData] = useState<Page>();
   const [loaded, setLoaded] = useState(false);
+  const [breadcrumbs, setBreadcrumbs] = useState<TOCItem[]>([]);
   const [content, setContent] = useState<string>("");
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("loading");
 
@@ -47,6 +46,7 @@ export function PageProvider({ children }: Props) {
         setSyncStatus("up-to-date");
         setData(result?.page);
         setContent(result?.content || "");
+        setBreadcrumbs(result?.breadcrumbs ?? []);
         setLoaded(true);
       })
       .catch((err) => {
@@ -54,11 +54,6 @@ export function PageProvider({ children }: Props) {
         setLoaded(true);
       });
   }, [appNavigation.urlPageId, server.connected]);
-
-  const breadcrumbs: TOCItem[] = pageManager.buildBreadcrumbs(
-    appNavigation.urlPageSlug!
-  );
-
 
   async function deletePage(id: string) {
     await server.dispatch("deletePage", { pageId: id });
@@ -99,6 +94,19 @@ export function PageProvider({ children }: Props) {
           icon: result.icon,
         };
         return updated;
+      });
+      // Update breadcrumb leaf (active page). Guard empty + concise URL rebuild.
+      setBreadcrumbs(prev => {
+        if (!prev.length) return prev;
+        const last = prev[prev.length - 1];
+        if (last.id !== pageId) return prev; // defensive
+        const base = last.url && last.url.includes("/")
+          ? last.url.slice(0, last.url.lastIndexOf("/") + 1)
+          : "";
+        return [
+          ...prev.slice(0, -1),
+          { ...last, title: result.title, slug: result.slug, url: base + pageId + "-" + result.slug }
+        ];
       });
       adjustUrlIfSlugChanged(pageId, result);
       setSyncStatus("up-to-date");
