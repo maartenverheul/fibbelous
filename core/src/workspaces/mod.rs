@@ -119,7 +119,8 @@ impl WorkspaceManager {
                 let id = os_id.to_string_lossy().to_string();
                 match WorkspaceManager::load_workspace_dir(&dir).await {
                     Ok((info, db)) => {
-                        let page_manager = Arc::new(PageManager::new(dir.clone()));
+                        let page_manager =
+                            Arc::new(PageManager::new(dir.clone(), info.slug.clone()));
                         let _ = page_manager.index_pages().await;
                         let (events_tx, _rx) = broadcast::channel(100);
                         let loaded = LoadedWorkspace {
@@ -212,7 +213,7 @@ impl WorkspaceManager {
             .expect("Failed to create .fibbelous folder");
 
         // Always create one default page.
-        let page_manager = Arc::new(PageManager::new(repo_path.clone()));
+        let page_manager = Arc::new(PageManager::new(repo_path.clone(), settings.slug.clone()));
         // No need to index here
 
         let page = Page::default(None);

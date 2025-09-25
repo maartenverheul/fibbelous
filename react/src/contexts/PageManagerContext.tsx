@@ -1,11 +1,12 @@
 import { Page, PageWithContent, TOCItem } from "@/models";
 import { createContext, useContext, useState } from "react";
 import { useServer } from "./ServerContext";
+import { useAppNavigation } from "./AppNavigationContext";
 
 export type PageManagerContextType = {
   pages: Page[];
   load(id: string): Promise<PageWithContent | undefined>;
-  createPage(parent?: string): Promise<Page | null>;
+  createPage(parent?: string, navigate?: boolean): Promise<Page | null>;
   deletePage(id: string): void;
   buildBreadcrumbs(pageId: string): TOCItem[];
 };
@@ -20,16 +21,37 @@ export function PageManagerProvider({
   children: React.ReactNode;
 }) {
   const server = useServer();
+  const appNavigation = useAppNavigation();
   const [pages, setPages] = useState<Page[]>([]);
 
-  async function createPage(parent?: string): Promise<Page> {
+  async function createPage(parent?: string, navigate?: boolean): Promise<Page> {
     console.debug("Creating new page at parent", parent);
     const result = await server.dispatch("createNewPage", {
       parent: parent,
     });
 
-    setPages((prev) => [...prev, result]);
+    const newList = [...pages, result];
+    setPages(newList);
+    if (navigate) {
+      // Navigate to the new page
+      const ancestors = getAncestors(result.id, newList);
+      const tocItem = appNavigation.toTOCITem([...ancestors, result]);
+      appNavigation.openTOCItem(tocItem, false);
+    }
     return result;
+  }
+
+  function getAncestors(id: string, list: Page[]): Page[] {
+    list ??= pages;
+    const ancestors: Page[] = [];
+    let currentPage = list.find((p) => p.id === id);
+    while (currentPage) {
+      ancestors.unshift(currentPage);
+      currentPage = currentPage.parentId
+        ? list.find((p) => p.id === currentPage!.parentId)
+        : undefined;
+    }
+    return ancestors;
   }
 
   async function deletePage(pageId: string) {

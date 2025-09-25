@@ -69,15 +69,14 @@ export function PageProvider({ children }: Props) {
   // Inlined instead of separate helper to reduce indirection.
 
   // If active page slug changed, update URL (replace history entry).
-  function adjustUrlIfSlugChanged(pageId: string, result: any) {
+  function adjustUrlIfSlugChanged(pageId: string, result: Page) {
     if (
       appNavigation.urlPageId === pageId &&
       result?.slug &&
       result.slug !== appNavigation.urlPageSlug
     ) {
       try {
-        const newUrl = appNavigation.pageLink({ id: pageId, slug: result.slug } as any);
-        if (newUrl) appNavigation.navigate(newUrl, { replace: true });
+        // if (result.url) appNavigation.navigate(result.url, { replace: true });
       } catch (e) {
         console.warn("Failed to adjust URL after backend slug update", e);
       }

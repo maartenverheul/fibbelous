@@ -37,7 +37,7 @@ export default function SettingsDialog({
 }: SettingsDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="p-0 max-lg:rounded-[0px] overflow-hidden h-[calc(100vh-64px)] w-full !max-w-5xl max-h-[800px] bg-gray-800 text-white border-gray-900">
+      <DialogContent className="p-0 max-lg:rounded-[0px] overflow-hidden h-[calc(100vh-64px)] w-[calc(100vw-64px)] !max-w-5xl max-h-[800px] bg-gray-800 text-white border-gray-900">
         <DialogTitle className="sr-only">Settings</DialogTitle>
         <Description className="sr-only">Settings</Description>
         <Tabs

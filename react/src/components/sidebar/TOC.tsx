@@ -22,7 +22,7 @@ export default function TOC({ items, className }: Props) {
       ))}
       <button
         className="aspect-square block text-gray-600 ml-auto hover:bg-gray-700 rounded cursor-pointer hover:text-gray-500"
-        onClick={() => pageManager.createPage()}
+        onClick={() => pageManager.createPage(undefined, true)}
       >
         <PlusIcon />
       </button>

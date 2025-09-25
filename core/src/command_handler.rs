@@ -149,9 +149,10 @@ impl CommandHandler {
                     });
                 }
                 // Broadcast TOC updated event (parent of created page)
+                let toc_item = self.workspace.page_manager.make_toc_item(&page).await;
                 let _ = self.workspace.events_tx.send(Event::TocUpdated {
                     id: page.id.clone(),
-                    item: Some(self.workspace.page_manager.make_toc_item(&page).await),
+                    item: Some(toc_item.clone()),
                     action: TOCUpdateAction::Add,
                 });
                 CommandResult::Page(page)
@@ -266,6 +267,7 @@ impl CommandHandler {
                 let new_body = content.unwrap_or(original.content.clone());
 
                 // Persist (metadata and/or body) if anything changed
+                let toc_item = self.workspace.page_manager.make_toc_item(&page).await;
                 if metadata_changed || new_body != original.content {
                     if let Err(e) = self
                         .workspace
@@ -282,7 +284,7 @@ impl CommandHandler {
                     if metadata_changed {
                         let _ = self.workspace.events_tx.send(Event::TocUpdated {
                             id: page.id.clone(),
-                            item: Some(self.workspace.page_manager.make_toc_item(&page).await),
+                            item: Some(toc_item.clone()),
                             action: TOCUpdateAction::Update,
                         });
                     }

@@ -17,9 +17,6 @@ export default function WorkspaceSelector() {
   const workspace = useWorkspace();
   const hasError =
     !!workspace && workspace.connectionState.success === false;
-  const errorMessage = hasError
-    ? (workspace!.connectionState as any).error || "Connection error"
-    : undefined;
 
   function changeWorkspace(id: string) {
     if (id === "$manage")

@@ -83,14 +83,16 @@ struct RawFrontmatter {
 pub struct PageManager {
     pages_dir: PathBuf,
     indexed_pages: RwLock<HashMap<String, Page>>,
+    workspace_slug: String,
 }
 
 impl PageManager {
-    pub fn new(workspace_path: PathBuf) -> Self {
+    pub fn new(workspace_path: PathBuf, workspace_slug: String) -> Self {
         let workspace_path = workspace_path.clone();
         Self {
             pages_dir: workspace_path.join("pages"),
             indexed_pages: RwLock::new(HashMap::new()),
+            workspace_slug,
         }
     }
 
@@ -306,16 +308,16 @@ impl PageManager {
         if tree.is_empty() {
             return Err("Page tree empty".into());
         }
-        let mut slugs: Vec<&str> = tree.iter().map(|p| p.slug.as_str()).collect();
-        let leaf_slug = slugs.pop().unwrap();
-        let prefix = if slugs.is_empty() {
+        let ids: Vec<&str> = tree.iter().map(|p| p.id.as_str()).collect();
+        let leaf_slug = tree.last().unwrap().slug.clone();
+        let prefix = if ids.is_empty() {
             String::new()
         } else {
-            format!("{}/", slugs.join("/"))
+            format!("{}/", ids.join("/"))
         };
         Ok(format!(
-            "/workspace/{}{}-{}.mdx",
-            prefix, page.id, leaf_slug
+            "/{}/{}{}-{}",
+            self.workspace_slug, prefix, page.id, leaf_slug
         ))
     }
 

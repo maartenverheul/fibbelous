@@ -64,8 +64,7 @@ export default function SettingsWorkspacePage() {
   }
 
   function handleEditSave(
-    workspace: CreateWorkspaceRequest,
-    url?: string
+    workspace: CreateWorkspaceRequest
   ): void {
     console.log("EDIT", workspace);
     throw new Error("Function not implemented.");

@@ -8,10 +8,10 @@ import { useTOCContext } from "@/contexts/TOCContext";
 export default function Sidebar() {
   const appNavigation = useAppNavigation();
   const pageManager = usePageManager();
-  const { toc, loadTOC } = useTOCContext();
+  const { toc } = useTOCContext();
 
   function handlePageClick(item: TOCItem) {
-    appNavigation.openPage(item);
+    appNavigation.openTOCItem(item);
   }
 
   function handlePageDelete(id: string) {
@@ -19,7 +19,7 @@ export default function Sidebar() {
   }
 
   function handleCreatePage(parent?: string | undefined): void {
-    pageManager.createPage(parent);
+    pageManager.createPage(parent, true);
   }
 
   return (

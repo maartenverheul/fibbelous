@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { TOCItem, WorkspaceInfo } from "@/models";
+import { Page, TOCItem, WorkspaceInfo } from "@/models";
 import { useLocation, useNavigate, useParams } from "react-router";
 import { useWorkspaceManager } from "./WorkspaceManagerContext";
 import { SettingsTab } from "@/components/dialogs/settings/SettingsDialog";
@@ -11,8 +11,8 @@ export type AppNavigationContextType = {
   tabs: TOCItem[];
   activeTabIndex?: number;
   hashParams: string[];
-  openPage(page: TOCItem, newTab?: boolean): boolean;
-  pageLink(toc: TOCItem): string;
+  openTOCItem(page: TOCItem, newTab?: boolean): boolean;
+  toTOCITem(tree: Page[]): TOCItem;
   workspaceHomeLink(workspace?: WorkspaceInfo): string;
   settingsLink(tab?: SettingsTab, workspace?: WorkspaceInfo | null): string;
   closeTab(index: number): boolean;
@@ -84,28 +84,37 @@ export function AppNavigationProvider({
     }
   }, [loaded, workspaceSlug, workspaces, hash]);
 
-  function openPage(page: TOCItem, newTab: boolean = false) {
-    const existingIndex = tabs.findIndex((tab) => tab.id === page.id);
+  function openTOCItem(item: TOCItem, newTab: boolean = false) {
+    const existingIndex = tabs.findIndex((tab) => tab.id === item.id);
 
     if (tabs.length == 0 || (newTab && existingIndex === -1)) {
-      setTabs([...tabs, page]);
+      setTabs([...tabs, item]);
       setActiveTab(tabs.length);
     } else {
       // Change the current tab's page to the new page
       setTabs((prevTabs) =>
-        prevTabs.map((tab, idx) => (idx === activeTab ? page : tab))
+        prevTabs.map((tab, idx) => (idx === activeTab ? item : tab))
       );
       setActiveTab(activeTab);
     }
 
-    navigateToPage(page);
+    navigate(item.url);
     return true;
   }
 
-  // Canonical page URL pattern: /:workspaceSlug/:pageId-:pageSlug
-  function pageLink(toc: TOCItem) {
-    if (!workspaceSlug) return "";
-    return `/${workspaceSlug}/${toc.id}-${toc.slug}`;
+  function toTOCITem(tree: Page[]): TOCItem {
+    const target = tree[tree.length - 1];
+    const url = pageLink(tree);
+    return { ...target, url, children: [] };
+  }
+
+  function pageLink(ancestors: Page[]) {
+    const base = `/${workspaceSlug}`;
+    const path = ancestors
+      .map((p) => `${p.id}-${p.slug}`)
+      .filter((s) => s.length > 0)
+      .join("/");
+    return `${base}/${path}`;
   }
 
   function workspaceHomeLink(workspace: WorkspaceInfo | undefined = undefined) {
@@ -122,12 +131,6 @@ export function AppNavigationProvider({
     const slug = workspace === null ? "" : workspace?.slug ?? workspaceSlug;
     const suffix = slug ? `/${slug}` : "";
     return `${prefix}/#settings/${tab}${suffix}`;
-  }
-
-  function navigateToPage(page: TOCItem) {
-    const link = pageLink(page);
-    if (!link) return;
-    navigate(link);
   }
 
   function closeTab(index: number) {
@@ -159,8 +162,8 @@ export function AppNavigationProvider({
         tabs,
         activeTabIndex: activeTab,
         hashParams,
-        openPage,
-        pageLink,
+        openTOCItem,
+        toTOCITem,
         workspaceHomeLink,
         settingsLink,
         closeTab,
