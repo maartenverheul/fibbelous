@@ -14,7 +14,7 @@ type Props = {
 
 export default function TOC({ className }: Props) {
   const pageManager = usePageManager();
-  const { toc: items, loadTOC } = useTOCContext();
+  const { toc: items } = useTOCContext();
 
   return (
     <div className={cn("PageList p-2", className)}>

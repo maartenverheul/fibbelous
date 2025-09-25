@@ -2,6 +2,7 @@ import { RotateCcw, XCircle } from "lucide-react";
 import TopBar from "./TopBar";
 import { usePage } from "@/contexts/PageContext";
 import PageNotFound from "./PageNotFound";
+import PickableEmoji from "../PickableEmoji";
 
 export default function PageViewer() {
   const page = usePage();
@@ -45,9 +46,11 @@ export default function PageViewer() {
         </div>
         <div className="PageHeader w-full max-w-[1000px] mx-auto p-4 relative pt-12">
           {page.data.icon && (
-            <button className="Icon select-none w-24 h-24 text-7xl absolute left-0 top-0 -translate-y-1/2 transition hover:bg-white/20 flex justify-center items-center cursor-pointer rounded">
-              {page.data.icon}
-            </button>
+            <PickableEmoji onChange={(emoji) => page.updateIcon(emoji)}>
+              <button className="Icon select-none w-24 h-24 text-7xl absolute left-0 top-0 -translate-y-1/2 transition hover:bg-white/20 flex justify-center items-center cursor-pointer rounded">
+                {page.data.icon}
+              </button>
+            </PickableEmoji>
           )}
 
           <input
