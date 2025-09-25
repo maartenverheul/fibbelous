@@ -3,17 +3,18 @@ import TOCPageItem from "./TOCPageItem";
 import { cn } from "@/lib/utils";
 import { PlusIcon } from "lucide-react";
 import { usePageManager } from "@/contexts/PageManagerContext";
+import { useTOCContext } from "@/contexts/TOCContext";
 
 type Props = {
   className?: string;
-  items: TOCItem[];
   onPageClick?(item: TOCItem): void;
   onNewPage?(parent?: string): void;
   onPageDelete?(id: string): void;
 };
 
-export default function TOC({ items, className }: Props) {
+export default function TOC({ className }: Props) {
   const pageManager = usePageManager();
+  const { toc: items, loadTOC } = useTOCContext();
 
   return (
     <div className={cn("PageList p-2", className)}>

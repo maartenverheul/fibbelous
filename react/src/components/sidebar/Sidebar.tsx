@@ -3,12 +3,10 @@ import { usePageManager } from "@/contexts/PageManagerContext";
 import { useAppNavigation } from "@/contexts/AppNavigationContext";
 import WorkspaceSelector from "./WorkspaceSelector";
 import { TOCItem } from "@/models";
-import { useTOCContext } from "@/contexts/TOCContext";
 
 export default function Sidebar() {
   const appNavigation = useAppNavigation();
   const pageManager = usePageManager();
-  const { toc } = useTOCContext();
 
   function handlePageClick(item: TOCItem) {
     appNavigation.openTOCItem(item);
@@ -30,7 +28,6 @@ export default function Sidebar() {
 
       <TOC
         className="mt-2"
-        items={toc}
         onPageClick={handlePageClick}
         onPageDelete={handlePageDelete}
         onNewPage={handleCreatePage}

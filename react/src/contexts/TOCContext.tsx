@@ -34,18 +34,36 @@ export function TOCProvider({ children }: { children: React.ReactNode }) {
     };
   }, [server.connected]);
 
+  /**
+   * Load TOC items. If parent is undefined we (re)load the root + two levels.
+   * If parent is provided, we merge the returned subtree (depth=2) into the existing cache
+   * so previously loaded siblings & ancestors remain available.
+   */
   async function loadTOC(parent?: string) {
-    return await server
-      .dispatch("getToc", { parent, depth: 2 })
-      .then((res) => setCached(res.toc))
-      .catch((e) => {
-        console.error("Failed to get TOC from server:", e);
-        toast.error("Failed to get TOC from server");
-      });
+    try {
+      const res = await server.dispatch("getToc", { parent, depth: 2 });
+      setCached((prev) => mergeTOC(prev, res.toc));
+    } catch (e) {
+      console.error("Failed to get TOC from server:", e);
+      toast.error("Failed to get TOC from server");
+    }
+  }
+
+  /**
+   * Merge newItems into existing items (by id). We simply upsert all new items.
+   * We do NOT delete missing items here to avoid accidental pruning when partial
+   * subtrees are requested. Server side change events (tocUpdated) will handle removals.
+   */
+  function mergeTOC(existing: TOCItem[], newItems: TOCItem[]): TOCItem[] {
+    if (!existing.length) return newItems.slice();
+    const map = new Map<string, TOCItem>();
+    for (const item of existing) map.set(item.id, item);
+    for (const item of newItems) map.set(item.id, item); // upsert
+    return Array.from(map.values());
   }
 
   function buildFullTOC(items: TOCItem[]): TOCItem[] {
-    console.debug("Building full TOC from items:", items);
+    // console.debug("Building full TOC from items:", items);
     const toc: TOCItem[] = [];
     const pageMap = new Map<string, TOCItem>();
 
@@ -57,7 +75,9 @@ export function TOCProvider({ children }: { children: React.ReactNode }) {
         title: page.title,
         url: page.url,
         icon: page.icon,
-        children: [],
+        // children will be assigned only if we actually link some below; this allows us
+        // to distinguish between "not yet loaded" (undefined) vs "loaded but no children" (empty array)
+        children: undefined,
       });
     });
 
@@ -67,8 +87,8 @@ export function TOCProvider({ children }: { children: React.ReactNode }) {
         const parentItem = pageMap.get(page.parentId);
         const currentItem = pageMap.get(page.id);
         if (parentItem && currentItem) {
-          currentItem.children ??= [];
-          parentItem.children!.push(currentItem);
+          parentItem.children ??= [];
+          parentItem.children.push(currentItem);
         }
       }
     });

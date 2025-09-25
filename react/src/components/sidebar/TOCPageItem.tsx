@@ -1,5 +1,5 @@
-import { ChevronRight, EllipsisVertical, PlusIcon } from "lucide-react";
-import { useState } from "react";
+import { ChevronRight, EllipsisVertical, PlusIcon, Loader2 } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,6 +15,7 @@ import {
 import { usePageManager } from "@/contexts/PageManagerContext";
 import { useAppNavigation } from "@/contexts/AppNavigationContext";
 import { Link } from "react-router";
+import { useTOCContext } from "@/contexts/TOCContext";
 
 type Props = {
   item: TOCItem;
@@ -24,12 +25,46 @@ type Props = {
 export default function TOCPageItem({ item, level = 0 }: Props) {
   const pageManager = usePageManager();
   const appNavigation = useAppNavigation();
+  const { loadTOC } = useTOCContext();
 
-  const hasChildren = item.children && item.children.length > 0;
+  const hasChildren = !!(item.children && item.children.length > 0);
   const pageIndent = 8;
 
   // Controlled open state so we can auto-expand on new child creation.
   const [open, setOpen] = useState(false);
+  const [prefetching, setPrefetching] = useState(false);
+  const prefetchedRef = useRef(false);
+
+  // When opening a node, fetch (or refetch) its subtree (depth=2 on backend) in ONE call.
+  useEffect(() => {
+    if (!open) return;
+    if (prefetchedRef.current) return; // only once per node expansion lifecycle
+
+    let didTimeout = false;
+    let timeoutId: ReturnType<typeof setTimeout>;
+    let cancelled = false;
+
+    async function prefetch() {
+      // Only show spinner if load takes > 100ms
+      timeoutId = setTimeout(() => {
+        didTimeout = true;
+        if (!cancelled) setPrefetching(true);
+      }, 100);
+      try {
+        await loadTOC(item.id); // single backend call with depth=2 (implemented in context)
+        prefetchedRef.current = true;
+      } finally {
+        clearTimeout(timeoutId);
+        if (!cancelled) setPrefetching(false);
+      }
+    }
+    prefetch();
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+      setPrefetching(false);
+    };
+  }, [open, loadTOC, item.id]);
 
   async function handleCreateChild() {
     await pageManager.createPage(item.id, true);
@@ -60,13 +95,17 @@ export default function TOCPageItem({ item, level = 0 }: Props) {
         >
           {item.title.length ? item.title : <span className="text-gray-600">Untitled</span>}
         </Link>
-        <div className="opacity-0 group-hover/page:opacity-100 flex p-[2px] rounded">
-          <button
-            className="cursor-pointer hover:bg-gray-500 rounded flex items-center justify-center"
-            onClick={handleCreateChild}
-          >
-            <PlusIcon />
-          </button>
+        <div className="opacity-0 group-hover/page:opacity-100 flex p-[2px] rounded items-center">
+          {prefetching ? (
+            <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
+          ) : (
+            <button
+              className="cursor-pointer hover:bg-gray-500 rounded flex items-center justify-center"
+              onClick={handleCreateChild}
+            >
+              <PlusIcon />
+            </button>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger className="cursor-pointer hover:bg-gray-500 rounded flex items-center justify-center">
               <EllipsisVertical className="w-5" />
