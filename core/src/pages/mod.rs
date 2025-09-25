@@ -309,6 +309,7 @@ impl PageManager {
             return Err("Page tree empty".into());
         }
         let ids: Vec<&str> = tree.iter().map(|p| p.id.as_str()).collect();
+        let ids = &ids[..tree.len() - 1];
         let leaf_slug = tree.last().unwrap().slug.clone();
         let prefix = if ids.is_empty() {
             String::new()
