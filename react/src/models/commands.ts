@@ -1,7 +1,7 @@
 // Command & CommandResult TypeScript definitions extracted from ServerContext
 // Keep in sync with Rust enums in lib/command_handler.rs
 
-import { CreateWorkspaceRequest, Page, PageWithContent, TOCItem } from ".";
+import { AddLocalRepoResponse, CreateWorkspaceRequest, Page, PageWithContent, TOCItem, WorkspaceConnection, WorkspaceInfo } from ".";
 
 type TOCUpdateAction = 'add' | 'remove' | 'update';
 
@@ -13,14 +13,16 @@ export type UpdatePageCommand = {
 }
 
 export type CommandList = {
+  addLocalRespository: { payload: { path: string, existing?: boolean }, returnType: AddLocalRepoResponse }
   createNewPage: { payload?: { parent?: string }, returnType: Page }
-  deletePage: { payload: { pageId: string }, returnType: { kind: 'pong' } }
+  deletePage: { payload: { pageId: string }, returnType: boolean }
   editWorkspace: { payload: { workspace: CreateWorkspaceRequest }, returnType: void }
-  getSavedConnections: { payload?: {}, returnType: { kind: 'pong' } }
-  getSavedWorkspaces: { payload?: {}, returnType: { kind: 'pong' } }
+  getSavedConnections: { payload?: {}, returnType: WorkspaceConnection[] }
+  getSavedWorkspaces: { payload?: {}, returnType: WorkspaceInfo[] }
   getToc: { payload?: { parent?: string, depth?: number }, returnType: { toc: TOCItem[] } }
   ping: { payload?: {}, returnType: { kind: 'pong' } }
   readPage: { payload: { pageId: string }, returnType: PageWithContent }
+  removeSavedWorkspace: { payload: { id: string }, returnType: boolean }
   updatePage: { payload: UpdatePageCommand, returnType: Page }
 };
 

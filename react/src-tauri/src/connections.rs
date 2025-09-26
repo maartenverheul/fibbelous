@@ -1,77 +1,40 @@
-use fib_core::pages::Page;
 use fib_core::tracing::{debug, error, info, warn};
 use fib_core::workspaces::{WorkspaceConnection, WorkspaceInfo};
-use sea_orm::DatabaseConnection;
-use serde_json;
-use std::collections::HashMap;
-use std::env;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
-use tauri::AppHandle;
 
-/// Shared in-memory application state for connections and resolved workspaces
-pub struct AppState {
-    pub connections: Mutex<Vec<WorkspaceConnection>>,
-    pub active_workspace: Mutex<Option<WorkspaceInfo>>,
-    pub workspaces: Mutex<Vec<WorkspaceInfo>>, // resolved workspaces
-    pub pages: Mutex<Vec<Page>>,               // loaded pages from active workspace
-    pub workspace_dbs: Mutex<HashMap<String, DatabaseConnection>>, // cached index DBs per workspace id
+pub struct ConnectionManager {
+    connections_file: PathBuf,
 }
 
-pub struct ConnectionManager;
-
 impl ConnectionManager {
-    /// Returns the path to the app's persistent data folder, creating it if necessary.
-    /// Uses Tauri's app-specific data directory with a temp fallback.
-    pub fn app_data_dir(app: &AppHandle) -> std::io::Result<PathBuf> {
-        let dir = app.path_resolver().app_data_dir().unwrap_or_else(|| {
-            let mut tmp = env::temp_dir();
-            tmp.push("fibbelous_app_data");
-            tmp
-        });
-        if !dir.exists() {
-            info!(target: "connections", "Creating app data folder at: {}", dir.display());
-            std::fs::create_dir_all(&dir)?;
-        } else {
-            debug!(target: "connections", "App data folder: {}", dir.display());
-        }
-        Ok(dir)
-    }
-
-    /// Returns the full path to the connections.json file
-    pub fn connections_file_path(app: &AppHandle) -> std::io::Result<PathBuf> {
-        Ok(Self::app_data_dir(app)?.join("connections.json"))
+    pub fn new(data_dir: &PathBuf) -> Self {
+        let connections_file = data_dir.join("connections.json");
+        Self { connections_file }
     }
 
     /// Load saved WorkspaceConnection list from the connections.json file.
-    pub fn load_saved_connections(app: &AppHandle) -> Vec<WorkspaceConnection> {
-        let path = match Self::connections_file_path(app) {
-            Ok(p) => p,
-            Err(err) => {
-                error!(target: "connections", "Failed to compute connections file path: {}", err);
-                return Vec::new();
-            }
-        };
-        if !path.exists() {
-            info!(target: "connections", "No existing connections file at {}", path.display());
+    pub fn load_saved_connections(&self) -> Vec<WorkspaceConnection> {
+        let file = &self.connections_file;
+        if !file.exists() {
+            info!(target: "connections", "No existing connections file at {}", file.display());
             return Vec::new();
         }
-        let data = match std::fs::read_to_string(&path) {
+        let data = match std::fs::read_to_string(&file) {
             Ok(data) => data,
             Err(err) => {
-                error!(target: "connections", "Failed reading {}: {}", path.display(), err);
+                error!(target: "connections", "Failed reading {}: {}", file.display(), err);
                 return Vec::new();
             }
         };
         let list = match serde_json::from_str::<Vec<WorkspaceConnection>>(&data) {
             Ok(list) => list,
             Err(err) => {
-                error!(target: "connections", "Failed parsing {}: {}", path.display(), err);
+                error!(target: "connections", "Failed parsing {}: {}", file.display(), err);
                 return Vec::new();
             }
         };
-        let kept = Self::prune_missing_local_paths(&path, list);
+        let kept = Self::prune_missing_local_paths(&file, list);
         info!(target: "connections", "Found {} saved connection(s)", kept.len());
         kept
     }
@@ -117,14 +80,9 @@ impl ConnectionManager {
 
     /// Saves a WorkspaceConnection to a JSON file in the app data folder.
     /// Returns true if the file was updated, false if the connection already existed.
-    pub fn save_connection_info(
-        app: &AppHandle,
-        connection: &WorkspaceConnection,
-    ) -> std::io::Result<bool> {
-        let dir = Self::app_data_dir(app)?;
-        let file_path = dir.join("connections.json");
-        let mut connections: Vec<WorkspaceConnection> = if file_path.exists() {
-            std::fs::read_to_string(&file_path)
+    pub fn save_connection_info(&self, connection: &WorkspaceConnection) -> std::io::Result<bool> {
+        let mut connections: Vec<WorkspaceConnection> = if self.connections_file.exists() {
+            std::fs::read_to_string(&self.connections_file)
                 .ok()
                 .and_then(|data| serde_json::from_str(&data).ok())
                 .unwrap_or_default()
@@ -138,7 +96,7 @@ impl ConnectionManager {
         info!(target: "connections", "Adding new connection_info with id: {}", connection.id);
         connections.push(connection.clone());
         let json = serde_json::to_string_pretty(&connections)?;
-        let mut file = std::fs::File::create(&file_path)?;
+        let mut file = std::fs::File::create(&self.connections_file)?;
         file.write_all(json.as_bytes())?;
         info!(target: "connections", "Saved {} connection(s)", connections.len());
         Ok(true)
@@ -215,11 +173,9 @@ impl ConnectionManager {
     }
 
     /// Delete a connection by id from connections.json. Returns true if removed.
-    pub fn remove_connection(app: &AppHandle, id: &str) -> std::io::Result<bool> {
-        let dir = Self::app_data_dir(app)?;
-        let file_path = dir.join("connections.json");
-        let mut connections: Vec<WorkspaceConnection> = if file_path.exists() {
-            std::fs::read_to_string(&file_path)
+    pub fn remove_connection(&self, id: &str) -> std::io::Result<bool> {
+        let mut connections: Vec<WorkspaceConnection> = if self.connections_file.exists() {
+            std::fs::read_to_string(&self.connections_file)
                 .ok()
                 .and_then(|data| serde_json::from_str(&data).ok())
                 .unwrap_or_default()
@@ -233,7 +189,7 @@ impl ConnectionManager {
             return Ok(true);
         }
         let json = serde_json::to_string_pretty(&connections)?;
-        let mut file = std::fs::File::create(&file_path)?;
+        let mut file = std::fs::File::create(&self.connections_file)?;
         file.write_all(json.as_bytes())?;
         info!(target: "connections", "Removed connection {}. Remaining: {}", id, connections.len());
         Ok(true)

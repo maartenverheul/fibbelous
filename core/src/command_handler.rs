@@ -9,7 +9,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use slugify::slugify;
 use std::sync::Arc;
-use tracing::debug;
+use Command::*;
 
 /// Generic command enum modeling current Tauri commands.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,6 +71,9 @@ pub enum Command {
     SaveRemoteWorkspaces {
         urls: Vec<String>,
     },
+    SwitchWorkspace {
+        id: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -130,31 +133,35 @@ pub struct ErrorPayload {
 }
 
 pub struct CommandHandler {
-    pub app: AppState,
-    pub workspace: Arc<LoadedWorkspace>,
+    pub app: Arc<AppState>,
+    pub workspace: Option<Arc<LoadedWorkspace>>,
 }
 
 impl CommandHandler {
-    pub fn new(app: AppState, workspace: Arc<LoadedWorkspace>) -> Self {
+    pub fn new(app: Arc<AppState>, workspace: Option<Arc<LoadedWorkspace>>) -> Self {
         Self { app, workspace }
     }
     /// Execute a command in the provided environment. Only a subset is currently supported.
     pub async fn execute(&self, cmd: Command) -> CommandResult {
-        use Command::*;
         match cmd {
             AddLocalRepository { .. } => CommandResult::Error(ErrorPayload {
                 message: "AddLocalRepository not supported".into(),
             }),
             CreateNewPage { parent } => {
+                let Some(workspace) = &self.workspace else {
+                    return CommandResult::Error(ErrorPayload {
+                        message: "No active workspace".into(),
+                    });
+                };
                 let page = Page::default(parent);
-                if let Err(e) = self.workspace.page_manager.save_page(&page).await {
+                if let Err(e) = workspace.page_manager.save_page(&page).await {
                     return CommandResult::Error(ErrorPayload {
                         message: format!("Failed to save page: {}", e),
                     });
                 }
                 // Broadcast TOC updated event (parent of created page)
-                let toc_item = self.workspace.page_manager.make_toc_item(&page).await;
-                let _ = self.workspace.events_tx.send(Event::TocUpdated {
+                let toc_item = workspace.page_manager.make_toc_item(&page).await;
+                let _ = workspace.events_tx.send(Event::TocUpdated {
                     id: page.id.clone(),
                     item: Some(toc_item.clone()),
                     action: TOCUpdateAction::Add,
@@ -171,7 +178,7 @@ impl CommandHandler {
                     created_at: Utc::now(),
                     version: 1,
                 };
-                match self.app.workspace_manager.create(info, None).await {
+                match self.app.workspaces.create(info, None).await {
                     Ok(loaded_workspace) => CommandResult::CreateWorkspace(AddLocalRepoResult {
                         ok: true,
                         error: None,
@@ -185,9 +192,14 @@ impl CommandHandler {
                 }
             }
             DeletePage { page_id } => {
-                match self.workspace.page_manager.delete_page(&page_id).await {
+                let Some(workspace) = &self.workspace else {
+                    return CommandResult::Error(ErrorPayload {
+                        message: "No active workspace".into(),
+                    });
+                };
+                match workspace.page_manager.delete_page(&page_id).await {
                     Ok(_) => {
-                        let _ = self.workspace.events_tx.send(Event::TocUpdated {
+                        let _ = workspace.events_tx.send(Event::TocUpdated {
                             id: page_id,
                             item: None,
                             action: TOCUpdateAction::Remove,
@@ -200,44 +212,51 @@ impl CommandHandler {
             }
             EditWorkspace { workspace } => {
                 // Find the workspace by id and update its info
-                let id = workspace.id.clone();
-                let mut guard = self.app.workspace_manager.workspaces.write().await;
-                if let Some(existing) = guard.get_mut(&id) {
-                    let path = existing.path.clone();
-                    // Write new info to disk
-                    if let Err(e) = self
-                        .app
-                        .workspace_manager
-                        .write_workspace_info(&path, &workspace)
-                    {
-                        return CommandResult::Error(ErrorPayload {
-                            message: format!("Failed to write workspace info: {e}"),
-                        });
-                    }
-                    // Update in-memory info only
-                    Arc::get_mut(existing).map(|loaded| loaded.info = workspace.clone());
-                    CommandResult::Workspace(workspace)
-                } else {
-                    CommandResult::Error(ErrorPayload {
-                        message: format!("Workspace not found: {id}"),
-                    })
-                }
+                // let id = workspace.id.clone();
+                // if let Some(existing) = self.app.workspaces.list.get_mut(&id) {
+                //     let path = existing.path.clone();
+                //     // Write new info to disk
+                //     if let Err(e) = self.app.workspaces.write_workspace_info(&path, &workspace) {
+                //         return CommandResult::Error(ErrorPayload {
+                //             message: format!("Failed to write workspace info: {e}"),
+                //         });
+                //     }
+                //     // Update in-memory info only
+                //     Arc::get_mut(existing).map(|loaded| loaded.info = workspace.clone());
+                //     CommandResult::Workspace(workspace)
+                // } else {
+                // CommandResult::Error(ErrorPayload {
+                //     message: format!("Workspace not found: {id}"),
+                // })
+                // }
+                CommandResult::Error(ErrorPayload {
+                    message: format!("Command not implemented"),
+                })
             }
             GetSavedWorkspaces => {
-                let guard = self.app.workspace_manager.workspaces.read().await;
-                let list: Vec<WorkspaceInfo> = guard.values().map(|ws| ws.info.clone()).collect();
+                let list: Vec<WorkspaceInfo> = self
+                    .app
+                    .workspaces
+                    .list
+                    .values()
+                    .map(|ws| ws.info.clone())
+                    .collect();
                 CommandResult::Workspaces(WorkspacesPayload { workspaces: list })
             }
             GetWorkspace { id } => {
                 // Try fresh reload (ensures file changes are reflected)
-                match self.app.workspace_manager.reload_workspace_info(&id).await {
+                match self.app.workspaces.reload_workspace_info(&id).await {
                     Ok(info) => CommandResult::Workspace(info),
                     Err(e) => CommandResult::Error(ErrorPayload { message: e }),
                 }
             }
             GetToc { parent, depth } => {
-                match self
-                    .workspace
+                let Some(workspace) = &self.workspace else {
+                    return CommandResult::Error(ErrorPayload {
+                        message: "No active workspace".into(),
+                    });
+                };
+                match workspace
                     .page_manager
                     .make_toc(parent.as_deref(), depth)
                     .await
@@ -253,19 +272,30 @@ impl CommandHandler {
             RemoveWorkspace { .. } => CommandResult::Error(ErrorPayload {
                 message: "RemoveWorkspace not supported".into(),
             }),
-            ReadPage { page_id } => match self.workspace.page_manager.read_page(&page_id).await {
-                Ok(pwc) => CommandResult::PageWithContent(pwc),
-                Err(e) => CommandResult::Error(ErrorPayload { message: e }),
-            },
+            ReadPage { page_id } => {
+                let Some(workspace) = &self.workspace else {
+                    return CommandResult::Error(ErrorPayload {
+                        message: "No active workspace".into(),
+                    });
+                };
+                match workspace.page_manager.read_page(&page_id).await {
+                    Ok(pwc) => CommandResult::PageWithContent(pwc),
+                    Err(e) => CommandResult::Error(ErrorPayload { message: e }),
+                }
+            }
             UpdatePage {
                 page_id,
                 title,
                 content,
                 icon,
             } => {
-                debug!("Updating page {}", page_id);
+                let Some(workspace) = &self.workspace else {
+                    return CommandResult::Error(ErrorPayload {
+                        message: "No active workspace".into(),
+                    });
+                };
                 // Load existing full page (metadata + body)
-                let original = match self.workspace.page_manager.read_page(&page_id).await {
+                let original = match workspace.page_manager.read_page(&page_id).await {
                     Ok(p) => p,
                     Err(e) => return CommandResult::Error(ErrorPayload { message: e }),
                 };
@@ -296,10 +326,9 @@ impl CommandHandler {
                 let new_body = content.unwrap_or(original.content.clone());
 
                 // Persist (metadata and/or body) if anything changed
-                let toc_item = self.workspace.page_manager.make_toc_item(&page).await;
+                let toc_item = workspace.page_manager.make_toc_item(&page).await;
                 if metadata_changed || new_body != original.content {
-                    if let Err(e) = self
-                        .workspace
+                    if let Err(e) = workspace
                         .page_manager
                         .write_full_page(&page, &new_body)
                         .await
@@ -311,7 +340,7 @@ impl CommandHandler {
 
                     // If metadata changed (title/icon) broadcast TOC update (Update action)
                     if metadata_changed {
-                        let _ = self.workspace.events_tx.send(Event::TocUpdated {
+                        let _ = workspace.events_tx.send(Event::TocUpdated {
                             id: page.id.clone(),
                             item: Some(toc_item.clone()),
                             action: TOCUpdateAction::Update,
@@ -323,6 +352,9 @@ impl CommandHandler {
             }
             SaveRemoteWorkspaces { .. } => CommandResult::Error(ErrorPayload {
                 message: "SaveRemoteWorkspaces not supported".into(),
+            }),
+            SwitchWorkspace { id: _ } => CommandResult::Error(ErrorPayload {
+                message: "SwitchWorkspace not supported".into(),
             }),
         }
     }

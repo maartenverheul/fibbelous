@@ -4,12 +4,14 @@ use axum::extract::{Query, State, WebSocketUpgrade};
 use axum::response::IntoResponse;
 use fib_core::command_handler::{Command, CommandHandler, CommandResult, ErrorPayload};
 use fib_core::tracing::debug;
+use fib_core::users::{ConnectedUserContext, UserInfo};
 use fib_core::workspaces::LoadedWorkspace;
 use futures_util::StreamExt;
 use hyper::StatusCode;
 use serde::Deserialize;
 use std::sync::Arc;
 use tokio::sync::broadcast::error::RecvError;
+use tokio::sync::RwLock;
 
 #[derive(Deserialize)]
 pub struct WsConnectParams {
@@ -33,15 +35,12 @@ struct OutgoingEnvelope<'a> {
 // WebSocket handler now requires ?workspace=<id>
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
-    State(state): State<AppState>,
+    State(state): State<Arc<AppState>>,
     Query(params): Query<WsConnectParams>,
 ) -> impl IntoResponse {
     // Validate workspace exists
 
-    let workspace = {
-        let guard = state.workspace_manager.workspaces.read().await;
-        guard.get(&params.workspace).cloned()
-    };
+    let workspace = state.workspaces.get(&params.workspace);
 
     match workspace {
         None => (
@@ -49,15 +48,29 @@ pub async fn ws_handler(
             format!("Unknown workspace id: {}", params.workspace),
         )
             .into_response(),
-        Some(workspace) => {
-            ws.on_upgrade(move |socket| handle_socket(socket, state.clone(), workspace))
-        }
+        Some(workspace) => ws.on_upgrade(move |socket| handle_socket(socket, state, workspace)),
     }
 }
 
-async fn handle_socket(socket: WebSocket, state: AppState, workspace: Arc<LoadedWorkspace>) {
+async fn handle_socket(socket: WebSocket, state: Arc<AppState>, workspace: Arc<LoadedWorkspace>) {
     debug!(target: "ws", "New WebSocket connection established to workspace {:?}", workspace.info.slug);
-    let handler = CommandHandler::new(state.clone(), workspace.clone());
+
+    let dummy_user = UserInfo {
+        id: 0,
+        username: "ws_user".into(),
+        email: "ws_user@example.com".into(),
+        is_admin: false,
+        created_at: "".into(),
+        updated_at: "".into(),
+    };
+
+    let user_context = ConnectedUserContext {
+        info: dummy_user,
+        token: None,
+        active_workspace: RwLock::new(Some(workspace.clone())),
+        command_handler: CommandHandler::new(state, Some(workspace.clone())),
+    };
+
     let mut ws_stream = socket;
     let mut events_rx = workspace.events_tx.subscribe();
 
@@ -78,7 +91,7 @@ async fn handle_socket(socket: WebSocket, state: AppState, workspace: Arc<Loaded
                             }
                         };
                         let cmd = raw.command.clone();
-                        let res: CommandResult = handler.execute(cmd).await;
+                        let res = user_context.command_handler.execute(cmd).await;
                         let id_ref = raw.id.as_deref();
                         let text = match serde_json::to_string(&OutgoingEnvelope { id: id_ref, result: &res }) {
                             Ok(s) => s,

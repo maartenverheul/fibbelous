@@ -1,15 +1,23 @@
-use std::sync::Arc;
+use std::path::PathBuf;
 
-use crate::workspaces::WorkspaceManager;
+use crate::{users::UserManager, workspaces::WorkspaceManager};
 
-#[derive(Clone)]
 pub struct AppState {
-    pub workspace_manager: Arc<WorkspaceManager>,
+    pub data_dir: PathBuf,
+    pub workspaces: WorkspaceManager,
+    pub users: UserManager,
 }
 
-/// Load all workspaces from storage and create an initial `AppState`.
-pub async fn init_app_state() -> AppState {
-    let workspace_manager = Arc::new(WorkspaceManager::init().await);
+impl AppState {
+    pub async fn init_new(data_dir: PathBuf) -> AppState {
+        let workspace_dir = data_dir.join("workspaces");
+        let workspace_manager = WorkspaceManager::new(workspace_dir);
+        let user_manager = UserManager::new();
 
-    AppState { workspace_manager }
+        AppState {
+            data_dir,
+            workspaces: workspace_manager,
+            users: user_manager,
+        }
+    }
 }

@@ -9,6 +9,7 @@ pub mod migration;
 pub mod pages;
 pub mod state;
 pub mod time;
+pub mod users;
 pub mod workspaces;
 
 pub use tracing;

@@ -14,9 +14,11 @@ import {
   useEffect,
 } from "react";
 import { invoke } from "@tauri-apps/api/tauri";
+import { open } from "@tauri-apps/api/dialog";
 import { IS_APP } from "@/checks";
 import useLocalStorageState from "use-local-storage-state";
 import update from "immutability-helper";
+import { useServer } from "./ServerContext";
 
 export type WorkspaceManagerContextType = {
   workspaces: Workspace[];
@@ -45,6 +47,7 @@ export function WorkspaceManagerProvider({
 }: {
   children: ReactNode;
 }) {
+  const server = useServer();
   const [loaded, setLoaded] = useState(false);
   const [remoteWorkspaces, setRemoteWorkspaces] = useLocalStorageState<
     WorkspaceConnection[]
@@ -68,9 +71,8 @@ export function WorkspaceManagerProvider({
       setLoaded(true);
       return;
     }
-    invoke("get_saved_workspaces")
-      .then((result) => {
-        const workspaceInfos = result as WorkspaceInfo[];
+    server.dispatch("getSavedWorkspaces", {})
+      .then((workspaceInfos) => {
         console.log("Saved workspaces", workspaceInfos);
 
         // Previously used to auto-select workspace based on URL slug; removed.
@@ -213,7 +215,7 @@ export function WorkspaceManagerProvider({
     let ok = true;
     if (IS_APP) {
       try {
-        const ok = (await invoke("remove_workspace", { id })) as boolean;
+        const ok = (await server.dispatch("removeSavedWorkspace", { id })) as boolean;
         if (!ok) console.warn("remove_workspace returned false for id", id);
       } catch (err) {
         console.error("Failed to delete workspace", id, err);
@@ -233,7 +235,18 @@ export function WorkspaceManagerProvider({
   async function pickLocal(existing: boolean): Promise<AddLocalRepoResponse> {
     if (!IS_APP) throw new Error("Not implemented in web");
     try {
-      const res = (await invoke("add_local_repository", {
+      // Let user pick a directory
+      const dir = await open({
+        directory: true,
+        multiple: false,
+        title: existing ? "Select Existing Workspace Folder" : "Select Folder for New Workspace",
+      });
+      if (!dir || typeof dir !== "string") {
+        return { ok: false, error: "No folder selected" };
+      }
+      // Send the selected path to the server via addLocalRepository command using server.dispatch
+      const res = (await server.dispatch("addLocalRespository", {
+        path: dir,
         existing,
       })) as AddLocalRepoResponse;
       if (!res.ok) return { ok: false, error: res.error };
@@ -247,10 +260,9 @@ export function WorkspaceManagerProvider({
         connectionState: { success: true },
       };
       setList((prev) => [...prev, workspace]);
-      // setSelectedWorkspaceId(workspace.info.id);
       return { ok: true, workspace: res.workspace };
     } catch (err) {
-      console.error("add_local_repository failed", err);
+      console.error("addLocalRepository failed", err);
       return { ok: false };
     }
   }

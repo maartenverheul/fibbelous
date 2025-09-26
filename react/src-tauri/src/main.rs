@@ -1,127 +1,81 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::sync::Arc;
+
+use fib_core::command_handler::{BoolPayload, Command, CommandResult};
+use fib_core::logging;
+use fib_core::state::AppState;
+use fib_core::tracing::{debug, error, info};
+use fib_core::users::ConnectedUserContext;
+use tauri::{Manager, State};
+
 mod connections;
 
-use connections::{AppState, ConnectionManager};
-use fib_core::command_handler::{Command, CommandHandler, CommandResult};
-use fib_core::indexing::init_index_db;
-use fib_core::logging;
-use fib_core::tracing::info;
-use fib_core::workspaces::{WorkspaceConnection, WorkspaceInfo};
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::Mutex;
-use tauri::{Manager, State};
+use crate::connections::ConnectionManager;
 
 #[tauri::command]
 async fn invoke_command(
-    state: State<'_, AppState>,
+    state: State<'_, ConnectedUserContext>,
     command: Command,
 ) -> Result<CommandResult, String> {
-    // Snapshot data
-    let connections: Vec<WorkspaceConnection> =
-        state.connections.lock().expect("mutex poisoned").clone();
-    let workspaces: Vec<WorkspaceInfo> = state.workspaces.lock().expect("mutex poisoned").clone();
-    let active_ws: Option<WorkspaceInfo> = state
-        .active_workspace
-        .lock()
-        .expect("mutex poisoned")
-        .clone();
-
-    // Determine if DB init required (avoid holding lock over await)
-    if let Some(ws) = active_ws.as_ref() {
-        let needs_init = {
-            let dbs = state.workspace_dbs.lock().expect("mutex poisoned");
-            !dbs.contains_key(&ws.id)
-        };
-        if needs_init {
-            if let Some(conn) = connections.iter().find(|c| c.id == ws.id) {
-                if let Some(path) = &conn.path {
-                    let fib_dir = PathBuf::from(path).join(".fibbelous");
-                    match init_index_db(&fib_dir).await {
-                        Ok(db) => {
-                            let mut dbs = state.workspace_dbs.lock().expect("mutex poisoned");
-                            dbs.insert(ws.id.clone(), db);
-                        }
-                        Err(e) => {
-                            return Ok(CommandResult::Error(
-                                fib_core::command_handler::ErrorPayload {
-                                    message: format!("Failed to init index db: {}", e),
-                                },
-                            ));
-                        }
-                    }
+    match command {
+        // Local commands
+        Command::SwitchWorkspace { id } => {
+            let workspace = state.command_handler.app.workspaces.get(&id);
+            match workspace {
+                None => return Err(format!("Unknown workspace id: {}", id)),
+                Some(ws) => {
+                    // Assume active_workspace is a RwLock<Option<_>>
+                    let mut guard = state.active_workspace.write().await;
+                    *guard = Some(ws);
+                    Ok(CommandResult::Bool(BoolPayload { value: true }))
                 }
             }
         }
+        // Core handle the rest
+        _ => Ok(state.command_handler.execute(command).await),
     }
-
-    let (active_workspace_id, workspace_path_opt) = active_ws
-        .as_ref()
-        .map(|ws| {
-            let path = connections
-                .iter()
-                .find(|c| c.id == ws.id)
-                .and_then(|c| c.path.clone())
-                .map(PathBuf::from);
-            (Some(ws.id.clone()), path)
-        })
-        .unwrap_or((None, None));
-
-    let mut env = CommandEnv::new(workspaces.clone(), connections.clone())
-        .with_workspace_path(workspace_path_opt);
-    env.workspace = active_ws.clone();
-    env.active_workspace_id = active_workspace_id;
-    {
-        let dbs = state.workspace_dbs.lock().expect("mutex poisoned");
-        for (id, db) in dbs.iter() {
-            env.workspace_dbs.insert(id.clone(), db.clone());
-        }
-    }
-
-    Ok(execute(command, &env).await)
 }
 
 fn main() {
+    // Use Tauri's path resolver for log/data dirs if possible
     let context = tauri::generate_context!();
     let builder = tauri::Builder::default()
         .setup(|app| {
-            // Initialize logging
-            let log_dir = app
-                .path_resolver()
-                .app_log_dir()
-                .or_else(|| app.path_resolver().app_data_dir())
-                .unwrap_or_else(|| std::env::temp_dir().join("fibbelous_logs"));
-
-            let app_data_dir = app
-                .path_resolver()
+            let resolver = app.path_resolver();
+            let data_dir = resolver
                 .app_data_dir()
                 .unwrap_or_else(|| std::env::temp_dir().join("fibbelous_data"));
-
+            let logs_dir = data_dir.join("logs");
             let verbose = std::env::var("VERBOSE")
-                .ok()
-                .map(|v| v.to_lowercase())
-                .map(|v| matches!(v.as_str(), "1" | "true" | "yes" | "on"))
+                .map(|v| matches!(v.to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
                 .unwrap_or(false);
-            logging::init(&log_dir, verbose);
+            logging::init(logs_dir.as_path(), verbose);
 
             info!(target: "main", "===========");
             info!(target: "main", "APP STARTED");
-            info!(target: "main", "App storage is at {}", app_data_dir.display());
+            if verbose {
+                debug!("Verbose logging enabled");
+            }
 
-            // Load connections into memory on startup
-            let initial_conns = ConnectionManager::load_saved_connections(&app.handle());
-            let initial_workspaces =
-                ConnectionManager::compute_workspaces_from_connections(&initial_conns);
-            let initial_active = initial_workspaces.first().cloned();
-            app.manage(AppState {
-                connections: Mutex::new(initial_conns),
-                workspaces: Mutex::new(initial_workspaces),
-                active_workspace: Mutex::new(initial_active),
-                pages: Mutex::new(Vec::new()),
-                workspace_dbs: Mutex::new(HashMap::new()),
+            info!(target: "main", "App storage is at {}", data_dir.display());
+            // Initialize AppState using the shared core async initializer
+            let rt: tokio::runtime::Runtime =
+                tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
+            let connection_manager = ConnectionManager::new(&data_dir);
+            let connections = connection_manager.load_saved_connections();
+            let mut app_state = rt.block_on(AppState::init_new(data_dir.clone()));
+
+            rt.block_on(async {
+                for conn in connections {
+                    if let Err(e) = app_state.workspaces.load_connection(conn).await {
+                        error!(target: "main", "Failed to add saved connection: {}", e);
+                    }
+                }
             });
+
+            app.manage(ConnectedUserContext::new_local(Arc::new(app_state)));
             Ok(())
         })
         .on_window_event(|event| {

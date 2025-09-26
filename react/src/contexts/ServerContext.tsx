@@ -28,9 +28,20 @@ export interface ServerContextValue {
   ): () => void;
 }
 
-export const ServerContext = createContext<ServerContextValue | undefined>(
-  undefined
-);
+const TauriServerContext: ServerContextValue = {
+  status: "idle",
+  connected: false,
+  lastError: undefined,
+  dispatch: async (type, _payload) => {
+    const result = await invoke("invoke_command", { command: { type: "getSavedWorkspaces", ..._payload } }) as any;
+    if (result.type == "error") throw new Error(result.payload.message);
+  },
+  subscribe: () => {
+    return () => { };
+  }
+}
+
+export const ServerContext = createContext<ServerContextValue | undefined>(TauriServerContext);
 
 export function ServerProvider({
   children,
@@ -57,7 +68,7 @@ export function ServerProvider({
     if (socketRef.current) {
       try {
         socketRef.current.close();
-      } catch {}
+      } catch { }
       socketRef.current = null;
     }
     if (!workspace?.info?.id) {
@@ -122,7 +133,7 @@ export function ServerProvider({
     return () => {
       try {
         ws.close();
-      } catch {}
+      } catch { }
     };
   }, [workspace?.info?.id]);
 
