@@ -222,8 +222,55 @@ impl PageManager {
 
         fs::remove_file(&file_path)
             .map_err(|e| format!("Failed to delete page file {:?}: {}", file_path, e))?;
+        // Attempt to remove the directory that contains this page's children (descendants)
+        // Layout: pages/<parent_ids_chain>/<page_id>/<child_id>-<slug>.mdx
+        let children_dir = self.pages_dir.join(page_id);
+        if children_dir.exists() {
+            if let Err(e) = fs::remove_dir_all(&children_dir) {
+                error!(
+                    "Failed removing children directory {:?}: {}",
+                    children_dir, e
+                );
+                return Err(format!(
+                    "Failed removing children directory {:?}: {}",
+                    children_dir, e
+                ));
+            } else {
+                debug!("Removed children directory {:?}", children_dir);
+            }
+        } else {
+            debug!("No children directory {:?} to remove", children_dir);
+        }
 
-        self.indexed_pages.write().await.remove(page_id);
+        // Collect all descendant page ids to purge from in-memory index.
+        let mut to_remove: HashSet<String> = HashSet::new();
+        to_remove.insert(page_id.to_string());
+        {
+            let guard = self.indexed_pages.read().await;
+            loop {
+                let mut added_any = false;
+                for p in guard.values() {
+                    if let Some(pid) = &p.parent_id {
+                        if to_remove.contains(pid) && !to_remove.contains(&p.id) {
+                            to_remove.insert(p.id.clone());
+                            added_any = true;
+                        }
+                    }
+                }
+                if !added_any {
+                    break;
+                }
+            }
+        }
+
+        let mut write_guard = self.indexed_pages.write().await;
+        for id in &to_remove {
+            write_guard.remove(id);
+        }
+        debug!(
+            "Removed {} pages from index (deleted page + descendants)",
+            to_remove.len()
+        );
 
         Ok(())
     }
