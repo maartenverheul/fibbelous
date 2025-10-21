@@ -6,7 +6,7 @@ use tokio::sync::RwLock;
 use tracing::{debug, error, info};
 
 use crate::id::generate_hex_id;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -122,9 +122,9 @@ impl PageManager {
 
         let raw = fs::read_to_string(&file_path)
             .map_err(|e| format!("Failed to read .mdx file: {}", e))?;
-
+        let ending = LineEnding::from(raw.as_ref());
         let (page_meta_tmp, body) = self
-            .parse_frontmatter(&raw)
+            .parse_frontmatter(&raw, ending)
             .map_err(|e| format!("Failed to parse frontmatter: {}", e))?;
         let mut page_meta = page_meta_tmp;
         // Derive parent_id from directory structure if not already set (or to override legacy value)
@@ -306,9 +306,9 @@ impl PageManager {
             .map_err(|e| format!("Failed to serialize frontmatter: {e}"))?;
         // Ensure single blank line separating frontmatter and content.
         // 1. Remove trailing newlines from serialized frontmatter.
-        let frontmatter_clean = frontmatter.trim_end_matches(['\n', '\r'].as_ref());
+        let frontmatter_clean = frontmatter.trim_end();
         // 2. Trim leading blank lines from body to avoid accumulating empties over successive writes.
-        let body_clean = body.trim_start_matches(|c| c == '\n' || c == '\r');
+        let body_clean = body.trim_start();
         // Final layout:
         // ---\n<frontmatter>\n---\n\n<body>
         let data = format!("---\n{}\n---\n\n{}", frontmatter_clean, body_clean);
@@ -466,7 +466,8 @@ impl PageManager {
                     continue;
                 }
             };
-            match self.parse_frontmatter(&text) {
+            let ending = LineEnding::from(text.as_ref());
+            match self.parse_frontmatter(&text, ending) {
                 Ok((mut page, _body)) => {
                     // Derive parent_id from relative directory structure: pages/<parent_id>/<parent_id>/<id-slug>.mdx
                     if let Ok(rel) = path.strip_prefix(&self.pages_dir) {
@@ -498,9 +499,8 @@ impl PageManager {
         }
     }
 
-    fn parse_frontmatter(&self, input: &str) -> Result<(Page, String), String> {
+    fn parse_frontmatter(&self, input: &str, ending: LineEnding) -> Result<(Page, String), String> {
         let trimmed = input.trim_start();
-        let ending = LineEnding::from(input);
         let lines: Vec<&str> = trimmed.split(ending.as_str()).collect();
 
         if lines[0] != "---" {
@@ -518,8 +518,9 @@ impl PageManager {
             fm_lines.push(line);
         }
 
+        let body_line_start = fm_line_count + 3;
+
         let fm_raw = fm_lines.join(ending.as_str());
-        let body_start = lines[(fm_line_count + 1)..].join(ending.as_str());
 
         let raw: RawFrontmatter = match serde_yaml::from_str(&fm_raw) {
             Ok(v) => v,
@@ -540,6 +541,13 @@ impl PageManager {
             updated_at: None,
             deleted_at: None,
         };
+
+        let body_start = if !lines[body_line_start..].is_empty() {
+            lines[body_line_start..].join(ending.as_str())
+        } else {
+            String::new()
+        };
+
         Ok((page, body_start))
     }
 
