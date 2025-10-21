@@ -13,12 +13,12 @@ export type AppNavigationContextType = {
   activeTabIndex?: number;
   hashParams: string[];
   openTOCItem(page: TOCItem, newTab?: boolean): boolean;
-  toTOCITem(tree: Page[]): TOCItem;
   workspaceHomeLink(workspaceSlug?: string): string;
   settingsLink(tab?: SettingsTab, workspace?: WorkspaceInfo | null): string;
   closeTab(index: number): boolean;
   changeTab(index: number): void;
   navigate: ReturnType<typeof useNavigate>;
+  pageLink(ancestors: (TOCItem | Page)[], workspaceSlug?: string): string;
 };
 
 const AppNavigationContext = createContext<
@@ -112,16 +112,10 @@ export function AppNavigationProvider({
     return true;
   }
 
-  function toTOCITem(tree: Page[]): TOCItem {
-    const target = tree[tree.length - 1];
-    const url = pageLink(tree);
-    return { ...target, url, children: [] };
-  }
-
-  function pageLink(ancestors: Page[], _workspaceSlug?: string) {
+  function pageLink(ancestors: (TOCItem | Page)[], _workspaceSlug?: string) {
     const base = `/${_workspaceSlug ?? workspaceSlug}`;
     const path = ancestors
-      .map((p) => `${p.id}-${p.slug}`)
+      .map((p, i) => i === ancestors.length - 1 ? `${p.id}-${p.slug}` : `${p.id}`)
       .filter((s) => s.length > 0)
       .join("/");
     return `${base}/${path}`;
@@ -173,12 +167,12 @@ export function AppNavigationProvider({
         activeTabIndex: activeTab,
         hashParams,
         openTOCItem,
-        toTOCITem,
         workspaceHomeLink,
         settingsLink,
         closeTab,
         changeTab,
         navigate,
+        pageLink
       }}
     >
       {children}

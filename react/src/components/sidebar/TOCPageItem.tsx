@@ -1,5 +1,5 @@
 import { ChevronRight, EllipsisVertical, PlusIcon, Loader2 } from "lucide-react";
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,7 +15,6 @@ import {
 import { usePageManager } from "@/contexts/PageManagerContext";
 import { useAppNavigation } from "@/contexts/AppNavigationContext";
 import { Link } from "react-router";
-import { useTOCContext } from "@/contexts/TOCContext";
 
 type Props = {
   item: TOCItem;
@@ -25,54 +24,57 @@ type Props = {
 export default function TOCPageItem({ item, level = 0 }: Props) {
   const pageManager = usePageManager();
   const appNavigation = useAppNavigation();
-  const { loadTOC } = useTOCContext();
+  const { loadTOC, isExpanded, toggle } = usePageManager();
 
   const hasChildren = !!(item.children && item.children.length > 0);
   const pageIndent = 8;
 
-  // Controlled open state so we can auto-expand on new child creation.
-  const [open, setOpen] = useState(false);
-  const [prefetching, setPrefetching] = useState(false);
+  // Track whether backend subtree prefetch has been done for this node.
   const prefetchedRef = useRef(false);
+  const prefetchingRef = useRef(false);
+  const [_, forceRerender] = useState(0); // optional if we need to reflect spinner changes
+  // We'll store spinner state via a ref to avoid unnecessary re-renders; using forceRerender when state changes.
+  function setPrefetching(v: boolean) {
+    if (prefetchingRef.current !== v) {
+      prefetchingRef.current = v;
+      forceRerender((n: number) => n + 1);
+    }
+  }
+  const expanded = isExpanded(item.id);
 
   // When opening a node, fetch (or refetch) its subtree (depth=2 on backend) in ONE call.
   useEffect(() => {
-    if (!open) return;
-    if (prefetchedRef.current) return; // only once per node expansion lifecycle
-
-    let didTimeout = false;
-    let timeoutId: ReturnType<typeof setTimeout>;
+    if (!expanded) return;
+    if (prefetchedRef.current) return; // only once
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     let cancelled = false;
-
     async function prefetch() {
-      // Only show spinner if load takes > 100ms
       timeoutId = setTimeout(() => {
-        didTimeout = true;
         if (!cancelled) setPrefetching(true);
-      }, 100);
+      }, 120); // a little delay before showing spinner
       try {
-        await loadTOC(item.id); // single backend call with depth=2 (implemented in context)
+        await loadTOC(item.id);
         prefetchedRef.current = true;
       } finally {
-        clearTimeout(timeoutId);
+        if (timeoutId) clearTimeout(timeoutId);
         if (!cancelled) setPrefetching(false);
       }
     }
     prefetch();
     return () => {
       cancelled = true;
-      clearTimeout(timeoutId);
+      if (timeoutId) clearTimeout(timeoutId);
       setPrefetching(false);
     };
-  }, [open, loadTOC, item.id]);
+  }, [expanded, loadTOC, item.id]);
 
   async function handleCreateChild() {
     await pageManager.createPage(item.id, true);
-    setOpen(true);
+    if (!expanded) toggle(item.id); // ensure parent becomes expanded to show new child
   }
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen} disabled={!hasChildren && !open}>
+    <Collapsible open={expanded} onOpenChange={() => hasChildren && toggle(item.id)} disabled={!hasChildren}>
       <div className="TOCPageItem flex items-stretch justify-center transition duration-75 hover:bg-gray-700 text-gray-400 gap-1 rounded relative group/page select-none text-sm">
         <div
           className="p-[2px]"
@@ -96,7 +98,7 @@ export default function TOCPageItem({ item, level = 0 }: Props) {
           {item.title.length ? item.title : <span className="text-gray-600">Untitled</span>}
         </Link>
         <div className="opacity-0 group-hover/page:opacity-100 flex p-[2px] rounded items-center">
-          {prefetching ? (
+          {prefetchingRef.current ? (
             <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
           ) : (
             <button

@@ -6,7 +6,6 @@ import { WorkspaceProvider } from "@/contexts/WorkspaceContext";
 import { AppNavigationProvider } from "@/contexts/AppNavigationContext";
 import { PageProvider } from "@/contexts/PageContext";
 import { PageManagerProvider } from "@/contexts/PageManagerContext";
-import { TOCProvider } from "@/contexts/TOCContext";
 
 const router = createBrowserRouter([
   {
@@ -15,9 +14,7 @@ const router = createBrowserRouter([
       <AppNavigationProvider>
         <WorkspaceProvider>
           <PageManagerProvider>
-            <TOCProvider>
-              <App />
-            </TOCProvider>
+            <App />
           </PageManagerProvider>
         </WorkspaceProvider>
       </AppNavigationProvider>

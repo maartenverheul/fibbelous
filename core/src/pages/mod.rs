@@ -1,4 +1,5 @@
 use chrono::{DateTime, Utc};
+use line_ending::LineEnding;
 use serde::{Deserialize, Serialize};
 use slugify::slugify;
 use tokio::sync::RwLock;
@@ -142,7 +143,7 @@ impl PageManager {
         } else if body.starts_with('\n') {
             &body[1..]
         } else {
-            body
+            &body
         };
 
         // Build breadcrumb chain (Pages) then map to TOCItems including URLs.
@@ -450,31 +451,29 @@ impl PageManager {
         }
     }
 
-    fn parse_frontmatter<'a>(&self, input: &'a str) -> Result<(Page, &'a str), String> {
+    fn parse_frontmatter(&self, input: &str) -> Result<(Page, String), String> {
         let trimmed = input.trim_start();
-        let rest = if let Some(stripped) = trimmed.strip_prefix("---\n") {
-            stripped
-        } else {
+        let ending = LineEnding::from(input);
+        let lines: Vec<&str> = trimmed.split(ending.as_str()).collect();
+
+        if lines[0] != "---" {
             return Err("Missing frontmatter opening '---'".into());
-        };
-        // Scan lines until closing '---'
-        // Manual scan lines
-        let mut lines = rest.lines();
-        let mut fm_lines = Vec::new();
-        let mut consumed = 0usize; // bytes consumed in rest
-        while let Some(l) = lines.next() {
-            if l.trim() == "---" {
+        }
+
+        // Collect lines until closing '---'
+        let mut fm_lines: Vec<&str> = Vec::new();
+        let mut fm_line_count: usize = 0;
+        for line in &lines[1..] {
+            if line.trim() == "---" {
                 break;
-            } else {
-                fm_lines.push(l);
-                consumed += l.len() + 1;
             }
+            fm_line_count += 1;
+            fm_lines.push(line);
         }
-        if fm_lines.is_empty() {
-            return Err("Empty or invalid frontmatter".into());
-        }
-        let fm_raw = fm_lines.join("\n");
-        let body_start = &rest[consumed + 4..]; // skip closing --- + newline (approx)
+
+        let fm_raw = fm_lines.join(ending.as_str());
+        let body_start = lines[(fm_line_count + 1)..].join(ending.as_str());
+
         let raw: RawFrontmatter = match serde_yaml::from_str(&fm_raw) {
             Ok(v) => v,
             Err(e) => return Err(format!("YAML error: {}", e)),

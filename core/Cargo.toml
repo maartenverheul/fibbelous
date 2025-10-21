@@ -30,3 +30,4 @@ tracing-subscriber = { version = "0.3", features = [
   "time",
 ] }
 emojis = "0.6"
+line-ending = "1.5.1"

@@ -1154,6 +1154,7 @@ dependencies = [
  "emojis",
  "git2",
  "hex",
+ "line-ending",
  "rand 0.9.2",
  "sea-orm",
  "sea-orm-migration",
@@ -2422,6 +2423,12 @@ dependencies = [
  "pkg-config",
  "vcpkg",
 ]
+
+[[package]]
+name = "line-ending"
+version = "1.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "834e592123b39b7b3ba3fdc4b7e4822fad3ced449010f8229f843fe6dd1a33f1"
 
 [[package]]
 name = "linux-raw-sys"
