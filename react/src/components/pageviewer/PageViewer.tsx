@@ -9,17 +9,15 @@ export default function PageViewer() {
   if (!pageContext.loaded) return <p>Loading...</p>;
   if (!pageContext.data) return <PageNotFound />;
 
-  async function changeCover(remove: boolean) {
-    // pageContext.updateCover();
-  }
-
   return (
     <div className="PageViewer bg-gray-900 h-full flex flex-col">
       <TopBar />
       <div className="PageViewer bg-gray-900 h-full overflow-y-auto">
         <PageHeader
           page={pageContext.data}
-          onChangeCover={changeCover}
+          // onChangeCover={(remove) => pageContext.updateCover(remove)}
+          onTitleChange={(title) => pageContext.updateTitle(title)}
+          onIconChange={(icon) => pageContext.updateIcon(icon)}
         />
         <div className="PageContent w-full max-w-[1000px] mx-auto p-4">
           <textarea

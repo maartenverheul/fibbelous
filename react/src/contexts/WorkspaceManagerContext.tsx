@@ -271,7 +271,8 @@ export function WorkspaceManagerProvider({
     try {
       const res = await fetch(`${url}/api/workspaces`);
       if (!res.ok) throw new Error(res.statusText);
-      return await res.json();
+      const data = await res.json();
+      return data.workspaces;
     } catch (err) {
       console.error("fetch_remote_workspaces failed", err);
       throw err;

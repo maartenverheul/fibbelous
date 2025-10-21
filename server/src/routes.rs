@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::ws; // Import AppState from the appropriate module
-use axum::extract::{Json, State};
+use axum::extract::{Json, Path, State};
 use axum::routing::get;
 use axum::{response::IntoResponse, Router};
 use fib_core::command_handler::{Command, CommandHandler, CommandResult};
@@ -24,6 +24,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/api/workspaces",
             get(list_workspaces).post(create_workspace),
         )
+        .route("/api/workspaces/:workspace_id", get(get_workspace))
         .layer(cors)
         .with_state(state)
 }
@@ -61,6 +62,26 @@ pub async fn create_workspace(
     }
 }
 
+pub async fn get_workspace(
+    State(state): State<Arc<AppState>>,
+    Path(workspace_id): Path<String>,
+) -> impl IntoResponse {
+    let handler = CommandHandler::new(state.clone(), None);
+    let result = handler
+        .execute(Command::GetWorkspace { id: workspace_id })
+        .await;
+    match result {
+        CommandResult::Workspace(ws) => (StatusCode::OK, Json(ws)).into_response(),
+        CommandResult::Error(e) => (StatusCode::NOT_FOUND, e.message).into_response(),
+        other => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Unexpected result: {:?}", other),
+        )
+            .into_response(),
+    }
+}
+
+#[allow(dead_code)]
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdatePageRequest {
