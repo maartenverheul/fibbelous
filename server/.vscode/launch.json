@@ -1,0 +1,25 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug Server (program)",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/../target/debug/server.exe",
+      "args": [],
+      "env": {
+        "RUST_LOG": "debug",
+        "RUST_BACKTRACE": "1"
+      },
+      "cwd": "${workspaceFolder}",
+      "console": "internalConsole",
+      "preLaunchTask": "cargo build server"
+    },
+    {
+      "name": "Attach to Server (pick process)",
+      "type": "lldb",
+      "request": "attach",
+      "pid": "${command:pickProcess}"
+    }
+  ]
+}
