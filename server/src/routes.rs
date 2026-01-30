@@ -52,7 +52,7 @@ pub async fn create_workspace(
         .execute(Command::CreateWorkspace { request: req })
         .await;
     match result {
-        CommandResult::Workspace(ws) => (StatusCode::CREATED, Json(ws)).into_response(),
+        CommandResult::CreateWorkspace(ws) => (StatusCode::CREATED, Json(ws)).into_response(),
         CommandResult::Error(e) => (StatusCode::BAD_REQUEST, e.message).into_response(),
         other => (
             StatusCode::INTERNAL_SERVER_ERROR,

@@ -330,7 +330,7 @@ export function WorkspaceManagerProvider({
       throw new Error(`Failed to create workspace: ${response.statusText}`);
     }
 
-    const info = (await response.json()) as WorkspaceInfo;
+    const info = (await response.json()).workspace as WorkspaceInfo;
     const workspace: Workspace = {
       info,
       connection: {

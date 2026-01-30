@@ -68,7 +68,7 @@ export function PageManagerProvider({
   function toTOCItem(tree: (Page | TOCItem)[]): TOCItem {
     const target = tree[tree.length - 1];
     const url = appNavigation.pageLink(tree);
-    return { ...target, url, children: [] };
+    return { ...target, url, slug: target.slug || "untitled", children: [] };
   }
 
   async function createPage(parent?: string, navigate?: boolean): Promise<Page> {

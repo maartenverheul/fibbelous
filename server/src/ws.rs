@@ -40,7 +40,7 @@ pub async fn ws_handler(
 ) -> impl IntoResponse {
     // Validate workspace exists
 
-    let workspace = state.workspaces.get(&params.workspace);
+    let workspace = state.workspaces.get(&params.workspace).await;
 
     match workspace {
         None => (

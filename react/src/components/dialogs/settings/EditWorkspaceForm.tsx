@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { Workspace, CreateWorkspaceRequest } from "@/models";
 import { useWorkspaceManager } from "@/contexts/WorkspaceManagerContext";
-import { SaveIcon, RotateCcw } from "lucide-react";
+import { SaveIcon, RotateCcw, Loader2 } from "lucide-react";
 import { IS_APP } from "@/checks";
 
 type Props = {
   workspace?: Workspace;
   readOnly?: boolean;
-  onSave(request: CreateWorkspaceRequest, url?: string): void;
+  onSave(request: CreateWorkspaceRequest, url?: string): Promise<any>;
   remoteUrl?: string;
 };
 
@@ -36,6 +36,8 @@ export default function EditWorkspaceForm({
   const [connectionUrl] = useState(
     remoteUrl ?? workspace?.connection?.url ?? ""
   );
+  const [isSaving, setIsSaving] = useState(false);
+  const MIN_LOADING_MS = 600;
 
   // Detect slug conflicts. When editing, allow keeping the original slug even if it matches.
   const slugConflict = (() => {
@@ -47,18 +49,26 @@ export default function EditWorkspaceForm({
     });
   })();
 
-  const disabled = readOnly || !title.trim() || !slug.trim() || slugConflict;
+  const disabled = readOnly || isSaving || !title.trim() || !slug.trim() || slugConflict;
 
-  function handleSave() {
+  async function handleSave() {
     if (disabled) return;
-    let info: CreateWorkspaceRequest = {
-      title: title.trim(),
-      slug: slug.trim(),
-      description: description.trim() || undefined,
-      icon: icon.trim() || undefined,
+    setIsSaving(true);
+    try {
+      let info: CreateWorkspaceRequest = {
+        title: title.trim(),
+        slug: slug.trim(),
+        description: description.trim() || undefined,
+        icon: icon.trim() || undefined,
+      };
+      if (!isCreate) info = { ...workspace!.info, ...info };
+
+      const savePromise = onSave ? onSave(info, connectionUrl) : Promise.resolve();
+      const delay = new Promise((resolve) => setTimeout(resolve, MIN_LOADING_MS));
+      await Promise.all([savePromise, delay]);
+    } finally {
+      setIsSaving(false);
     }
-    if (!isCreate) info = { ...workspace!.info, ...info }
-    onSave?.(info, connectionUrl);
   }
 
   function sanitizeSlug(input: string) {
@@ -219,17 +229,28 @@ export default function EditWorkspaceForm({
         <div className="flex gap-2 mt-2">
           <button
             type="submit"
-            className="px-3 py-1 ml-auto bg-emerald-600 text-white rounded disabled:bg-gray-600 flex items-center gap-2 cursor-pointer"
+            className="px-3 py-1 ml-auto bg-emerald-600 text-white rounded disabled:bg-gray-600 flex items-center gap-2 cursor-pointer disabled:cursor-not-allowed"
             disabled={disabled}
+            aria-busy={isSaving}
           >
             {isCreate ? (
-              <span>
-                Create workspace
-              </span>
+              isSaving ? (
+                <>
+                  <Loader2 className="w-4 animate-spin" /> Creating...
+                </>
+              ) : (
+                <span> Create workspace </span>
+              )
             ) : (
-              <>
-                <SaveIcon className="w-4" /> Save
-              </>
+              isSaving ? (
+                <>
+                  <Loader2 className="w-4 animate-spin" /> Saving...
+                </>
+              ) : (
+                <>
+                  <SaveIcon className="w-4" /> Save
+                </>
+              )
             )}
           </button>
         </div>

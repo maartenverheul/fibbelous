@@ -10,6 +10,7 @@ use std::io::{Error, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::broadcast;
+use tokio::sync::RwLock;
 use tracing::{debug, error, info};
 
 pub use crate::icon::normalize_icon;
@@ -55,7 +56,7 @@ pub struct CreateWorkspaceRequest {
 }
 
 /// Represents a fully initialized workspace (metadata + its index database handle)
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LoadedWorkspace {
     pub id: String,
     pub path: PathBuf,
@@ -84,19 +85,20 @@ impl WorkspaceInfo {
 
 pub struct WorkspaceManager {
     pub std_dir: PathBuf,
-    pub list: HashMap<String, Arc<LoadedWorkspace>>,
+    pub list: RwLock<HashMap<String, Arc<LoadedWorkspace>>>,
 }
 
 impl WorkspaceManager {
     pub fn new(path: PathBuf) -> Self {
         Self {
             std_dir: path,
-            list: HashMap::new(),
+            list: RwLock::new(HashMap::new()),
         }
     }
 
-    pub fn get(&self, id: &str) -> Option<Arc<LoadedWorkspace>> {
-        return self.list.get(id).cloned();
+    pub async fn get(&self, id: &str) -> Option<Arc<LoadedWorkspace>> {
+        let guard = self.list.read().await;
+        guard.get(id).cloned()
     }
 
     pub async fn load_std(&mut self) -> &mut Self {
@@ -106,7 +108,7 @@ impl WorkspaceManager {
             workspaces_map.insert(w.id.clone(), Arc::new(w));
         }
 
-        self.list = workspaces_map;
+        *self.list.write().await = workspaces_map;
 
         self
     }
@@ -239,16 +241,17 @@ impl WorkspaceManager {
             events_tx: broadcast::channel(100).0,
         };
 
-        // self.workspaces
-        //     .write()
-        //     .await
-        //     .insert(loaded.id.clone(), &loaded);
+        self.list
+            .write()
+            .await
+            .insert(loaded.id.clone(), Arc::new(loaded.clone()));
 
         Ok(loaded)
     }
 
     /// High-level helper: create a workspace from a request, writing its metadata, initializing git repo
     /// and preparing / initializing its index database. Returns a fully loaded workspace.
+    /// Also registers the workspace in memory so it can be accessed afterwards.
     pub async fn create_workspace_from_request(
         &self,
         req: CreateWorkspaceRequest,
@@ -267,6 +270,12 @@ impl WorkspaceManager {
             .create(info, None)
             .await
             .expect("Failed to create workspace");
+
+        // Keep the newly created workspace in memory
+        self.list
+            .write()
+            .await
+            .insert(state.id.clone(), Arc::new(state.clone()));
 
         Ok(state)
     }
@@ -351,13 +360,14 @@ impl WorkspaceManager {
     /// Reload a workspace's info from disk (workspace.json). If the file is missing, the workspace
     /// is removed from memory. Returns the fresh WorkspaceInfo on success.
     pub async fn reload_workspace_info(&self, id: &str) -> Result<WorkspaceInfo, String> {
-        use ErrorKind;
         // First grab path (and existing loaded workspace)
-        let loaded = self
-            .list
-            .get(id)
-            .ok_or_else(|| format!("workspace {id} not found"))?;
-        let path = loaded.path.clone();
+        let path = {
+            let guard = self.list.read().await;
+            let loaded = guard
+                .get(id)
+                .ok_or_else(|| format!("workspace {id} not found"))?;
+            loaded.path.clone()
+        };
 
         let info = match Self::get_info_from_dir(&path).await {
             Ok(i) => i,
@@ -372,19 +382,27 @@ impl WorkspaceManager {
         };
 
         // Update in-memory copy so future accesses see fresh info
-        if let Some(existing) = self.list.get(id) {
-            // Rebuild LoadedWorkspace with updated info, keeping other handles identical
-            let new_loaded = LoadedWorkspace {
-                id: existing.id.clone(),
-                path: existing.path.clone(),
-                connection: existing.connection.clone(),
-                info: info.clone(),
-                db: existing.db.clone(),
-                page_manager: existing.page_manager.clone(),
-                events_tx: existing.events_tx.clone(),
-            };
-            // No write lock, so cannot update self.workspaces
-            // If you want to update, you need to make workspaces mutable or use interior mutability
+        if let Some(new_loaded) = {
+            let guard = self.list.read().await;
+            if let Some(existing) = guard.get(id) {
+                // Rebuild LoadedWorkspace with updated info, keeping other handles identical
+                Some(LoadedWorkspace {
+                    id: existing.id.clone(),
+                    path: existing.path.clone(),
+                    connection: existing.connection.clone(),
+                    info: info.clone(),
+                    db: existing.db.clone(),
+                    page_manager: existing.page_manager.clone(),
+                    events_tx: existing.events_tx.clone(),
+                })
+            } else {
+                None
+            }
+        } {
+            self.list
+                .write()
+                .await
+                .insert(id.to_string(), Arc::new(new_loaded));
         }
 
         Ok(info)
@@ -398,7 +416,10 @@ impl WorkspaceManager {
         }
         if let Some(p) = conn.path {
             let workspace = Self::load_workspace_from_dir(p).await?;
-            self.list.insert(conn.id.clone(), Arc::new(workspace));
+            self.list
+                .write()
+                .await
+                .insert(conn.id.clone(), Arc::new(workspace));
         }
 
         Ok(())

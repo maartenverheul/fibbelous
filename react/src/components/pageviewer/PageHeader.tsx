@@ -61,6 +61,7 @@ export default function PageHeader({ page, onChangeCover, onTitleChange, onIconC
           className="text-white focus:outline-0 text-5xl font-bold placeholder:text-gray-600 w-full"
           placeholder="Untitled"
           value={page.title}
+          autoFocus={page.title.length === 0}
           onChange={(e) => onTitleChange?.(e.target.value)}
         />
       </div>

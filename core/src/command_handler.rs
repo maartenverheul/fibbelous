@@ -234,13 +234,9 @@ impl CommandHandler {
                 })
             }
             GetSavedWorkspaces => {
-                let list: Vec<WorkspaceInfo> = self
-                    .app
-                    .workspaces
-                    .list
-                    .values()
-                    .map(|ws| ws.info.clone())
-                    .collect();
+                let list_guard = self.app.workspaces.list.read().await;
+                let list: Vec<WorkspaceInfo> =
+                    list_guard.values().map(|ws| ws.info.clone()).collect();
                 CommandResult::Workspaces(WorkspacesPayload { workspaces: list })
             }
             GetWorkspace { id } => {
@@ -300,37 +296,37 @@ impl CommandHandler {
                     Err(e) => return CommandResult::Error(ErrorPayload { message: e }),
                 };
 
-                let mut page = original.page.clone();
+                let mut updated_page = original.page.clone();
                 let mut metadata_changed = false;
                 if let Some(t) = title {
-                    if t != page.title {
-                        page.title = t;
+                    if t != updated_page.title {
+                        updated_page.title = t.trim().to_string();
                         // Always recompute slug from (new) title
-                        let new_slug = slugify!(&page.title);
-                        if new_slug != page.slug {
-                            page.slug = new_slug;
+                        let new_slug = slugify!(&updated_page.title);
+                        if new_slug != updated_page.slug {
+                            updated_page.slug = new_slug;
                         }
                         metadata_changed = true;
                     }
                 }
                 if let Some(ic) = icon {
-                    if ic != page.icon.clone().unwrap_or_default() {
-                        page.icon = Some(ic);
+                    if ic != updated_page.icon.clone().unwrap_or_default() {
+                        updated_page.icon = Some(ic);
                         metadata_changed = true;
                     }
                 }
                 if metadata_changed {
-                    page.updated_at = Some(Utc::now());
+                    updated_page.updated_at = Some(Utc::now());
                 }
 
                 let new_body = content.unwrap_or(original.content.clone());
 
                 // Persist (metadata and/or body) if anything changed
-                let toc_item = workspace.page_manager.make_toc_item(&page).await;
+                let toc_item = workspace.page_manager.make_toc_item(&updated_page).await;
                 if metadata_changed || new_body != original.content {
                     if let Err(e) = workspace
                         .page_manager
-                        .write_full_page(&page, &new_body)
+                        .write_full_page(&updated_page, &new_body)
                         .await
                     {
                         return CommandResult::Error(ErrorPayload {
@@ -341,14 +337,14 @@ impl CommandHandler {
                     // If metadata changed (title/icon) broadcast TOC update (Update action)
                     if metadata_changed {
                         let _ = workspace.events_tx.send(Event::TocUpdated {
-                            id: page.id.clone(),
+                            id: updated_page.id.clone(),
                             item: Some(toc_item.clone()),
                             action: TOCUpdateAction::Update,
                         });
                     }
                 }
 
-                CommandResult::Page(page)
+                CommandResult::Page(updated_page)
             }
             SaveRemoteWorkspaces { .. } => CommandResult::Error(ErrorPayload {
                 message: "SaveRemoteWorkspaces not supported".into(),

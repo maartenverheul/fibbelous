@@ -22,7 +22,7 @@ async fn invoke_command(
     match command {
         // Local commands
         Command::SwitchWorkspace { id } => {
-            let workspace = state.command_handler.app.workspaces.get(&id);
+            let workspace = state.command_handler.app.workspaces.get(&id).await;
             match workspace {
                 None => return Err(format!("Unknown workspace id: {}", id)),
                 Some(ws) => {

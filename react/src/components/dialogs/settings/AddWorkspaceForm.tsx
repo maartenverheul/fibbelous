@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import useLocalStorageState from "use-local-storage-state";
 import { AlertCircle, FolderOpen, Loader2, PlusIcon } from "lucide-react";
 import { useWorkspaceManager } from "@/contexts/WorkspaceManagerContext";
@@ -56,6 +56,11 @@ export function AddWorkspaceForm() {
     setConnecting(true);
     setError(null);
 
+    await refetchExistingWorkspaces();
+    setConnecting(false);
+  }
+
+  async function refetchExistingWorkspaces() {
     const minTimeout = new Promise((resolve) => setTimeout(resolve, 500));
     const fetchPromise = workspaceManager
       .fetchRemoteWorkspaces(remoteUrl)
@@ -72,8 +77,12 @@ export function AddWorkspaceForm() {
     );
     const filtered = result.filter((r) => !existingIds.has(r.id));
     setFetchedWorkspaces(filtered);
-    setConnecting(false);
   }
+
+  useEffect(() => {
+    // Refetch workspaces when switching back to existing mode, but only when we have already fetched once
+    if (fetchedWorkspaces != null && importMode === "existing") refetchExistingWorkspaces();
+  }, [importMode])
 
   async function importSelectedWorkspaces() {
     setError(null);
