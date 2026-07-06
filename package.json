@@ -1,0 +1,17 @@
+{
+  "name": "fibbelous",
+  "private": true,
+  "workspaces": [
+    "client",
+    "device",
+    "server"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w client",
+    "dev:server": "npm run dev -w server",
+    "dev:device": "npm run dev -w device",
+    "build": "npm run build -w client",
+    "build:server": "npm run build -w server",
+    "build:device": "npm run build -w device"
+  }
+}
