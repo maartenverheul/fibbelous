@@ -12,9 +12,7 @@ type WorkspaceManagerDialogProps = {
 };
 
 const inputClassName = cn(
-  "rounded border border-zinc-200 bg-white px-2 py-1 text-sm text-zinc-900",
-  "placeholder:text-zinc-400",
-  "dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:placeholder:text-zinc-500",
+  "rounded border border-[var(--app-border)] bg-[var(--app-surface)] px-2 py-1 text-sm text-stone-900 placeholder:text-stone-500 dark:text-stone-50 dark:placeholder:text-stone-500",
 );
 
 export function WorkspaceManagerDialog({
@@ -77,23 +75,22 @@ export function WorkspaceManagerDialog({
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
         <Dialog.Content
           className={cn(
-            "fixed top-1/2 left-1/2 z-50 max-h-[85vh] w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-zinc-200 bg-white p-4 text-zinc-900 shadow-xl",
-            "dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100",
+            "fixed top-1/2 left-1/2 z-50 max-h-[85vh] w-[min(32rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-4 text-stone-900 shadow-xl dark:text-stone-50",
           )}
         >
           <Dialog.Title className="text-base font-semibold">
             Workspace manager
           </Dialog.Title>
-          <Dialog.Description className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+          <Dialog.Description className="mt-1 text-sm text-stone-700 dark:text-stone-300">
             Edit saved workspaces or add one from a server.
           </Dialog.Description>
 
           <section className="mt-4 space-y-2">
-            <h2 className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
+            <h2 className="text-sm font-medium text-stone-800 dark:text-stone-200">
               Saved workspaces
             </h2>
             {workspaces.length === 0 ? (
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              <p className="text-sm text-stone-600 dark:text-stone-400">
                 No workspaces saved yet.
               </p>
             ) : (
@@ -101,7 +98,7 @@ export function WorkspaceManagerDialog({
                 {workspaces.map((workspace) => (
                   <li
                     key={workspace.id}
-                    className="rounded-md border border-zinc-200 p-2 dark:border-zinc-700 dark:bg-zinc-950/50"
+                    className="rounded-md border border-[var(--app-border)] bg-[var(--app-bg)]/50 p-2"
                   >
                     <div className="grid gap-2">
                       <input
@@ -137,7 +134,7 @@ export function WorkspaceManagerDialog({
                           type="number"
                         />
                       </div>
-                      <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400">
+                      <div className="flex items-center justify-between text-xs text-stone-600 dark:text-stone-400">
                         <span>
                           {workspace.icon ? `${workspace.icon} ` : ""}
                           /{workspace.slug} · {workspace.workspaceId}
@@ -158,7 +155,7 @@ export function WorkspaceManagerDialog({
           </section>
 
           <section className="mt-6 space-y-2">
-            <h2 className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
+            <h2 className="text-sm font-medium text-stone-800 dark:text-stone-200">
               Add from server
             </h2>
             <div className="grid grid-cols-[1fr_5rem_auto] gap-2">
@@ -180,9 +177,9 @@ export function WorkspaceManagerDialog({
                 onClick={handleFetch}
                 disabled={loading}
                 className={cn(
-                  "rounded bg-zinc-900 px-3 py-1 text-sm text-white",
-                  "hover:bg-zinc-800 disabled:opacity-50",
-                  "dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200",
+                  "rounded bg-stone-800 px-3 py-1 text-sm text-stone-50",
+                  "hover:bg-stone-700 disabled:opacity-50",
+                  "dark:bg-stone-200 dark:text-stone-900 dark:hover:bg-stone-100",
                 )}
               >
                 {loading ? "..." : "Fetch"}
@@ -197,21 +194,20 @@ export function WorkspaceManagerDialog({
                   <li
                     key={workspace.id}
                     className={cn(
-                      "flex items-center justify-between rounded-md border border-zinc-200 px-2 py-1.5 text-sm",
-                      "dark:border-zinc-700 dark:bg-zinc-950/50",
+                      "flex items-center justify-between rounded-md border border-[var(--app-border)] bg-[var(--app-bg)]/50 px-2 py-1.5 text-sm",
                     )}
                   >
                     <span>
                       {workspace.icon ? `${workspace.icon} ` : ""}
                       {workspace.name}{" "}
-                      <span className="text-zinc-500 dark:text-zinc-400">
+                      <span className="text-stone-600 dark:text-stone-400">
                         /{workspace.slug} · {workspace.indexStatus}
                       </span>
                     </span>
                     <button
                       type="button"
                       onClick={() => handleAddRemote(workspace)}
-                      className="text-zinc-700 hover:underline dark:text-zinc-300"
+                      className="text-stone-700 hover:underline dark:text-stone-300"
                     >
                       Add
                     </button>
@@ -226,9 +222,8 @@ export function WorkspaceManagerDialog({
               <button
                 type="button"
                 className={cn(
-                  "rounded border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-900",
-                  "hover:bg-zinc-50",
-                  "dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-700",
+                  "rounded border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-1.5 text-sm text-stone-900",
+                  "hover:bg-stone-100 dark:text-stone-50 dark:hover:bg-stone-800",
                 )}
               >
                 Close

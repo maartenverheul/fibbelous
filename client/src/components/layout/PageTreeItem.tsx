@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTabs, type TabTarget } from "../../context/TabContext";
 import { useWorkspacePages } from "../../hooks/useWorkspacePages";
 import { cn } from "../../lib/utils";
+import { PageActionsMenu } from "./PageActionsMenu";
 import {
   childrenDir,
   buildPageSegment,
@@ -18,6 +19,7 @@ type PageTreeItemProps = {
     event: React.MouseEvent,
     segment: string,
     target: TabTarget,
+    page: WorkspacePage,
   ) => void;
 };
 
@@ -25,14 +27,14 @@ const navButtonClassName = (active: boolean) =>
   cn(
     "rounded-md px-1 py-1 text-left text-sm transition-colors",
     active
-      ? "bg-zinc-200 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100"
-      : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-100",
+      ? "bg-stone-300/70 font-medium text-stone-900 dark:bg-stone-700 dark:text-stone-50"
+      : "text-stone-700 hover:bg-stone-200/80 hover:text-stone-900 dark:text-stone-300 dark:hover:bg-stone-800 dark:hover:text-stone-50",
   );
 
 const actionButtonClassName = cn(
-  "flex h-6 w-6 items-center justify-center rounded text-sm text-zinc-400",
-  "hover:bg-zinc-300 hover:text-zinc-800",
-  "dark:hover:bg-zinc-600 dark:hover:text-zinc-100",
+  "flex h-6 w-6 items-center justify-center rounded text-sm text-stone-500",
+  "hover:bg-stone-300/80 hover:text-stone-800",
+  "dark:hover:bg-stone-600 dark:hover:text-stone-100",
 );
 
 export function PageTreeItem({
@@ -40,7 +42,7 @@ export function PageTreeItem({
   depth = 0,
   onContextMenu,
 }: PageTreeItemProps) {
-  const { activeSegment, navigateInTab, openTabInNew } = useTabs();
+  const { activeSegment, navigateInTab } = useTabs();
   const { getChildren, ensureChildren, findPageByKey, findPageById } =
     useWorkspacePages();
   const segment = buildPageSegment(page, findPageById);
@@ -48,6 +50,11 @@ export function PageTreeItem({
   const childParentPath = childrenDir(page);
   const children = getChildren(childParentPath);
   const isActive = isPageSegmentActive(activeSegment, page);
+
+  const createSubpage = () => {
+    setOpen(true);
+    ensureChildren(childParentPath);
+  };
   const menuRef = useRef<HTMLDivElement>(null);
 
   const isAncestorOfActive =
@@ -109,8 +116,7 @@ export function PageTreeItem({
               return;
             }
             if ((event.target as HTMLElement).closest("[data-add-child]")) {
-              setOpen(true);
-              ensureChildren(childParentPath);
+              createSubpage();
               return;
             }
             navigateInTab(segment, { label, icon: page.icon, pageId: page.id });
@@ -120,7 +126,7 @@ export function PageTreeItem({
               label,
               icon: page.icon,
               pageId: page.id,
-            })
+            }, page)
           }
           className={cn(
             navButtonClassName(isActive),
@@ -135,9 +141,9 @@ export function PageTreeItem({
                   data-expand-toggle
                   aria-hidden
                   className={cn(
-                    "absolute inset-0 flex items-center justify-center rounded text-[10px] text-zinc-400 opacity-0 group-hover:opacity-100",
-                    "hover:bg-zinc-300 hover:text-zinc-800",
-                    "dark:hover:bg-zinc-600 dark:hover:text-zinc-100",
+                    "absolute inset-0 flex items-center justify-center rounded text-[10px] text-stone-500 opacity-0 group-hover:opacity-100",
+                    "hover:bg-stone-300/80 hover:text-stone-800",
+                    "dark:hover:bg-stone-600 dark:hover:text-stone-100",
                   )}
                 >
                   <span
@@ -182,23 +188,16 @@ export function PageTreeItem({
         {menuOpen && (
           <div
             className={cn(
-              "absolute top-full right-0 z-50 mt-1 min-w-36 rounded-md border border-zinc-200 bg-white py-1 shadow-lg",
-              "dark:border-zinc-700 dark:bg-zinc-900",
+              "absolute top-full right-0 z-50 mt-1 min-w-40 rounded-md border border-[var(--app-border)] bg-[var(--app-surface)] py-1 shadow-lg",
             )}
           >
-            <button
-              type="button"
-              className={cn(
-                "w-full px-3 py-1.5 text-left text-sm text-zinc-700",
-                "hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800",
-              )}
-              onClick={() => {
-                openTabInNew(segment, { label, icon: page.icon, pageId: page.id });
-                setMenuOpen(false);
-              }}
-            >
-              Open in new tab
-            </button>
+            <PageActionsMenu
+              segment={segment}
+              target={{ label, icon: page.icon, pageId: page.id }}
+              page={page}
+              onClose={() => setMenuOpen(false)}
+              onCreateSubpage={createSubpage}
+            />
           </div>
         )}
       </div>

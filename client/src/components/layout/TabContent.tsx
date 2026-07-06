@@ -6,8 +6,7 @@ export function TabContent() {
   return (
     <main
       className={cn(
-        "flex min-h-0 flex-1 flex-col overflow-hidden bg-white",
-        "dark:bg-zinc-950",
+        "flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--app-surface)]",
       )}
     >
       <PageBreadcrumbs />

@@ -20,8 +20,8 @@ export function CollapsibleSection({
         type="button"
         onClick={() => setOpen((value) => !value)}
         className={cn(
-          "flex w-full items-center gap-1 rounded-md px-1 py-1 text-left text-xs font-medium tracking-wide text-zinc-500 uppercase",
-          "hover:text-zinc-700 dark:hover:text-zinc-300",
+          "flex w-full items-center gap-1 rounded-md px-1 py-1 text-left text-xs font-medium tracking-wide text-stone-600 uppercase",
+          "hover:text-stone-800 dark:hover:text-stone-300",
         )}
       >
         <span className={cn("text-[10px] transition-transform", open && "rotate-90")}>

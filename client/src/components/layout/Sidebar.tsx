@@ -2,27 +2,33 @@ import { useEffect, useRef, useState } from "react";
 import { useTabs, type TabTarget } from "../../context/TabContext";
 import { useWorkspacePages } from "../../hooks/useWorkspacePages";
 import { cn } from "../../lib/utils";
+import { childrenDir } from "../../types/page";
 import { WorkspaceSelect } from "../workspace/WorkspaceSelect";
 import { CollapsibleSection } from "./CollapsibleSection";
+import { PageActionsMenu } from "./PageActionsMenu";
 import { PageTreeItem } from "./PageTreeItem";
+import type { WorkspacePage } from "../../types/page";
+
 type ContextMenuState = {
   x: number;
   y: number;
   segment: string;
   target: TabTarget;
+  page?: WorkspacePage;
 };
 
 const navButtonClassName = (active: boolean) =>
   cn(
     "rounded-md px-2.5 py-1.5 text-left text-sm transition-colors",
     active
-      ? "bg-zinc-200 font-medium text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100"
-      : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-900 dark:hover:text-zinc-100",
+      ? "bg-stone-300/70 font-medium text-stone-900 dark:bg-stone-700 dark:text-stone-50"
+      : "text-stone-700 hover:bg-stone-200/80 hover:text-stone-900 dark:text-stone-300 dark:hover:bg-stone-800 dark:hover:text-stone-50",
   );
 
 export function Sidebar() {
-  const { activeSegment, navigateInTab, openTabInNew } = useTabs();
-  const { rootPages, rootError, rootLoaded } = useWorkspacePages();  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const { activeSegment, navigateInTab, isTabOpen } = useTabs();
+  const { rootPages, rootError, rootLoaded, ensureChildren } = useWorkspacePages();
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -49,36 +55,37 @@ export function Sidebar() {
     event: React.MouseEvent,
     segment: string,
     target: TabTarget,
+    page?: WorkspacePage,
   ) => {
     event.preventDefault();
-    setContextMenu({ x: event.clientX, y: event.clientY, segment, target });
+    if (!page && isTabOpen(segment, target.pageId)) return;
+    setContextMenu({ x: event.clientX, y: event.clientY, segment, target, page });
   };
 
   return (
     <>
       <aside
         className={cn(
-          "flex h-full w-60 shrink-0 flex-col border-r border-zinc-200 bg-zinc-50 p-3",
-          "dark:border-zinc-800 dark:bg-zinc-950",
+          "flex h-full w-60 shrink-0 flex-col border-r border-[var(--app-border)] bg-[var(--app-panel)]",
         )}
       >
         <WorkspaceSelect />
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 pt-3">
           <CollapsibleSection title="Favorites" defaultOpen>
-            <p className="px-2.5 py-1 text-xs text-zinc-500 dark:text-zinc-400">
+            <p className="px-2.5 py-1 text-xs text-stone-600 dark:text-stone-400">
               Coming soon
             </p>
           </CollapsibleSection>
 
           <CollapsibleSection title="All pages" defaultOpen>
             {rootError && (
-              <p className="px-2.5 py-1 text-xs text-red-600 dark:text-red-400">
+              <p className="px-2.5 py-1 text-xs text-red-700 dark:text-red-400">
                 {rootError}
               </p>
             )}
             {rootLoaded && !rootError && rootPages!.length === 0 && (
-              <p className="px-2.5 py-1 text-xs text-zinc-500 dark:text-zinc-400">
+              <p className="px-2.5 py-1 text-xs text-stone-600 dark:text-stone-400">
                 No pages indexed
               </p>
             )}
@@ -89,7 +96,8 @@ export function Sidebar() {
                 onContextMenu={openContextMenu}
               />
             ))}
-          </CollapsibleSection>        </div>
+          </CollapsibleSection>
+        </div>
 
         <button
           type="button"
@@ -97,7 +105,7 @@ export function Sidebar() {
           onContextMenu={(event) =>
             openContextMenu(event, "settings", { label: "Settings" })
           }
-          className={cn(navButtonClassName(activeSegment === "settings"), "mt-2 shrink-0")}
+          className={cn(navButtonClassName(activeSegment === "settings"), "mx-3 mb-3 mt-2 shrink-0")}
         >
           Settings
         </button>
@@ -107,24 +115,21 @@ export function Sidebar() {
         <div
           ref={menuRef}
           className={cn(
-            "fixed z-50 min-w-40 rounded-md border border-zinc-200 bg-white py-1 shadow-lg",
-            "dark:border-zinc-700 dark:bg-zinc-900",
+            "fixed z-50 min-w-40 rounded-md border border-[var(--app-border)] bg-[var(--app-surface)] py-1 shadow-lg",
           )}
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
-          <button
-            type="button"
-            className={cn(
-              "w-full px-3 py-1.5 text-left text-sm text-zinc-700",
-              "hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800",
-            )}
-            onClick={() => {
-              openTabInNew(contextMenu.segment, contextMenu.target);
-              setContextMenu(null);
-            }}
-          >
-            Open in new tab
-          </button>
+          <PageActionsMenu
+            segment={contextMenu.segment}
+            target={contextMenu.target}
+            page={contextMenu.page}
+            onClose={() => setContextMenu(null)}
+            onCreateSubpage={
+              contextMenu.page
+                ? () => ensureChildren(childrenDir(contextMenu.page!))
+                : undefined
+            }
+          />
         </div>
       )}
     </>

@@ -7,8 +7,8 @@ export function AppShell() {
   return (
     <div
       className={cn(
-        "flex h-screen bg-white text-zinc-900",
-        "dark:bg-zinc-950 dark:text-zinc-100",
+        "flex h-screen bg-[var(--app-bg)] text-stone-900",
+        "dark:text-stone-100",
       )}
     >
       <Sidebar />

@@ -11,14 +11,13 @@ export function LandingPage() {
     <>
       <div
         className={cn(
-          "flex min-h-screen flex-col items-center justify-center gap-3 bg-white p-6 text-center",
-          "dark:bg-zinc-950",
+          "flex min-h-screen flex-col items-center justify-center gap-3 bg-[var(--app-bg)] p-6 text-center",
         )}
       >
-        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">
+        <h1 className="text-xl font-semibold text-stone-900 dark:text-stone-50">
           Fibbelous
         </h1>
-        <p className="max-w-sm text-sm text-zinc-600 dark:text-zinc-400">
+        <p className="max-w-sm text-sm text-stone-700 dark:text-stone-300">
           {workspaces.length === 0
             ? "Add a workspace to get started."
             : "Select a workspace or add another."}
@@ -27,8 +26,8 @@ export function LandingPage() {
           type="button"
           onClick={() => setManagerOpen(true)}
           className={cn(
-            "rounded-md bg-zinc-900 px-3 py-1.5 text-sm text-white",
-            "hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900",
+            "rounded-md bg-stone-800 px-3 py-1.5 text-sm text-stone-50",
+            "hover:bg-stone-700 dark:bg-stone-200 dark:text-stone-900 dark:hover:bg-stone-100",
           )}
         >
           Manage workspaces

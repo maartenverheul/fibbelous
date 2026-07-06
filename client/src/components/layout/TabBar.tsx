@@ -9,8 +9,7 @@ export function TabBar() {
   return (
     <div
       className={cn(
-        "flex h-9 shrink-0 items-end gap-0.5 overflow-x-auto border-b border-zinc-200 bg-zinc-50 px-2",
-        "dark:border-zinc-800 dark:bg-zinc-950",
+        "flex h-9 shrink-0 items-end gap-0.5 overflow-x-auto border-b border-[var(--app-border)] bg-[var(--app-panel)] px-2",
       )}
     >
       {tabs.map((tab) => {
@@ -22,8 +21,8 @@ export function TabBar() {
             className={cn(
               "group flex max-w-48 shrink-0 items-center rounded-t-md border border-b-0 px-2 py-1 text-sm",
               isActive
-                ? "border-zinc-200 bg-white font-medium text-zinc-900 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
-                : "border-transparent bg-transparent text-zinc-500 hover:bg-zinc-200/60 dark:text-zinc-400 dark:hover:bg-zinc-800/60",
+                ? "border-[var(--app-border)] bg-[var(--app-surface)] font-medium text-stone-900 dark:text-stone-50"
+                : "border-transparent bg-transparent text-stone-600 hover:bg-stone-200/70 dark:text-stone-400 dark:hover:bg-stone-800/70",
             )}
           >
             <button
@@ -41,7 +40,7 @@ export function TabBar() {
               className={cn(
                 "ml-1.5 rounded px-1 text-xs leading-none opacity-0 transition-opacity group-hover:opacity-100",
                 isActive && "opacity-100",
-                "hover:bg-zinc-200 dark:hover:bg-zinc-800",
+                "hover:bg-stone-200/80 dark:hover:bg-stone-700",
               )}
             >
               ×

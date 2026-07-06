@@ -79,10 +79,10 @@ export function PageView() {
   if (!displayPage) {
     return (
       <div className="space-y-2">
-        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">
+        <h1 className="text-xl font-semibold text-stone-900 dark:text-stone-50">
           Page not found
         </h1>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
+        <p className="text-sm text-stone-700 dark:text-stone-300">
           Page not found in workspace index.
         </p>
       </div>
@@ -97,8 +97,8 @@ export function PageView() {
         onChange={(event) => setTitle(event.target.value)}
         aria-label="Page title"
         className={cn(
-          "w-full border-none bg-transparent p-0 text-3xl font-semibold text-zinc-900 outline-none",
-          "focus:ring-0 dark:text-zinc-100",
+          "w-full border-none bg-transparent p-0 text-3xl font-semibold text-stone-900 outline-none",
+          "focus:ring-0 dark:text-stone-50",
         )}
       />
       <textarea
@@ -107,8 +107,8 @@ export function PageView() {
         aria-label="Page content"
         className={cn(
           "min-h-0 flex-1 resize-none border-none bg-transparent p-0",
-          "font-mono text-sm leading-relaxed text-zinc-800 outline-none",
-          "focus:ring-0 dark:text-zinc-200",
+          "font-mono text-sm leading-relaxed text-stone-800 outline-none",
+          "focus:ring-0 dark:text-stone-200",
         )}
       />
     </div>
