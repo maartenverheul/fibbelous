@@ -3276,11 +3276,14 @@ name = "server"
 version = "0.1.0"
 dependencies = [
  "dotenvy",
+ "http-body-util",
+ "hyper",
  "jsonrpsee",
  "rusqlite",
  "serde",
  "serde_json",
  "tokio",
+ "tower 0.5.3",
  "tracing",
  "tracing-subscriber",
 ]

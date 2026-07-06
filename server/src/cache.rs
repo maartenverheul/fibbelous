@@ -2,7 +2,8 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
+use serde::Serialize;
 
 use crate::data::log_path;
 
@@ -43,6 +44,29 @@ CREATE TABLE IF NOT EXISTS databases (
 CREATE INDEX IF NOT EXISTS idx_databases_id ON databases(id);
 CREATE INDEX IF NOT EXISTS idx_databases_slug ON databases(slug);
 ";
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PageSummary {
+    pub id: String,
+    pub slug: Option<String>,
+    pub title: Option<String>,
+    pub icon: Option<String>,
+    pub path: String,
+    pub has_children: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PageDetail {
+    pub id: String,
+    pub slug: Option<String>,
+    pub title: Option<String>,
+    pub icon: Option<String>,
+    pub path: String,
+    pub has_children: bool,
+    pub body: String,
+}
 
 #[derive(Debug, Clone)]
 pub struct IndexedPage {
@@ -182,6 +206,84 @@ impl CacheDb {
         Ok(())
     }
 
+    pub fn list_pages_in_dir(&self, parent_dir: &str) -> rusqlite::Result<Vec<PageSummary>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, slug, title, icon, path FROM pages
+             WHERE path LIKE ?1 || '/%' AND path NOT LIKE ?1 || '/%/%'
+             ORDER BY COALESCE(title, id) COLLATE NOCASE",
+        )?;
+        let rows = stmt
+            .query_map(params![parent_dir], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, String>(4)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut pages = Vec::with_capacity(rows.len());
+        for (id, slug, title, icon, path) in rows {
+            let has_children = self.dir_has_pages(&children_dir(&path, &id))?;
+            pages.push(PageSummary {
+                id,
+                slug,
+                title,
+                icon,
+                path,
+                has_children,
+            });
+        }
+
+        Ok(pages)
+    }
+
+    pub fn get_page_by_id(&self, id: &str) -> rusqlite::Result<Option<PageDetail>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, slug, title, icon, path, content FROM pages WHERE id = ?1 LIMIT 1",
+        )?;
+        let row = stmt
+            .query_row(params![id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                ))
+            })
+            .optional()?;
+
+        let Some((id, slug, title, icon, path, content)) = row else {
+            return Ok(None);
+        };
+
+        let has_children = self.dir_has_pages(&children_dir(&path, &id))?;
+        Ok(Some(PageDetail {
+            id,
+            slug,
+            title,
+            icon,
+            path,
+            has_children,
+            body: strip_frontmatter(&content).to_owned(),
+        }))
+    }
+
+    fn dir_has_pages(&self, dir: &str) -> rusqlite::Result<bool> {
+        self.conn.query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM pages
+                WHERE path LIKE ?1 || '/%' AND path NOT LIKE ?1 || '/%/%'
+             )",
+            params![dir],
+            |row| row.get(0),
+        )
+    }
+
     pub fn delete_pages_not_in(&mut self, paths: &HashSet<String>) -> rusqlite::Result<usize> {
         delete_rows_not_in(&self.conn, "pages", paths)
     }
@@ -275,6 +377,31 @@ fn set_format_version(conn: &Connection) -> rusqlite::Result<()> {
         params![FORMAT_VERSION_KEY, CACHE_DB_VERSION.to_string()],
     )?;
     Ok(())
+}
+
+pub fn children_dir(page_path: &str, page_id: &str) -> String {
+    let parent = Path::new(page_path)
+        .parent()
+        .map(|path| path.to_string_lossy().replace('\\', "/"))
+        .unwrap_or_else(|| "pages".to_owned());
+    format!("{parent}/{page_id}")
+}
+
+fn strip_frontmatter(content: &str) -> &str {
+    let content = content.trim_start();
+    if !content.starts_with("---") {
+        return content;
+    }
+
+    let Some(rest) = content.strip_prefix("---") else {
+        return content;
+    };
+
+    let Some(end) = rest.find("\n---") else {
+        return content;
+    };
+
+    rest[end + 4..].trim_start()
 }
 
 pub fn runtime_dir(workspace_path: &Path) -> PathBuf {

@@ -20,6 +20,7 @@ pub enum IndexStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceSettings {
+    pub slug: String,
     pub name: String,
     pub icon: String,
     pub created_at: String,
@@ -75,6 +76,37 @@ impl Workspace {
             settings: self.settings.clone(),
         }
     }
+
+    pub fn list_pages(&self, parent_path: Option<&str>) -> Result<Vec<crate::cache::PageSummary>, String> {
+        let parent_dir = parent_path.unwrap_or("pages");
+        let cache = self
+            .cache
+            .lock()
+            .map_err(|_| "cache mutex poisoned".to_string())?;
+        cache
+            .list_pages_in_dir(parent_dir)
+            .map_err(|error| error.to_string())
+    }
+
+    pub fn get_page(&self, id: &str) -> Result<Option<crate::cache::PageDetail>, String> {
+        let cache = self
+            .cache
+            .lock()
+            .map_err(|_| "cache mutex poisoned".to_string())?;
+        cache
+            .get_page_by_id(id)
+            .map_err(|error| error.to_string())
+    }
+}
+
+pub fn find_by_id<'a>(workspaces: &'a [Workspace], id: &str) -> Option<&'a Workspace> {
+    workspaces.iter().find(|workspace| workspace.id == id)
+}
+
+pub fn find_by_slug<'a>(workspaces: &'a [Workspace], slug: &str) -> Option<&'a Workspace> {
+    workspaces
+        .iter()
+        .find(|workspace| workspace.settings.slug == slug)
 }
 
 pub fn discover_workspaces(dir: &Path) -> std::io::Result<Vec<Workspace>> {

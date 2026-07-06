@@ -1,6 +1,7 @@
 mod cache;
 mod config;
 mod data;
+mod http;
 mod index;
 mod rpc;
 mod workspace;
@@ -8,13 +9,12 @@ mod workspace;
 use std::path::Path;
 use std::sync::Arc;
 
-use jsonrpsee::server::ServerBuilder;
 use tracing::Level;
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 use crate::config::Config;
 use crate::data::{ensure_workspaces_dir, log_path};
-use crate::rpc::{RpcState, build_module};
+use crate::http::run_server;
 use crate::workspace::{discover_workspaces, start_indexing};
 
 fn init_tracing() {
@@ -45,15 +45,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     start_indexing(Arc::clone(&workspaces));
 
     let config = Config::from_env();
-    let rpc_module = build_module(RpcState { workspaces });
-    let server_addr = config.server_addr();
+    let server_addr = config.server_addr().parse()?;
 
-    tracing::info!(%server_addr, "starting json-rpc websocket server");
+    tracing::info!(%server_addr, "starting http and websocket server");
 
-    let server = ServerBuilder::default().build(&server_addr).await?;
-    let handle = server.start(rpc_module);
+    let handle = run_server(server_addr, workspaces).await?;
 
-    tracing::info!(%server_addr, "server ready (connect via ws://{server_addr})");
+    tracing::info!(
+        %server_addr,
+        "server ready (GET /workspaces, ws://{server_addr}/{{workspaceId}})"
+    );
 
     tokio::signal::ctrl_c().await?;
     tracing::info!("shutting down");
