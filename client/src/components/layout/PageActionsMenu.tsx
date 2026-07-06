@@ -13,6 +13,8 @@ type PageActionsMenuProps = {
   page?: WorkspacePage;
   onClose: () => void;
   onCreateSubpage?: () => void;
+  onDuplicate?: () => void;
+  onTrash?: () => void;
 };
 
 export function PageActionsMenu({
@@ -21,6 +23,8 @@ export function PageActionsMenu({
   page,
   onClose,
   onCreateSubpage,
+  onDuplicate,
+  onTrash,
 }: PageActionsMenuProps) {
   const { openTabInNew, isTabOpen } = useTabs();
   const canOpenInNewTab = !isTabOpen(segment, target.pageId);
@@ -57,7 +61,10 @@ export function PageActionsMenu({
           <button
             type="button"
             className={menuItemClassName}
-            onClick={onClose}
+            onClick={() => {
+              onDuplicate?.();
+              onClose();
+            }}
           >
             Duplicate
           </button>
@@ -68,9 +75,12 @@ export function PageActionsMenu({
               menuItemClassName,
               "text-red-700 dark:text-red-400",
             )}
-            onClick={onClose}
+            onClick={() => {
+              onTrash?.();
+              onClose();
+            }}
           >
-            Delete
+            Move to trash
           </button>
         </>
       )}

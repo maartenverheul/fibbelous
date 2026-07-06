@@ -18,10 +18,13 @@ import type {
 } from "../types/workspace";
 import {
   ROOT_PAGES_DIR,
+  childrenDir,
   parentDirOfPage,
   parsePageIdFromSegment,
   type WorkspacePage,
   type WorkspacePageDetail,
+  type TrashedPage,
+  type TrashedPageDetail,
 } from "../types/page";
 
 type WorkspaceContextValue = {
@@ -37,6 +40,20 @@ type WorkspaceContextValue = {
   findPageById: (id: string) => WorkspacePage | undefined;
   fetchPageById: (id: string) => Promise<WorkspacePage | null>;
   fetchPageDetail: (id: string) => Promise<WorkspacePageDetail | null>;
+  fetchTrashedPageDetail: (id: string) => Promise<TrashedPageDetail | null>;
+  createPage: (
+    parentPage: WorkspacePage,
+    init?: { title?: string; body?: string },
+  ) => Promise<WorkspacePageDetail>;
+  updatePage: (
+    id: string,
+    patch: { title?: string; body?: string; slug?: string; icon?: string | null },
+  ) => Promise<WorkspacePageDetail>;
+  duplicatePage: (id: string) => Promise<WorkspacePageDetail>;
+  trashPage: (page: WorkspacePage) => Promise<string[]>;
+  listTrashedPages: () => Promise<TrashedPage[]>;
+  restorePage: (id: string) => Promise<WorkspacePageDetail>;
+  purgePage: (id: string) => Promise<void>;
   setActiveWorkspace: (workspace: SavedWorkspace) => void;
   addWorkspace: ReturnType<typeof useSavedWorkspaces>["addWorkspace"];
   updateWorkspace: ReturnType<typeof useSavedWorkspaces>["updateWorkspace"];
@@ -175,6 +192,55 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const refreshDir = useCallback(
+    async (parentPath: string) => {
+      if (!rpc || connectionStatus !== "connected") return [];
+      const result = await rpc.call<WorkspacePage[]>("list_pages", { parentPath });
+      loadedDirsRef.current.add(parentPath);
+      storePages(parentPath, result);
+      if (parentPath === ROOT_PAGES_DIR) {
+        setRootError(null);
+      }
+      return result;
+    },
+    [rpc, connectionStatus, storePages],
+  );
+
+  const invalidateAndRefreshDirs = useCallback(
+    async (...parentPaths: string[]) => {
+      const unique = [...new Set(parentPaths)];
+      for (const parentPath of unique) {
+        loadedDirsRef.current.delete(parentPath);
+        inflightDirsRef.current.delete(parentPath);
+      }
+      for (const parentPath of unique) {
+        await refreshDir(parentPath);
+      }
+    },
+    [refreshDir],
+  );
+
+  const removePageIdFromCache = useCallback((id: string) => {
+    setPagesById((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setChildrenByDir((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const dir of Object.keys(next)) {
+        const filtered = next[dir].filter((item) => item.id !== id);
+        if (filtered.length !== next[dir].length) {
+          next[dir] = filtered;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, []);
+
   const ensureChildren = useCallback(
     (parentPath: string) => {
       if (!rpc || connectionStatus !== "connected") return;
@@ -276,6 +342,123 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     [rpc, connectionStatus, ensureChildren],
   );
 
+  const fetchTrashedPageDetail = useCallback(
+    async (id: string) => {
+      if (!rpc || connectionStatus !== "connected") return null;
+
+      return rpc.call<TrashedPageDetail | null>("get_trashed_page", { id });
+    },
+    [rpc, connectionStatus],
+  );
+
+  const createPage = useCallback(
+    async (parentPage: WorkspacePage, init?: { title?: string; body?: string }) => {
+      if (!rpc || connectionStatus !== "connected") {
+        throw new Error("Workspace not connected");
+      }
+
+      const parentPath = childrenDir(parentPage);
+      const detail = await rpc.call<WorkspacePageDetail>("create_page", {
+        parentPath,
+        title: init?.title ?? "Untitled",
+        body: init?.body ?? "",
+      });
+
+      const { body: _body, ...page } = detail;
+      setPagesById((prev) => ({ ...prev, [page.id]: page }));
+      await invalidateAndRefreshDirs(parentPath, parentDirOfPage(parentPage));
+      return detail;
+    },
+    [rpc, connectionStatus, invalidateAndRefreshDirs],
+  );
+
+  const updatePage = useCallback(
+    async (
+      id: string,
+      patch: { title?: string; body?: string; slug?: string; icon?: string | null },
+    ) => {
+      if (!rpc || connectionStatus !== "connected") {
+        throw new Error("Workspace not connected");
+      }
+
+      const detail = await rpc.call<WorkspacePageDetail>("update_page", {
+        id,
+        ...patch,
+      });
+
+      const { body: _body, ...page } = detail;
+      setPagesById((prev) => ({ ...prev, [page.id]: page }));
+      await invalidateAndRefreshDirs(parentDirOfPage(page));
+      return detail;
+    },
+    [rpc, connectionStatus, invalidateAndRefreshDirs],
+  );
+
+  const duplicatePage = useCallback(
+    async (id: string) => {
+      if (!rpc || connectionStatus !== "connected") {
+        throw new Error("Workspace not connected");
+      }
+
+      const detail = await rpc.call<WorkspacePageDetail>("duplicate_page", { id });
+      const { body: _body, ...page } = detail;
+      setPagesById((prev) => ({ ...prev, [page.id]: page }));
+      await invalidateAndRefreshDirs(parentDirOfPage(page));
+      return detail;
+    },
+    [rpc, connectionStatus, invalidateAndRefreshDirs],
+  );
+
+  const trashPage = useCallback(
+    async (page: WorkspacePage) => {
+      if (!rpc || connectionStatus !== "connected") {
+        throw new Error("Workspace not connected");
+      }
+
+      const result = await rpc.call<{ trashedIds: string[] }>("trash_page", {
+        id: page.id,
+      });
+      for (const id of result.trashedIds) {
+        removePageIdFromCache(id);
+      }
+      await invalidateAndRefreshDirs(parentDirOfPage(page));
+      return result.trashedIds;
+    },
+    [rpc, connectionStatus, removePageIdFromCache, invalidateAndRefreshDirs],
+  );
+
+  const listTrashedPages = useCallback(async () => {
+    if (!rpc || connectionStatus !== "connected") {
+      throw new Error("Workspace not connected");
+    }
+    return rpc.call<TrashedPage[]>("list_trashed_pages");
+  }, [rpc, connectionStatus]);
+
+  const restorePage = useCallback(
+    async (id: string) => {
+      if (!rpc || connectionStatus !== "connected") {
+        throw new Error("Workspace not connected");
+      }
+
+      const detail = await rpc.call<WorkspacePageDetail>("restore_page", { id });
+      const { body: _body, ...page } = detail;
+      setPagesById((prev) => ({ ...prev, [page.id]: page }));
+      await invalidateAndRefreshDirs(parentDirOfPage(page));
+      return detail;
+    },
+    [rpc, connectionStatus, invalidateAndRefreshDirs],
+  );
+
+  const purgePage = useCallback(
+    async (id: string) => {
+      if (!rpc || connectionStatus !== "connected") {
+        throw new Error("Workspace not connected");
+      }
+      await rpc.call("purge_page", { id });
+    },
+    [rpc, connectionStatus],
+  );
+
   const setActiveWorkspace = useCallback(
     (workspace: SavedWorkspace) => {
       setActive(workspace.id);
@@ -300,6 +483,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       findPageById,
       fetchPageById,
       fetchPageDetail,
+      fetchTrashedPageDetail,
+      createPage,
+      updatePage,
+      duplicatePage,
+      trashPage,
+      listTrashedPages,
+      restorePage,
+      purgePage,
       setActiveWorkspace,
       addWorkspace,
       updateWorkspace,
@@ -318,6 +509,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       findPageById,
       fetchPageById,
       fetchPageDetail,
+      fetchTrashedPageDetail,
+      createPage,
+      updatePage,
+      duplicatePage,
+      trashPage,
+      listTrashedPages,
+      restorePage,
+      purgePage,
       setActiveWorkspace,
       addWorkspace,
       updateWorkspace,

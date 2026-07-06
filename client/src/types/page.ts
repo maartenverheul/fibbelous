@@ -11,6 +11,31 @@ export type WorkspacePageDetail = WorkspacePage & {
   body: string;
 };
 
+export type TrashedPage = {
+  id: string;
+  slug: string | null;
+  title: string | null;
+  icon: string | null;
+  originalPath: string;
+  trashedAt: string;
+  hasChildren: boolean;
+};
+
+export type TrashedPageDetail = TrashedPage & {
+  body: string;
+};
+
+export function buildTrashedPageSegment(page: TrashedPage) {
+  return pageKey({
+    id: page.id,
+    slug: page.slug,
+    title: page.title,
+    icon: page.icon,
+    path: page.originalPath,
+    hasChildren: page.hasChildren,
+  });
+}
+
 export const ROOT_PAGES_DIR = "pages";
 
 export function pageKey(page: WorkspacePage) {
@@ -63,7 +88,11 @@ export function isPageSegmentActive(segment: string, page: WorkspacePage) {
   return parsePageIdFromSegment(segment) === page.id;
 }
 
-export function pageLabel(page: WorkspacePage) {
+export function pageLabel(page: {
+  id: string;
+  title: string | null;
+  slug: string | null;
+}) {
   return page.title ?? page.slug ?? page.id;
 }
 
@@ -73,6 +102,14 @@ export function humanizeSlug(slug: string) {
     .filter(Boolean)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
+}
+
+export function slugifyPageTitle(title: string) {
+  const slug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || "page";
 }
 
 export function childrenDir(page: WorkspacePage) {

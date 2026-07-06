@@ -7,6 +7,10 @@ use serde::{Deserialize, Serialize};
 use crate::cache::{CacheDb, ensure_runtime_dir};
 use crate::data::log_path;
 use crate::index::sync_workspace;
+use crate::pages::{
+    CreatePageInput, UpdatePageInput, create_page, duplicate_page, get_trashed_page,
+    list_trashed_pages, purge_page, restore_page, trash_page, update_page,
+};
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -96,6 +100,53 @@ impl Workspace {
         cache
             .get_page_by_id(id)
             .map_err(|error| error.to_string())
+    }
+
+    fn with_cache_mut<T>(
+        &self,
+        operation: impl FnOnce(&PathBuf, &mut CacheDb) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let mut cache = self
+            .cache
+            .lock()
+            .map_err(|_| "cache mutex poisoned".to_string())?;
+        operation(&self.path, &mut cache)
+    }
+
+    pub fn create_page(&self, input: CreatePageInput) -> Result<crate::cache::PageDetail, String> {
+        self.with_cache_mut(|path, cache| create_page(path, cache, input))
+    }
+
+    pub fn update_page(&self, input: UpdatePageInput) -> Result<crate::cache::PageDetail, String> {
+        self.with_cache_mut(|path, cache| update_page(path, cache, input))
+    }
+
+    pub fn trash_page(&self, id: &str) -> Result<Vec<String>, String> {
+        self.with_cache_mut(|path, cache| trash_page(path, cache, id))
+    }
+
+    pub fn list_trashed_pages(&self) -> Result<Vec<crate::pages::TrashedPageSummary>, String> {
+        list_trashed_pages(&self.path)
+    }
+
+    pub fn get_trashed_page(&self, id: &str) -> Result<Option<crate::pages::TrashedPageDetail>, String> {
+        match get_trashed_page(&self.path, id) {
+            Ok(detail) => Ok(Some(detail)),
+            Err(error) if error == "page not found in trash" => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+
+    pub fn restore_page(&self, id: &str) -> Result<crate::cache::PageDetail, String> {
+        self.with_cache_mut(|path, cache| restore_page(path, cache, id))
+    }
+
+    pub fn purge_page(&self, id: &str) -> Result<(), String> {
+        purge_page(&self.path, id)
+    }
+
+    pub fn duplicate_page(&self, id: &str) -> Result<crate::cache::PageDetail, String> {
+        self.with_cache_mut(|path, cache| duplicate_page(path, cache, id))
     }
 }
 

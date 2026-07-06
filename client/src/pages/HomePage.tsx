@@ -1,6 +1,6 @@
 export function HomePage() {
   return (
-    <div className="space-y-2">
+    <div className="mx-auto w-full max-w-3xl space-y-2 p-4">
       <h1 className="text-xl font-semibold text-stone-900 dark:text-stone-50">
         Home
       </h1>

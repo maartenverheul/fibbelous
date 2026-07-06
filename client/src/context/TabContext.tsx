@@ -14,7 +14,7 @@ import {
   parseWorkspacePath,
 } from "../routes";
 import { useWorkspacePages } from "../hooks/useWorkspacePages";
-import { parsePageIdFromSegment } from "../types/page";
+import { pageLabel, parsePageIdFromSegment } from "../types/page";
 
 export type TabTarget = {
   label: string;
@@ -38,6 +38,7 @@ type TabContextValue = {
   openTabInNew: (segment: string, target: TabTarget) => void;
   isTabOpen: (segment: string, pageId?: string | null) => boolean;
   closeTab: (tabId: string) => void;
+  closeTabsForPages: (pageIds: string[]) => void;
   activateTab: (tabId: string) => void;
 };
 
@@ -118,11 +119,16 @@ export function TabProvider({ children }: { children: ReactNode }) {
     setTabs((prev) => {
       let changed = false;
       const next = prev.map((tab) => {
-        if (!tab.pageId || tab.icon) return tab;
+        if (!tab.pageId) return tab;
         const page = findPageById(tab.pageId);
-        if (!page?.icon) return tab;
+        if (!page) return tab;
+
+        const label = pageLabel(page);
+        const icon = page.icon ?? tab.icon;
+        if (tab.label === label && tab.icon === icon) return tab;
+
         changed = true;
-        return { ...tab, icon: page.icon };
+        return { ...tab, label, icon };
       });
       return changed ? next : prev;
     });
@@ -141,8 +147,24 @@ export function TabProvider({ children }: { children: ReactNode }) {
 
         if (existingTab) {
           setActiveTabId(existingTab.id);
-          navigate(buildWorkspacePath(slug, existingTab.segment));
-          return prev;
+          navigate(buildWorkspacePath(slug, nextSegment));
+
+          const needsUpdate =
+            existingTab.segment !== nextSegment ||
+            tabNeedsUpdate(existingTab, nextSegment, target);
+          if (!needsUpdate) return prev;
+
+          return prev.map((tab) =>
+            tab.id === existingTab.id
+              ? {
+                  ...tab,
+                  segment: nextSegment,
+                  label: target.label,
+                  icon: target.icon ?? null,
+                  pageId,
+                }
+              : tab,
+          );
         }
 
         const nextTabFields = {
@@ -219,6 +241,36 @@ export function TabProvider({ children }: { children: ReactNode }) {
     [tabs, navigate, slug],
   );
 
+  const closeTabsForPages = useCallback(
+    (pageIds: string[]) => {
+      if (pageIds.length === 0) return;
+
+      const idSet = new Set(pageIds);
+      setTabs((prev) => {
+        const nextTabs = prev.filter(
+          (tab) => !tab.pageId || !idSet.has(tab.pageId),
+        );
+        if (nextTabs.length === prev.length) return prev;
+        if (nextTabs.length === 0) return prev;
+
+        const activeIndex = prev.findIndex((tab) => tab.id === activeTabId);
+        const closedActive =
+          activeIndex !== -1 &&
+          prev[activeIndex]?.pageId != null &&
+          idSet.has(prev[activeIndex]!.pageId!);
+
+        if (closedActive && slug) {
+          const fallback = nextTabs[Math.min(activeIndex, nextTabs.length - 1)];
+          setActiveTabId(fallback.id);
+          navigate(buildWorkspacePath(slug, fallback.segment));
+        }
+
+        return nextTabs;
+      });
+    },
+    [activeTabId, navigate, slug],
+  );
+
   const closeTab = useCallback(
     (tabId: string) => {
       setTabs((prev) => {
@@ -252,9 +304,10 @@ export function TabProvider({ children }: { children: ReactNode }) {
       openTabInNew,
       isTabOpen,
       closeTab,
+      closeTabsForPages,
       activateTab,
     }),
-    [tabs, activeTabId, segment, navigateInTab, openTabInNew, isTabOpen, closeTab, activateTab],
+    [tabs, activeTabId, segment, navigateInTab, openTabInNew, isTabOpen, closeTab, closeTabsForPages, activateTab],
   );
 
   return <TabContext.Provider value={value}>{children}</TabContext.Provider>;

@@ -11,6 +11,14 @@ export function useWorkspacePages() {
     findPageById,
     fetchPageById,
     fetchPageDetail,
+    fetchTrashedPageDetail,
+    createPage,
+    updatePage,
+    duplicatePage,
+    trashPage,
+    listTrashedPages,
+    restorePage,
+    purgePage,
   } = useWorkspace();
 
   return {
@@ -22,6 +30,14 @@ export function useWorkspacePages() {
     findPageById,
     fetchPageById,
     fetchPageDetail,
+    fetchTrashedPageDetail,
+    createPage,
+    updatePage,
+    duplicatePage,
+    trashPage,
+    listTrashedPages,
+    restorePage,
+    purgePage,
     rootLoaded: rootPages !== undefined,
     rootLoading: rootPages === undefined && !rootError,
   };

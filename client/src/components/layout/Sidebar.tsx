@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTabs, type TabTarget } from "../../context/TabContext";
 import { useWorkspacePages } from "../../hooks/useWorkspacePages";
 import { cn } from "../../lib/utils";
-import { childrenDir } from "../../types/page";
+import { buildPageSegment, pageLabel } from "../../types/page";
 import { WorkspaceSelect } from "../workspace/WorkspaceSelect";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { PageActionsMenu } from "./PageActionsMenu";
@@ -27,7 +27,15 @@ const navButtonClassName = (active: boolean) =>
 
 export function Sidebar() {
   const { activeSegment, navigateInTab, isTabOpen } = useTabs();
-  const { rootPages, rootError, rootLoaded, ensureChildren } = useWorkspacePages();
+  const {
+    rootPages,
+    rootError,
+    rootLoaded,
+    findPageById,
+    createPage,
+    duplicatePage,
+    trashPage,
+  } = useWorkspacePages();
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -60,6 +68,41 @@ export function Sidebar() {
     event.preventDefault();
     if (!page && isTabOpen(segment, target.pageId)) return;
     setContextMenu({ x: event.clientX, y: event.clientY, segment, target, page });
+  };
+
+  const openPage = (detail: WorkspacePage) => {
+    const newSegment = buildPageSegment(detail, findPageById);
+    navigateInTab(newSegment, {
+      label: pageLabel(detail),
+      icon: detail.icon,
+      pageId: detail.id,
+    });
+  };
+
+  const handleContextCreate = async (page: WorkspacePage) => {
+    try {
+      const detail = await createPage(page);
+      openPage(detail);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleContextDuplicate = async (page: WorkspacePage) => {
+    try {
+      const detail = await duplicatePage(page.id);
+      openPage(detail);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleContextTrash = async (page: WorkspacePage) => {
+    try {
+      await trashPage(page);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to move page to trash");
+    }
   };
 
   return (
@@ -101,6 +144,17 @@ export function Sidebar() {
 
         <button
           type="button"
+          onClick={() => navigateInTab("trash", { label: "Trash" })}
+          onContextMenu={(event) =>
+            openContextMenu(event, "trash", { label: "Trash" })
+          }
+          className={cn(navButtonClassName(activeSegment === "trash"), "mx-3 mt-2 shrink-0")}
+        >
+          Trash
+        </button>
+
+        <button
+          type="button"
           onClick={() => navigateInTab("settings", { label: "Settings" })}
           onContextMenu={(event) =>
             openContextMenu(event, "settings", { label: "Settings" })
@@ -126,7 +180,17 @@ export function Sidebar() {
             onClose={() => setContextMenu(null)}
             onCreateSubpage={
               contextMenu.page
-                ? () => ensureChildren(childrenDir(contextMenu.page!))
+                ? () => void handleContextCreate(contextMenu.page!)
+                : undefined
+            }
+            onDuplicate={
+              contextMenu.page
+                ? () => void handleContextDuplicate(contextMenu.page!)
+                : undefined
+            }
+            onTrash={
+              contextMenu.page
+                ? () => void handleContextTrash(contextMenu.page!)
                 : undefined
             }
           />

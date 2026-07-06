@@ -43,18 +43,20 @@ export function PageTreeItem({
   onContextMenu,
 }: PageTreeItemProps) {
   const { activeSegment, navigateInTab } = useTabs();
-  const { getChildren, ensureChildren, findPageByKey, findPageById } =
-    useWorkspacePages();
+  const {
+    getChildren,
+    ensureChildren,
+    findPageByKey,
+    findPageById,
+    createPage,
+    duplicatePage,
+    trashPage,
+  } = useWorkspacePages();
   const segment = buildPageSegment(page, findPageById);
   const label = pageLabel(page);
   const childParentPath = childrenDir(page);
   const children = getChildren(childParentPath);
   const isActive = isPageSegmentActive(activeSegment, page);
-
-  const createSubpage = () => {
-    setOpen(true);
-    ensureChildren(childParentPath);
-  };
   const menuRef = useRef<HTMLDivElement>(null);
 
   const isAncestorOfActive =
@@ -68,6 +70,42 @@ export function PageTreeItem({
 
   const [open, setOpen] = useState(isAncestorOfActive);
   const [menuOpen, setMenuOpen] = useState(false);
+
+  const openPage = (detail: WorkspacePage) => {
+    const newSegment = buildPageSegment(detail, findPageById);
+    navigateInTab(newSegment, {
+      label: pageLabel(detail),
+      icon: detail.icon,
+      pageId: detail.id,
+    });
+  };
+
+  const handleCreateSubpage = async () => {
+    try {
+      const detail = await createPage(page);
+      setOpen(true);
+      openPage(detail);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleDuplicate = async () => {
+    try {
+      const detail = await duplicatePage(page.id);
+      openPage(detail);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleTrash = async () => {
+    try {
+      await trashPage(page);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to move page to trash");
+    }
+  };
 
   useEffect(() => {
     if (page.hasChildren) {
@@ -116,7 +154,7 @@ export function PageTreeItem({
               return;
             }
             if ((event.target as HTMLElement).closest("[data-add-child]")) {
-              createSubpage();
+              void handleCreateSubpage();
               return;
             }
             navigateInTab(segment, { label, icon: page.icon, pageId: page.id });
@@ -196,12 +234,14 @@ export function PageTreeItem({
               target={{ label, icon: page.icon, pageId: page.id }}
               page={page}
               onClose={() => setMenuOpen(false)}
-              onCreateSubpage={createSubpage}
+              onCreateSubpage={() => void handleCreateSubpage()}
+              onDuplicate={() => void handleDuplicate()}
+              onTrash={() => void handleTrash()}
             />
           </div>
         )}
       </div>
-      {page.hasChildren && open && children && children.length > 0 && (
+      {open && children && children.length > 0 && (
         <div className="mt-0.5 flex flex-col gap-0.5">
           {children.map((child) => (
             <PageTreeItem

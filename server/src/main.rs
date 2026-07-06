@@ -3,6 +3,7 @@ mod config;
 mod data;
 mod http;
 mod index;
+mod pages;
 mod rpc;
 mod workspace;
 

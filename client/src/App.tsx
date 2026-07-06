@@ -6,6 +6,7 @@ import { HomePage } from "./pages/HomePage";
 import { LandingPage } from "./pages/LandingPage";
 import { PageView } from "./pages/PageView";
 import { SettingsPage } from "./pages/SettingsPage";
+import { TrashPage } from "./pages/TrashPage";
 import { useSavedWorkspaces } from "./hooks/useSavedWorkspaces";
 
 function RootRedirect() {
@@ -33,6 +34,7 @@ export default function App() {
       <Route path="/:slug" element={<WorkspaceLayout />}>
         <Route index element={<HomePage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="trash" element={<TrashPage />} />
         <Route path="*" element={<PageView />} />
       </Route>
     </Routes>
