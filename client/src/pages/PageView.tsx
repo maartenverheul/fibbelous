@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
+import { PageBodyEditor } from "../components/page/PageBodyEditor";
 import { PageIconPicker } from "../components/page/PageIconPicker";
 import { EmojiIcon } from "../components/emoji/EmojiIcon";
 import { usePageSave } from "../context/PageSaveContext";
 import { useTabs } from "../context/TabContext";
 import { useWorkspacePages } from "../hooks/useWorkspacePages";
 import { cn } from "../lib/utils";
+import {
+  bodyMatchesStored,
+  ensureLeadingH1,
+  stripLeadingH1,
+} from "../lib/pageBodyTitle";
 import {
   ROOT_PAGES_DIR,
   buildPageSegment,
@@ -21,9 +27,11 @@ type PageLoadStatus = "idle" | "loading" | "ready" | "missing";
 type PageDraft = { title: string; body: string };
 
 type PageEditorProps = {
+  pageId: string;
   icon?: string | null;
   title: string;
   body: string;
+  isBodyReady: boolean;
   readOnly: boolean;
   restoring: boolean;
   showTrashBanner: boolean;
@@ -34,9 +42,11 @@ type PageEditorProps = {
 };
 
 function PageEditor({
+  pageId,
   icon,
   title,
   body,
+  isBodyReady,
   readOnly,
   restoring,
   showTrashBanner,
@@ -126,29 +136,38 @@ function PageEditor({
           icon ? "pt-20" : "pt-24",
         )}
       >
-        <textarea
-          value={body}
-          onChange={(event) => onBodyChange(event.target.value)}
-          readOnly={readOnly}
-          aria-label="Page content"
-          className={cn(
-            "min-h-[50vh] w-full resize-none border-none bg-transparent p-0",
-            "font-mono text-sm leading-relaxed text-stone-800 outline-none",
-            "focus:ring-0 dark:text-stone-200",
-            readOnly && "cursor-default",
-          )}
-        />
+        {isBodyReady ? (
+          <PageBodyEditor
+            key={pageId}
+            pageId={pageId}
+            body={body}
+            readOnly={readOnly}
+            onBodyChange={onBodyChange}
+          />
+        ) : (
+          <div
+            className="min-h-6 animate-pulse rounded bg-stone-100 dark:bg-stone-800"
+            aria-busy
+            aria-label="Loading page content"
+          />
+        )}
       </div>
     </div>
   );
 }
 
 function draftFromDetail(detail: WorkspacePageDetail): PageDraft {
-  return { title: pageLabel(detail), body: detail.body };
+  return {
+    title: pageLabel(detail),
+    body: stripLeadingH1(detail.body),
+  };
 }
 
 function draftFromTrashed(trashed: TrashedPageDetail): PageDraft {
-  return { title: pageLabel(trashed), body: trashed.body };
+  return {
+    title: pageLabel(trashed),
+    body: stripLeadingH1(trashed.body),
+  };
 }
 
 function draftFromPage(
@@ -394,7 +413,7 @@ export function PageView() {
 
     const savedTitle = pageLabel(page);
     const savedBody = activeDetail.body;
-    if (title === savedTitle && body === savedBody) {
+    if (title === savedTitle && bodyMatchesStored(body, title, savedBody)) {
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current);
         saveTimerRef.current = null;
@@ -413,7 +432,7 @@ export function PageView() {
       saveTimerRef.current = null;
       updatePage(page.id, {
         title,
-        body,
+        body: ensureLeadingH1(body, title),
         slug: slugifyPageTitle(title),
       })
         .then((updated) => {
@@ -491,6 +510,8 @@ export function PageView() {
     }
   };
 
+  const hasDirtyDraft = pageId !== null && dirtyPageIdsRef.current.has(pageId);
+  const isBodyReady = loadStatus === "ready" || hasDirtyDraft;
   const hasPageEvidence = Boolean(page || cachedPage || cachedDetail);
   const showNotFound =
     !hasPageEvidence &&
@@ -516,9 +537,11 @@ export function PageView() {
 
   return (
     <PageEditor
+      pageId={pageId ?? ""}
       icon={page?.icon}
       title={title}
       body={body}
+      isBodyReady={isBodyReady}
       readOnly={isTrashed}
       restoring={restoring}
       showTrashBanner={isTrashed}

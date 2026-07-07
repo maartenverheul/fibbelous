@@ -12,7 +12,7 @@ export function TabContent() {
         )}
       >
         <PageBreadcrumbs />
-        <div className="min-h-0 flex-1 overflow-auto">
+        <div className="page-editor-scroll min-h-0 flex-1 overflow-auto">
           <Outlet />
         </div>
       </main>
