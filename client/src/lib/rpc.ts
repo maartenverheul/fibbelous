@@ -10,9 +10,28 @@ type PendingRequest = {
   reject: (error: Error) => void;
 };
 
+export class RpcConnectionClosedError extends Error {
+  constructor() {
+    super("WebSocket closed");
+    this.name = "RpcConnectionClosedError";
+  }
+}
+
+export function isIgnorableRpcError(error: unknown): boolean {
+  if (error instanceof RpcConnectionClosedError) return true;
+  if (error instanceof Error) {
+    return (
+      error.message === "WebSocket closed" ||
+      error.message === "WebSocket connection failed"
+    );
+  }
+  return false;
+}
+
 export type RpcClient = {
   call<T>(method: string, params?: unknown): Promise<T>;
   close: () => void;
+  isOpen(): boolean;
 };
 
 export function createRpcClient(wsUrl: string): RpcClient {
@@ -48,7 +67,7 @@ export function createRpcClient(wsUrl: string): RpcClient {
 
   socket.addEventListener("close", () => {
     for (const request of pending.values()) {
-      request.reject(new Error("WebSocket closed"));
+      request.reject(new RpcConnectionClosedError());
     }
     pending.clear();
   });
@@ -75,6 +94,9 @@ export function createRpcClient(wsUrl: string): RpcClient {
     },
     close() {
       socket.close();
+    },
+    isOpen() {
+      return socket.readyState === WebSocket.OPEN;
     },
   };
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { PiCaretRight, PiDotsThreeOutline, PiPlus } from "react-icons/pi";
 import { useTabs, type TabTarget } from "../../context/TabContext";
 import { useWorkspacePages } from "../../hooks/useWorkspacePages";
 import { cn } from "../../lib/utils";
@@ -55,7 +56,12 @@ export function PageTreeItem({
   const segment = buildPageSegment(page, findPageById);
   const label = pageLabel(page);
   const childParentPath = childrenDir(page);
-  const children = getChildren(childParentPath);
+  const fetchedChildren = getChildren(childParentPath);
+  const childrenRef = useRef<WorkspacePage[] | undefined>(undefined);
+  if (fetchedChildren !== undefined) {
+    childrenRef.current = fetchedChildren;
+  }
+  const children = fetchedChildren ?? childrenRef.current;
   const isActive = isPageSegmentActive(activeSegment, page);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -69,6 +75,7 @@ export function PageTreeItem({
     })();
 
   const [open, setOpen] = useState(isAncestorOfActive);
+  const expanded = open || isAncestorOfActive;
   const [menuOpen, setMenuOpen] = useState(false);
 
   const openPage = (detail: WorkspacePage) => {
@@ -184,11 +191,13 @@ export function PageTreeItem({
                     "dark:hover:bg-stone-600 dark:hover:text-stone-100",
                   )}
                 >
-                  <span
-                    className={cn("transition-transform", open && "rotate-90")}
-                  >
-                    ▸
-                  </span>
+                  <PiCaretRight
+                    className={cn(
+                      "h-3 w-3 transition-transform",
+                      expanded && "rotate-90",
+                    )}
+                    aria-hidden
+                  />
                 </span>
               </>
             ) : (
@@ -210,7 +219,7 @@ export function PageTreeItem({
               aria-expanded={menuOpen}
               className={actionButtonClassName}
             >
-              ⋯
+              <PiDotsThreeOutline className="h-4 w-4" aria-hidden />
             </span>
             <span
               data-add-child
@@ -219,7 +228,7 @@ export function PageTreeItem({
               aria-label="Add child page"
               className={actionButtonClassName}
             >
-              +
+              <PiPlus className="h-4 w-4" aria-hidden />
             </span>
           </span>
         </button>
@@ -241,7 +250,7 @@ export function PageTreeItem({
           </div>
         )}
       </div>
-      {open && children && children.length > 0 && (
+      {expanded && children && children.length > 0 && (
         <div className="mt-0.5 flex flex-col gap-0.5">
           {children.map((child) => (
             <PageTreeItem

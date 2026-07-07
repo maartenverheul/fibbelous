@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { PiGear, PiTrash } from "react-icons/pi";
 import { useTabs, type TabTarget } from "../../context/TabContext";
 import { useWorkspacePages } from "../../hooks/useWorkspacePages";
 import { cn } from "../../lib/utils";
@@ -33,11 +34,17 @@ export function Sidebar() {
     rootLoaded,
     findPageById,
     createPage,
+    createRootPage,
     duplicatePage,
     trashPage,
+    ensurePageTreeVisible,
   } = useWorkspacePages();
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    ensurePageTreeVisible(activeSegment);
+  }, [activeSegment, ensurePageTreeVisible]);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -88,6 +95,15 @@ export function Sidebar() {
     }
   };
 
+  const handleCreateRootPage = async () => {
+    try {
+      const detail = await createRootPage();
+      openPage(detail);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
   const handleContextDuplicate = async (page: WorkspacePage) => {
     try {
       const detail = await duplicatePage(page.id);
@@ -121,8 +137,13 @@ export function Sidebar() {
             </p>
           </CollapsibleSection>
 
-          <CollapsibleSection title="All pages" defaultOpen>
-            {rootError && (
+          <CollapsibleSection
+            title="All pages"
+            defaultOpen
+            onAdd={() => void handleCreateRootPage()}
+            addLabel="Add root page"
+          >
+            {rootError && !rootPages?.length && (
               <p className="px-2.5 py-1 text-xs text-red-700 dark:text-red-400">
                 {rootError}
               </p>
@@ -148,8 +169,12 @@ export function Sidebar() {
           onContextMenu={(event) =>
             openContextMenu(event, "trash", { label: "Trash" })
           }
-          className={cn(navButtonClassName(activeSegment === "trash"), "mx-3 mt-2 shrink-0")}
+          className={cn(
+            navButtonClassName(activeSegment === "trash"),
+            "mx-3 mt-2 flex shrink-0 items-center gap-2",
+          )}
         >
+          <PiTrash className="h-4 w-4 shrink-0" aria-hidden />
           Trash
         </button>
 
@@ -159,8 +184,12 @@ export function Sidebar() {
           onContextMenu={(event) =>
             openContextMenu(event, "settings", { label: "Settings" })
           }
-          className={cn(navButtonClassName(activeSegment === "settings"), "mx-3 mb-3 mt-2 shrink-0")}
+          className={cn(
+            navButtonClassName(activeSegment === "settings"),
+            "mx-3 mb-3 mt-2 flex shrink-0 items-center gap-2",
+          )}
         >
+          <PiGear className="h-4 w-4 shrink-0" aria-hidden />
           Settings
         </button>
       </aside>

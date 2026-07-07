@@ -64,6 +64,17 @@ export function useSavedWorkspaces() {
     [workspaces],
   );
 
+  const isBookmarked = useCallback(
+    (host: string, port: number, workspaceId: string) =>
+      workspaces.some(
+        (item) =>
+          item.serverHost === host &&
+          item.serverPort === port &&
+          item.workspaceId === workspaceId,
+      ),
+    [workspaces],
+  );
+
   return {
     workspaces,
     activeWorkspaceId,
@@ -73,5 +84,6 @@ export function useSavedWorkspaces() {
     removeWorkspace,
     setActive,
     findBySlug,
+    isBookmarked,
   };
 }

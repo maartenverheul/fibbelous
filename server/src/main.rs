@@ -8,7 +8,7 @@ mod rpc;
 mod workspace;
 
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use tracing::Level;
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
@@ -40,21 +40,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let workspaces_dir = ensure_workspaces_dir()?;
     tracing::info!(path = %log_path(&workspaces_dir), "workspaces directory ready");
 
-    let workspaces = Arc::new(discover_workspaces(&workspaces_dir)?);
-    tracing::info!(count = workspaces.len(), "workspaces discovered");
+    let workspaces = Arc::new(RwLock::new(discover_workspaces(&workspaces_dir)?));
+    tracing::info!(
+        count = workspaces.read().expect("workspaces lock poisoned").len(),
+        "workspaces discovered"
+    );
 
-    start_indexing(Arc::clone(&workspaces));
+    start_indexing(
+        &workspaces
+            .read()
+            .expect("workspaces lock poisoned"),
+    );
 
     let config = Config::from_env();
     let server_addr = config.server_addr().parse()?;
 
     tracing::info!(%server_addr, "starting http and websocket server");
 
-    let handle = run_server(server_addr, workspaces).await?;
+    let handle = run_server(
+        server_addr,
+        Arc::clone(&workspaces),
+        workspaces_dir.clone(),
+    )
+    .await?;
 
     tracing::info!(
         %server_addr,
-        "server ready (GET /workspaces, ws://{server_addr}/{{workspaceId}})"
+        "server ready (GET/POST /workspaces, ws://{server_addr}/{{workspaceId}})"
     );
 
     tokio::signal::ctrl_c().await?;

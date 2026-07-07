@@ -1,5 +1,6 @@
 import { useTabs } from "../../context/TabContext";
 import { cn } from "../../lib/utils";
+import { PiX } from "react-icons/pi";
 
 export function TabBar() {
   const { tabs, activeTabId, activateTab, closeTab } = useTabs();
@@ -43,7 +44,7 @@ export function TabBar() {
                 "hover:bg-stone-200/80 dark:hover:bg-stone-700",
               )}
             >
-              ×
+              <PiX className="h-3.5 w-3.5" aria-hidden />
             </button>
           </div>
         );

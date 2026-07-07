@@ -1,6 +1,9 @@
+use std::collections::hash_map::DefaultHasher;
 use std::fs;
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
@@ -47,6 +50,49 @@ impl std::fmt::Debug for Workspace {
             .field("settings", &self.settings)
             .field("index_status", &self.index_status())
             .finish_non_exhaustive()
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateWorkspaceRequest {
+    pub name: String,
+    pub slug: Option<String>,
+    pub icon: Option<String>,
+}
+
+#[derive(Debug)]
+pub enum CreateWorkspaceError {
+    Validation(String),
+    SlugConflict,
+    Io(std::io::Error),
+}
+
+impl From<std::io::Error> for CreateWorkspaceError {
+    fn from(error: std::io::Error) -> Self {
+        Self::Io(error)
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateWorkspaceRequest {
+    pub name: Option<String>,
+    pub slug: Option<String>,
+    pub icon: Option<String>,
+}
+
+#[derive(Debug)]
+pub enum UpdateWorkspaceError {
+    Validation(String),
+    SlugConflict,
+    NotFound,
+    Io(std::io::Error),
+}
+
+impl From<std::io::Error> for UpdateWorkspaceError {
+    fn from(error: std::io::Error) -> Self {
+        Self::Io(error)
     }
 }
 
@@ -148,16 +194,209 @@ impl Workspace {
     pub fn duplicate_page(&self, id: &str) -> Result<crate::cache::PageDetail, String> {
         self.with_cache_mut(|path, cache| duplicate_page(path, cache, id))
     }
+
+    fn persist_settings(&self) -> Result<(), std::io::Error> {
+        let contents = serde_json::to_string_pretty(&self.settings).map_err(|error| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("failed to serialize workspace.json: {error}"),
+            )
+        })?;
+        fs::write(self.path.join("workspace.json"), contents)
+    }
+
+    pub fn update_settings(
+        &mut self,
+        all_workspaces: &[Workspace],
+        input: UpdateWorkspaceRequest,
+    ) -> Result<WorkspaceInfo, UpdateWorkspaceError> {
+        if let Some(name) = input.name {
+            let name = name.trim().to_owned();
+            if name.is_empty() {
+                return Err(UpdateWorkspaceError::Validation(
+                    "name is required".to_owned(),
+                ));
+            }
+            self.settings.name = name;
+        }
+
+        if let Some(slug) = input.slug {
+            let slug = slugify(&slug);
+            if slug.is_empty() {
+                return Err(UpdateWorkspaceError::Validation(
+                    "slug is required".to_owned(),
+                ));
+            }
+            if all_workspaces
+                .iter()
+                .any(|workspace| workspace.id != self.id && workspace.settings.slug == slug)
+            {
+                return Err(UpdateWorkspaceError::SlugConflict);
+            }
+            self.settings.slug = slug;
+        }
+
+        if let Some(icon) = input.icon {
+            self.settings.icon = icon;
+        }
+
+        self.persist_settings()?;
+        Ok(self.info())
+    }
 }
 
 pub fn find_by_id<'a>(workspaces: &'a [Workspace], id: &str) -> Option<&'a Workspace> {
     workspaces.iter().find(|workspace| workspace.id == id)
 }
 
+pub fn find_by_id_mut<'a>(
+    workspaces: &'a mut [Workspace],
+    id: &str,
+) -> Option<&'a mut Workspace> {
+    workspaces
+        .iter_mut()
+        .find(|workspace| workspace.id == id)
+}
+
 pub fn find_by_slug<'a>(workspaces: &'a [Workspace], slug: &str) -> Option<&'a Workspace> {
     workspaces
         .iter()
         .find(|workspace| workspace.settings.slug == slug)
+}
+
+fn slugify(text: &str) -> String {
+    text.to_lowercase()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
+fn generate_workspace_id(salt: &str) -> String {
+    let mut hasher = DefaultHasher::new();
+    SystemTime::now().hash(&mut hasher);
+    salt.hash(&mut hasher);
+    format!("{:08x}", hasher.finish() as u32)
+}
+
+fn unique_workspace_id(workspaces_dir: &Path, salt: &str) -> String {
+    loop {
+        let id = generate_workspace_id(salt);
+        if !workspaces_dir.join(&id).exists() {
+            return id;
+        }
+    }
+}
+
+fn now_timestamp() -> String {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs().to_string())
+        .unwrap_or_else(|_| "0".to_string())
+}
+
+fn open_workspace(id: String, path: PathBuf) -> Result<Workspace, String> {
+    let workspace_json = path.join("workspace.json");
+    if !workspace_json.is_file() {
+        return Err("missing workspace.json".to_owned());
+    }
+
+    let contents = fs::read_to_string(&workspace_json).map_err(|error| error.to_string())?;
+    let settings =
+        serde_json::from_str::<WorkspaceSettings>(&contents).map_err(|error| error.to_string())?;
+
+    let runtime_dir = ensure_runtime_dir(&path).map_err(|error| error.to_string())?;
+    let cache = CacheDb::open(&runtime_dir).map_err(|error| error.to_string())?;
+
+    Ok(Workspace {
+        id,
+        path,
+        settings,
+        cache: Arc::new(Mutex::new(cache)),
+        index_status: Arc::new(Mutex::new(IndexStatus::Pending)),
+    })
+}
+
+pub fn create_workspace(
+    workspaces_dir: &Path,
+    existing: &[Workspace],
+    input: CreateWorkspaceRequest,
+) -> Result<Workspace, CreateWorkspaceError> {
+    let name = input.name.trim().to_owned();
+    if name.is_empty() {
+        return Err(CreateWorkspaceError::Validation(
+            "name is required".to_owned(),
+        ));
+    }
+
+    let slug = input
+        .slug
+        .map(|value| slugify(&value))
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| slugify(&name));
+
+    if slug.is_empty() {
+        return Err(CreateWorkspaceError::Validation(
+            "slug is required".to_owned(),
+        ));
+    }
+
+    if existing
+        .iter()
+        .any(|workspace| workspace.settings.slug == slug)
+    {
+        return Err(CreateWorkspaceError::SlugConflict);
+    }
+
+    let icon = input.icon.unwrap_or_default();
+    let id = unique_workspace_id(workspaces_dir, &format!("{name}:{slug}"));
+    let path = workspaces_dir.join(&id);
+
+    fs::create_dir_all(&path)?;
+    fs::create_dir_all(path.join("pages"))?;
+
+    let settings = WorkspaceSettings {
+        slug: slug.clone(),
+        name: name.clone(),
+        icon,
+        created_at: now_timestamp(),
+    };
+
+    let workspace_json = path.join("workspace.json");
+    let contents = serde_json::to_string_pretty(&settings).map_err(|error| {
+        CreateWorkspaceError::Validation(format!("failed to serialize workspace.json: {error}"))
+    })?;
+    fs::write(&workspace_json, contents)?;
+
+    let workspace = open_workspace(id, path).map_err(|error| {
+        CreateWorkspaceError::Validation(format!("failed to open created workspace: {error}"))
+    })?;
+
+    workspace
+        .create_page(CreatePageInput {
+            parent_path: "pages".to_owned(),
+            title: Some("Welcome".to_owned()),
+            slug: Some("welcome".to_owned()),
+            icon: None,
+            body: Some(
+                "# Welcome\n\nThis is your first page. Start writing here.".to_owned(),
+            ),
+        })
+        .map_err(|error| {
+            CreateWorkspaceError::Validation(format!("failed to seed example page: {error}"))
+        })?;
+
+    tracing::info!(
+        workspace = %workspace.id,
+        name = %workspace.settings.name,
+        slug = %workspace.settings.slug,
+        "created workspace"
+    );
+
+    Ok(workspace)
 }
 
 pub fn discover_workspaces(dir: &Path) -> std::io::Result<Vec<Workspace>> {
@@ -171,68 +410,38 @@ pub fn discover_workspaces(dir: &Path) -> std::io::Result<Vec<Workspace>> {
             continue;
         }
 
-        let workspace_json = path.join("workspace.json");
-        if !workspace_json.is_file() {
+        if !path.join("workspace.json").is_file() {
             tracing::debug!(path = %log_path(&path), "skipping entry without workspace.json");
             continue;
         }
 
         let id = entry.file_name().to_string_lossy().into_owned();
-        let contents = match fs::read_to_string(&workspace_json) {
-            Ok(contents) => contents,
-            Err(error) => {
-                tracing::warn!(workspace = %id, %error, "skipping workspace: failed to read workspace.json");
-                continue;
+        match open_workspace(id, path.clone()) {
+            Ok(workspace) => {
+                tracing::info!(
+                    workspace = %workspace.id,
+                    name = %workspace.settings.name,
+                    "discovered workspace"
+                );
+                workspaces.push(workspace);
             }
-        };
-
-        let settings = match serde_json::from_str::<WorkspaceSettings>(&contents) {
-            Ok(settings) => settings,
             Err(error) => {
-                tracing::warn!(workspace = %id, %error, "skipping workspace: invalid workspace.json");
-                continue;
+                tracing::warn!(path = %log_path(&path), %error, "skipping workspace");
             }
-        };
-
-        let runtime_dir = match ensure_runtime_dir(&path) {
-            Ok(runtime_dir) => runtime_dir,
-            Err(error) => {
-                tracing::warn!(workspace = %id, %error, "skipping workspace: failed to create .fibbelous directory");
-                continue;
-            }
-        };
-
-        let cache = match CacheDb::open(&runtime_dir) {
-            Ok(cache) => Arc::new(Mutex::new(cache)),
-            Err(error) => {
-                tracing::warn!(workspace = %id, %error, "skipping workspace: failed to open cache database");
-                continue;
-            }
-        };
-
-        tracing::info!(
-            workspace = %id,
-            name = %settings.name,
-            runtime_dir = %log_path(&runtime_dir),
-            "discovered workspace"
-        );
-
-        workspaces.push(Workspace {
-            id,
-            path,
-            settings,
-            cache,
-            index_status: Arc::new(Mutex::new(IndexStatus::Pending)),
-        });
+        }
     }
 
     workspaces.sort_by(|a, b| a.id.cmp(&b.id));
     Ok(workspaces)
 }
 
-pub fn start_indexing(workspaces: Arc<Vec<Workspace>>) {
-    for workspace in workspaces.iter().cloned() {
-        tokio::spawn(index_workspace(workspace));
+pub fn spawn_indexing(workspace: Workspace) {
+    tokio::spawn(index_workspace(workspace));
+}
+
+pub fn start_indexing(workspaces: &[Workspace]) {
+    for workspace in workspaces {
+        spawn_indexing(workspace.clone());
     }
 }
 

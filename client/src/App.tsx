@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AppShell } from "./components/layout/AppShell";
 import { TabProvider } from "./context/TabContext";
 import { WorkspaceProvider } from "./context/WorkspaceContext";
@@ -8,12 +8,20 @@ import { PageView } from "./pages/PageView";
 import { SettingsPage } from "./pages/SettingsPage";
 import { TrashPage } from "./pages/TrashPage";
 import { useSavedWorkspaces } from "./hooks/useSavedWorkspaces";
+import { shouldOpenWorkspaceManager } from "./lib/navigation";
 
 function RootRedirect() {
+  const location = useLocation();
   const { activeWorkspace } = useSavedWorkspaces();
+
+  if (shouldOpenWorkspaceManager(location.state)) {
+    return <LandingPage />;
+  }
+
   if (activeWorkspace) {
     return <Navigate to={`/${activeWorkspace.slug}`} replace />;
   }
+
   return <LandingPage />;
 }
 
