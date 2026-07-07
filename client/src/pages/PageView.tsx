@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { PageIconPicker } from "../components/page/PageIconPicker";
+import { EmojiIcon } from "../components/emoji/EmojiIcon";
 import { usePageSave } from "../context/PageSaveContext";
 import { useTabs } from "../context/TabContext";
 import { useWorkspacePages } from "../hooks/useWorkspacePages";
@@ -93,12 +94,14 @@ function PageEditor({
               <PageIconPicker icon={icon} onSelect={onIconChange} />
             ) : (
               icon && (
-                <span
-                  className="shrink-0 text-4xl leading-none sm:text-5xl"
-                  aria-hidden
-                >
-                  {icon}
-                </span>
+                <>
+                  <EmojiIcon icon={icon} size={56} className="shrink-0 sm:hidden" />
+                  <EmojiIcon
+                    icon={icon}
+                    size={64}
+                    className="hidden shrink-0 sm:inline-flex"
+                  />
+                </>
               )
             )}
             <input

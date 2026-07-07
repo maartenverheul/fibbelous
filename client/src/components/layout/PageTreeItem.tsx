@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { PiCaretRight, PiDotsThreeOutline, PiPlus } from "react-icons/pi";
+import { PiCaretRight, PiDotsThreeVertical, PiFileText, PiPlus } from "react-icons/pi";
+import { EmojiIcon } from "../emoji/EmojiIcon";
 import { useTabs, type TabTarget } from "../../context/TabContext";
 import { useWorkspacePages } from "../../hooks/useWorkspacePages";
 import { cn } from "../../lib/utils";
@@ -38,6 +39,15 @@ const actionButtonClassName = cn(
   "dark:hover:bg-stone-600 dark:hover:text-stone-100",
 );
 
+function DefaultPageIcon() {
+  return (
+    <PiFileText
+      className="h-[17px] w-[17px] text-stone-400 dark:text-stone-500"
+      aria-hidden
+    />
+  );
+}
+
 export function PageTreeItem({
   page,
   depth = 0,
@@ -75,8 +85,9 @@ export function PageTreeItem({
     })();
 
   const [open, setOpen] = useState(isAncestorOfActive);
-  const expanded = open || isAncestorOfActive;
   const [menuOpen, setMenuOpen] = useState(false);
+  const userCollapsedRef = useRef(false);
+  const prevActiveSegmentRef = useRef(activeSegment);
 
   const openPage = (detail: WorkspacePage) => {
     const newSegment = buildPageSegment(detail, findPageById);
@@ -90,6 +101,7 @@ export function PageTreeItem({
   const handleCreateSubpage = async () => {
     try {
       const detail = await createPage(page);
+      userCollapsedRef.current = false;
       setOpen(true);
       openPage(detail);
     } catch (error) {
@@ -121,10 +133,21 @@ export function PageTreeItem({
   }, [page.hasChildren, childParentPath, ensureChildren]);
 
   useEffect(() => {
-    if (isAncestorOfActive) {
+    if (!isAncestorOfActive) {
+      userCollapsedRef.current = false;
+      return;
+    }
+
+    const navigated = activeSegment !== prevActiveSegmentRef.current;
+    prevActiveSegmentRef.current = activeSegment;
+
+    if (navigated) {
+      userCollapsedRef.current = false;
+      setOpen(true);
+    } else if (!userCollapsedRef.current) {
       setOpen(true);
     }
-  }, [isAncestorOfActive]);
+  }, [activeSegment, isAncestorOfActive]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -153,7 +176,11 @@ export function PageTreeItem({
           type="button"
           onClick={(event) => {
             if ((event.target as HTMLElement).closest("[data-expand-toggle]")) {
-              setOpen((value) => !value);
+              setOpen((value) => {
+                const next = !value;
+                userCollapsedRef.current = !next;
+                return next;
+              });
               return;
             }
             if ((event.target as HTMLElement).closest("[data-page-menu]")) {
@@ -181,7 +208,13 @@ export function PageTreeItem({
           <span className="relative flex h-6 w-6 shrink-0 items-center justify-center text-sm">
             {page.hasChildren ? (
               <>
-                <span className="group-hover:opacity-0">{page.icon ?? ""}</span>
+                <span className="group-hover:opacity-0">
+                  {page.icon ? (
+                    <EmojiIcon icon={page.icon} size={17} />
+                  ) : (
+                    <DefaultPageIcon />
+                  )}
+                </span>
                 <span
                   data-expand-toggle
                   aria-hidden
@@ -194,14 +227,16 @@ export function PageTreeItem({
                   <PiCaretRight
                     className={cn(
                       "h-3 w-3 transition-transform",
-                      expanded && "rotate-90",
+                      open && "rotate-90",
                     )}
                     aria-hidden
                   />
                 </span>
               </>
+            ) : page.icon ? (
+              <EmojiIcon icon={page.icon} size={17} />
             ) : (
-              page.icon ?? ""
+              <DefaultPageIcon />
             )}
           </span>
           <span className="min-w-0 flex-1 truncate">{label}</span>
@@ -212,16 +247,6 @@ export function PageTreeItem({
             )}
           >
             <span
-              data-page-menu
-              role="button"
-              tabIndex={-1}
-              aria-label="Page options"
-              aria-expanded={menuOpen}
-              className={actionButtonClassName}
-            >
-              <PiDotsThreeOutline className="h-4 w-4" aria-hidden />
-            </span>
-            <span
               data-add-child
               role="button"
               tabIndex={-1}
@@ -229,6 +254,16 @@ export function PageTreeItem({
               className={actionButtonClassName}
             >
               <PiPlus className="h-4 w-4" aria-hidden />
+            </span>
+            <span
+              data-page-menu
+              role="button"
+              tabIndex={-1}
+              aria-label="Page options"
+              aria-expanded={menuOpen}
+              className={actionButtonClassName}
+            >
+              <PiDotsThreeVertical className="h-4 w-4" aria-hidden />
             </span>
           </span>
         </button>
@@ -250,7 +285,7 @@ export function PageTreeItem({
           </div>
         )}
       </div>
-      {expanded && children && children.length > 0 && (
+      {open && children && children.length > 0 && (
         <div className="mt-0.5 flex flex-col gap-0.5">
           {children.map((child) => (
             <PageTreeItem

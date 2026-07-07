@@ -3,6 +3,7 @@ import { useTabs } from "../context/TabContext";
 import { useWorkspacePages } from "../hooks/useWorkspacePages";
 import { cn } from "../lib/utils";
 import { buildTrashedPageSegment, type TrashedPage } from "../types/page";
+import { EmojiIcon } from "../components/emoji/EmojiIcon";
 
 function trashedPageLabel(page: TrashedPage) {
   return page.title ?? page.slug ?? page.id;
@@ -127,7 +128,7 @@ export function TrashPage() {
             >
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  {page.icon && <span>{page.icon}</span>}
+                  {page.icon && <EmojiIcon icon={page.icon} size={16} />}
                   <span className="truncate font-medium text-stone-900 dark:text-stone-50">
                     {trashedPageLabel(page)}
                   </span>

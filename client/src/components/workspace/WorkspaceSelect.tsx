@@ -1,6 +1,7 @@
 import * as Select from "@radix-ui/react-select";
 import { useState } from "react";
 import { PiCaretDown, PiGear, PiPlus } from "react-icons/pi";
+import { EmojiIcon } from "../emoji/EmojiIcon";
 import { useWorkspace } from "../../context/WorkspaceContext";
 import { cn } from "../../lib/utils";
 import {
@@ -48,9 +49,16 @@ export function WorkspaceSelect() {
             aria-label="Select workspace"
           >
             <Select.Value placeholder="Select workspace" className="truncate">
-              {activeWorkspace
-                ? `${activeWorkspace.icon ?? ""} ${activeWorkspace.label}`.trim()
-                : "Select workspace"}
+              {activeWorkspace ? (
+                <span className="flex min-w-0 items-center gap-2 truncate">
+                  {activeWorkspace.icon && (
+                    <EmojiIcon icon={activeWorkspace.icon} size={18} />
+                  )}
+                  <span className="truncate">{activeWorkspace.label}</span>
+                </span>
+              ) : (
+                "Select workspace"
+              )}
             </Select.Value>
             <span
               role="button"
@@ -100,9 +108,13 @@ export function WorkspaceSelect() {
                       "data-[highlighted]:bg-stone-200/80 dark:data-[highlighted]:bg-stone-800",
                     )}
                   >
-                    <Select.ItemText>
-                      {workspace.icon ? `${workspace.icon} ` : ""}
-                      {workspace.label}
+                    <Select.ItemText asChild>
+                      <span className="flex items-center gap-2">
+                        {workspace.icon && (
+                          <EmojiIcon icon={workspace.icon} size={18} />
+                        )}
+                        {workspace.label}
+                      </span>
                     </Select.ItemText>
                   </Select.Item>
                 ))}

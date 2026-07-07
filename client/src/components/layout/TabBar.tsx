@@ -1,6 +1,7 @@
 import { useTabs } from "../../context/TabContext";
 import { cn } from "../../lib/utils";
 import { PiX } from "react-icons/pi";
+import { EmojiIcon } from "../emoji/EmojiIcon";
 
 export function TabBar() {
   const { tabs, activeTabId, activateTab, closeTab } = useTabs();
@@ -31,7 +32,7 @@ export function TabBar() {
               onClick={() => activateTab(tab.id)}
               className="flex min-w-0 items-center gap-1 truncate"
             >
-              {tab.icon && <span className="shrink-0">{tab.icon}</span>}
+              {tab.icon && <EmojiIcon icon={tab.icon} size={14} />}
               <span className="truncate">{tab.label}</span>
             </button>
             <button

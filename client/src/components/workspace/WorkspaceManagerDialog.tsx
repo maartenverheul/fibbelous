@@ -1,6 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useEffect, useRef, useState } from "react";
 import { PiFolder, PiX } from "react-icons/pi";
+import { EmojiIcon } from "../emoji/EmojiIcon";
 import { useNavigate } from "react-router-dom";
 import useLocalStorageState from "use-local-storage-state";
 import { useSavedWorkspaces } from "../../hooks/useSavedWorkspaces";
@@ -54,7 +55,7 @@ const buttonSecondaryClassName = cn(
 );
 
 function WorkspaceIcon({ icon }: { icon?: string }) {
-  if (icon) return <>{icon}</>;
+  if (icon) return <EmojiIcon icon={icon} size={20} />;
   return <PiFolder className="h-5 w-5" aria-hidden />;
 }
 

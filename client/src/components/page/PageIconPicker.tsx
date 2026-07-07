@@ -1,6 +1,7 @@
 import * as Popover from "@radix-ui/react-popover";
 import EmojiPicker, { Theme } from "emoji-picker-react";
 import { useState } from "react";
+import { EmojiIcon } from "../emoji/EmojiIcon";
 import { cn } from "../../lib/utils";
 
 type PageIconPickerProps = {
@@ -19,11 +20,12 @@ export function PageIconPicker({ icon, onSelect }: PageIconPickerProps) {
             type="button"
             aria-label="Change page icon"
             className={cn(
-              "flex size-14 shrink-0 items-center justify-center rounded-md text-4xl leading-none sm:size-16 sm:text-5xl",
+              "flex size-14 shrink-0 items-center justify-center rounded-md leading-none sm:size-16",
               "hover:bg-stone-100 dark:hover:bg-stone-800",
             )}
           >
-            {icon}
+            <EmojiIcon icon={icon} size={56} className="sm:hidden" />
+            <EmojiIcon icon={icon} size={64} className="hidden sm:inline-flex" />
           </button>
         ) : (
           <button

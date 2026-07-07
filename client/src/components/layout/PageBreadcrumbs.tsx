@@ -12,6 +12,7 @@ import {
   type WorkspacePage,
 } from "../../types/page";
 import { PiCheck, PiCircleNotch, PiWarningCircle } from "react-icons/pi";
+import { EmojiIcon } from "../emoji/EmojiIcon";
 
 import type { PageSaveStatus } from "../../context/PageSaveContext";
 
@@ -78,11 +79,7 @@ function CrumbList({
             )}
             {isLast ? (
               <span className="flex min-w-0 items-center gap-1 truncate font-medium text-stone-800 dark:text-stone-100">
-                {crumb.icon && (
-                  <span className="shrink-0 text-sm leading-none" aria-hidden>
-                    {crumb.icon}
-                  </span>
-                )}
+                {crumb.icon && <EmojiIcon icon={crumb.icon} size={14} />}
                 <span className="truncate">{label}</span>
               </span>
             ) : (
@@ -100,11 +97,7 @@ function CrumbList({
                   "dark:hover:text-stone-50",
                 )}
               >
-                {crumb.icon && (
-                  <span className="shrink-0 text-sm leading-none" aria-hidden>
-                    {crumb.icon}
-                  </span>
-                )}
+                {crumb.icon && <EmojiIcon icon={crumb.icon} size={14} />}
                 <span className="truncate">{label}</span>
               </button>
             )}
