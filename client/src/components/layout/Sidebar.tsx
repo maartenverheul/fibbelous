@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { PiGear, PiTrash } from "react-icons/pi";
+import { PiGear, PiTrash, PiX } from "react-icons/pi";
+import { useSidebar } from "../../context/SidebarContext";
 import { useTabs, type TabTarget } from "../../context/TabContext";
 import { useWorkspacePages } from "../../hooks/useWorkspacePages";
 import { cn } from "../../lib/utils";
@@ -27,6 +28,7 @@ const navButtonClassName = (active: boolean) =>
   );
 
 export function Sidebar() {
+  const { isMobile, isOpen, close } = useSidebar();
   const { activeSegment, navigateInTab, isTabOpen } = useTabs();
   const {
     rootPages,
@@ -124,13 +126,34 @@ export function Sidebar() {
   return (
     <>
       <aside
+        aria-hidden={isMobile && !isOpen}
         className={cn(
-          "flex h-full w-60 shrink-0 flex-col border-r border-[var(--app-border)] bg-[var(--app-panel)]",
+          "flex h-full shrink-0 flex-col border-r border-[var(--app-border)] bg-[var(--app-panel)]",
+          isMobile ? "w-full" : "w-60",
+          isMobile &&
+            "fixed inset-0 z-40 transition-transform duration-200 ease-out",
+          isMobile && !isOpen && "-translate-x-full pointer-events-none",
+          isMobile && isOpen && "translate-x-0",
         )}
       >
+        {isMobile && (
+          <div className="flex shrink-0 justify-end border-b border-[var(--app-border)] px-2 py-1">
+            <button
+              type="button"
+              onClick={close}
+              aria-label="Close sidebar"
+              className={cn(
+                "flex h-9 w-9 items-center justify-center rounded-md text-stone-700",
+                "hover:bg-stone-200/80 dark:text-stone-300 dark:hover:bg-stone-800",
+              )}
+            >
+              <PiX className="h-5 w-5" aria-hidden />
+            </button>
+          </div>
+        )}
         <WorkspaceSelect />
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 pt-3">
+        <div className="sidebar-scroll min-h-0 flex-1 overflow-y-auto px-3 pt-3">
           <CollapsibleSection title="Favorites" defaultOpen>
             <p className="px-2.5 py-1 text-xs text-stone-600 dark:text-stone-400">
               Coming soon
