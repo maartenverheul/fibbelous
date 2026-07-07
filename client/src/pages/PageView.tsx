@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
+import { PageIconPicker } from "../components/page/PageIconPicker";
 import { usePageSave } from "../context/PageSaveContext";
 import { useTabs } from "../context/TabContext";
 import { useWorkspacePages } from "../hooks/useWorkspacePages";
@@ -27,6 +28,7 @@ type PageEditorProps = {
   showTrashBanner: boolean;
   onTitleChange: (value: string) => void;
   onBodyChange: (value: string) => void;
+  onIconChange?: (icon: string) => void;
   onRestore: () => void;
 };
 
@@ -39,6 +41,7 @@ function PageEditor({
   showTrashBanner,
   onTitleChange,
   onBodyChange,
+  onIconChange,
   onRestore,
 }: PageEditorProps) {
   return (
@@ -76,16 +79,27 @@ function PageEditor({
         </div>
       )}
 
-      <header className="relative z-10 h-20 shrink-0">
+      <header
+        className={cn("relative z-10 shrink-0", icon ? "h-20" : "h-24")}
+      >
         <div className="absolute inset-x-0 bottom-0 translate-y-1/2">
-          <div className="mx-auto flex w-full max-w-3xl items-center gap-3 bg-(--app-surface) px-4 py-2">
-            {icon && (
-              <span
-                className="shrink-0 text-4xl leading-none sm:text-5xl"
-                aria-hidden
-              >
-                {icon}
-              </span>
+          <div
+            className={cn(
+              "mx-auto w-full max-w-3xl bg-(--app-surface) px-4 py-2",
+              icon ? "flex items-center gap-3" : "flex flex-col gap-1",
+            )}
+          >
+            {onIconChange ? (
+              <PageIconPicker icon={icon} onSelect={onIconChange} />
+            ) : (
+              icon && (
+                <span
+                  className="shrink-0 text-4xl leading-none sm:text-5xl"
+                  aria-hidden
+                >
+                  {icon}
+                </span>
+              )
             )}
             <input
               type="text"
@@ -94,15 +108,21 @@ function PageEditor({
               readOnly={readOnly}
               aria-label="Page title"
               className={cn(
-                "min-w-0 flex-1 border-none bg-transparent p-0 text-3xl font-semibold text-stone-900 outline-none",
+                "min-w-0 w-full border-none bg-transparent p-0 text-3xl font-semibold text-stone-900 outline-none",
                 "focus:ring-0 sm:text-4xl dark:text-stone-50",
+                icon && "flex-1",
                 readOnly && "cursor-default",
               )}
             />
           </div>
         </div>
       </header>
-      <div className="mx-auto w-full max-w-3xl flex-1 px-4 pt-20 pb-4">
+      <div
+        className={cn(
+          "mx-auto w-full max-w-3xl flex-1 px-4 pb-4",
+          icon ? "pt-20" : "pt-24",
+        )}
+      >
         <textarea
           value={body}
           onChange={(event) => onBodyChange(event.target.value)}
@@ -433,6 +453,20 @@ export function PageView() {
     applyDetail,
   ]);
 
+  const handleIconChange = useCallback(
+    async (icon: string) => {
+      if (isTrashed || !page) return;
+
+      try {
+        const updated = await updatePage(page.id, { icon });
+        applyDetail(updated, page.id);
+      } catch (error) {
+        console.error(error);
+      }
+    },
+    [isTrashed, page, updatePage, applyDetail],
+  );
+
   const handleRestore = async () => {
     if (!trashedDetail) return;
 
@@ -487,6 +521,7 @@ export function PageView() {
       showTrashBanner={isTrashed}
       onTitleChange={(value) => setDraft(value, body)}
       onBodyChange={(value) => setDraft(title, value)}
+      onIconChange={isTrashed ? undefined : (value) => void handleIconChange(value)}
       onRestore={() => void handleRestore()}
     />
   );
