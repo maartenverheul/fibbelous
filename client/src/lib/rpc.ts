@@ -1,3 +1,5 @@
+import { invoke } from "@tauri-apps/api/core";
+
 type JsonRpcResponse<T> = {
   jsonrpc: "2.0";
   id: string | number;
@@ -97,6 +99,29 @@ export function createRpcClient(wsUrl: string): RpcClient {
     },
     isOpen() {
       return socket.readyState === WebSocket.OPEN;
+    },
+  };
+}
+
+export function createLocalRpcClient(workspaceId: string): RpcClient {
+  let open = true;
+
+  return {
+    async call<T>(method: string, params?: unknown): Promise<T> {
+      if (!open) {
+        throw new RpcConnectionClosedError();
+      }
+      return invoke<T>("local_workspace_rpc", {
+        workspaceId,
+        method,
+        params: params ?? null,
+      });
+    },
+    close() {
+      open = false;
+    },
+    isOpen() {
+      return open;
     },
   };
 }

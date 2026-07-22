@@ -14,8 +14,9 @@ use tower::service_fn;
 
 use crate::rpc::{WorkspaceRpcState, build_workspace_module};
 use crate::workspace::{
-    CreateWorkspaceError, CreateWorkspaceRequest, UpdateWorkspaceError, UpdateWorkspaceRequest,
-    Workspace, create_workspace, find_by_id, find_by_id_mut, spawn_indexing,
+    CreateWorkspaceError, CreateWorkspaceRequest, OpenWorkspaceError, OpenWorkspaceOutcome,
+    OpenWorkspaceRequest, UpdateWorkspaceError, UpdateWorkspaceRequest, Workspace,
+    create_workspace, find_by_id, find_by_id_mut, open_workspace_at_path, spawn_indexing,
 };
 
 type RpcServiceBuilder = jsonrpsee::server::TowerServiceBuilder<
@@ -89,6 +90,12 @@ pub async fn run_server(
                         if method == Method::POST && path == "/workspaces" {
                             return Ok::<_, Infallible>(
                                 handle_create_workspace(req, &app_state).await,
+                            );
+                        }
+
+                        if method == Method::POST && path == "/workspaces/open" {
+                            return Ok::<_, Infallible>(
+                                handle_open_workspace(req, &app_state).await,
                             );
                         }
 
@@ -246,6 +253,70 @@ async fn handle_create_workspace(
                 json_error(
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "failed to create workspace",
+                )
+            }
+        },
+    )
+}
+
+async fn handle_open_workspace(req: Request<Incoming>, state: &AppState) -> RpcResponse {
+    let origin = req.headers().get(hyper::header::ORIGIN).cloned();
+    let body = match req.into_body().collect().await {
+        Ok(collected) => collected.to_bytes(),
+        Err(error) => {
+            tracing::warn!(%error, "failed to read open workspace request body");
+            return with_cors_origin(
+                origin,
+                json_error(StatusCode::BAD_REQUEST, "invalid request body"),
+            );
+        }
+    };
+
+    let input = match serde_json::from_slice::<OpenWorkspaceRequest>(&body) {
+        Ok(input) => input,
+        Err(error) => {
+            return with_cors_origin(
+                origin,
+                json_error(StatusCode::BAD_REQUEST, error.to_string()),
+            );
+        }
+    };
+
+    let opened = {
+        let existing = state.workspaces.read().expect("workspaces lock poisoned");
+        open_workspace_at_path(&existing, &input.path)
+    };
+
+    with_cors_origin(
+        origin,
+        match opened {
+            Ok(OpenWorkspaceOutcome::AlreadyLoaded(info)) => {
+                json_response(StatusCode::OK, info)
+            }
+            Ok(OpenWorkspaceOutcome::Opened(workspace)) => {
+                let info = workspace.info();
+                state
+                    .workspaces
+                    .write()
+                    .expect("workspaces lock poisoned")
+                    .push(workspace.clone());
+                spawn_indexing(workspace);
+                json_response(StatusCode::CREATED, info)
+            }
+            Err(OpenWorkspaceError::IdConflict) => {
+                json_error(StatusCode::CONFLICT, "workspace id already exists")
+            }
+            Err(OpenWorkspaceError::SlugConflict) => {
+                json_error(StatusCode::CONFLICT, "slug already exists")
+            }
+            Err(OpenWorkspaceError::Validation(message)) => {
+                json_error(StatusCode::BAD_REQUEST, message)
+            }
+            Err(OpenWorkspaceError::Io(error)) => {
+                tracing::warn!(%error, "failed to open workspace from path");
+                json_error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "failed to open workspace",
                 )
             }
         },

@@ -5,6 +5,7 @@ use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use chrono::Utc;
 use serde::Serialize;
 
 use crate::cache::{CacheDb, PageDetail, children_dir};
@@ -82,18 +83,52 @@ fn file_stem_slug(slug: &str) -> String {
     }
 }
 
-fn format_page_content(
-    id: &str,
-    slug: &str,
-    title: &str,
-    icon: Option<&str>,
-    body: &str,
-) -> String {
-    let mut content = format!("---\nid: {id}\nslug: {slug}\ntitle: {title}\n");
-    if let Some(icon) = icon.filter(|value| !value.is_empty()) {
-        content.push_str(&format!("icon: {icon}\n"));
+#[derive(Debug, Clone)]
+struct PageFrontmatter {
+    id: String,
+    slug: String,
+    title: String,
+    icon: Option<String>,
+    created: String,
+    edited: String,
+}
+
+impl PageFrontmatter {
+    fn to_yaml(&self) -> String {
+        let mut yaml = format!(
+            "---\nid: {}\nslug: {}\ntitle: {}\n",
+            self.id, self.slug, self.title
+        );
+        if let Some(icon) = self.icon.as_deref().filter(|value| !value.is_empty()) {
+            yaml.push_str(&format!("icon: {icon}\n"));
+        }
+        yaml.push_str(&format!(
+            "created: \"{}\"\nedited: \"{}\"\n---\n",
+            self.created, self.edited
+        ));
+        yaml
     }
-    content.push_str("---\n\n");
+}
+
+fn now_iso() -> String {
+    // Floor to the current minute (:00.000Z).
+    Utc::now()
+        .format("%Y-%m-%dT%H:%M:00.000Z")
+        .to_string()
+}
+
+fn unquote_yaml(value: &str) -> String {
+    let value = value.trim();
+    if let Some(inner) = value.strip_prefix('"').and_then(|v| v.strip_suffix('"')) {
+        inner.to_owned()
+    } else {
+        value.to_owned()
+    }
+}
+
+fn format_page_content(frontmatter: &PageFrontmatter, body: &str) -> String {
+    let mut content = frontmatter.to_yaml();
+    content.push('\n');
     content.push_str(body);
     if !body.is_empty() && !body.ends_with('\n') {
         content.push('\n');
@@ -139,7 +174,18 @@ pub fn create_page(
     fs::create_dir_all(&parent_dir).map_err(|error| error.to_string())?;
 
     let file_path = parent_dir.join(format!("{id}-{file_slug}.mdx"));
-    let content = format_page_content(&id, &file_slug, &title, icon.as_deref(), &body);
+    let now = now_iso();
+    let content = format_page_content(
+        &PageFrontmatter {
+            id: id.clone(),
+            slug: file_slug,
+            title,
+            icon,
+            created: now.clone(),
+            edited: now,
+        },
+        &body,
+    );
     fs::write(&file_path, content).map_err(|error| error.to_string())?;
 
     sync(workspace_path, cache)?;
@@ -188,7 +234,26 @@ pub fn update_page(
         .ok_or_else(|| "invalid page path".to_string())?;
     let new_path = parent_dir.join(format!("{}-{}.mdx", input.id, file_slug));
 
-    let content = format_page_content(&input.id, &file_slug, &title, icon.as_deref(), &body);
+    let existing_content = fs::read_to_string(&old_path).unwrap_or_default();
+    let existing_frontmatter = parse_frontmatter(&existing_content);
+    let created = existing_frontmatter
+        .get("created")
+        .map(|value| unquote_yaml(value))
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(now_iso);
+    let edited = now_iso();
+
+    let content = format_page_content(
+        &PageFrontmatter {
+            id: input.id.clone(),
+            slug: file_slug,
+            title,
+            icon,
+            created,
+            edited,
+        },
+        &body,
+    );
     fs::write(&new_path, &content).map_err(|error| error.to_string())?;
 
     if new_path != old_path && old_path.is_file() {

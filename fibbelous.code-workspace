@@ -1,10 +1,6 @@
 {
   "folders": [
     {
-      "name": "Notion Exporter",
-      "path": ".notion",
-    },
-    {
       "name": "Client",
       "path": "client",
     },

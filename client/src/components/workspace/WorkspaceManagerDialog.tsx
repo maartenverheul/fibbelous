@@ -11,12 +11,19 @@ import {
   fetchWorkspaces,
   isWorkspaceNotFoundError,
   updateWorkspaceSettings,
+  verifyLocalWorkspaceConnection,
   verifySavedWorkspaceConnection,
 } from "../../lib/api";
-import { cn } from "../../lib/utils";
+import { cn, formatUnknownError } from "../../lib/utils";
+import { isTauri, openLocalWorkspace, pickWorkspaceFolder, updateLocalWorkspaceSettings } from "../../lib/tauri";
 import { workspaceNoticeMessage, type WorkspaceNotice } from "../../lib/navigation";
 import { slugifyPageTitle } from "../../types/page";
-import type { IndexStatus, SavedWorkspace, WorkspaceInfo } from "../../types/workspace";
+import {
+  isLocalWorkspace,
+  type IndexStatus,
+  type SavedWorkspace,
+  type WorkspaceInfo,
+} from "../../types/workspace";
 
 export type WorkspaceManagerTab = "browse" | "settings";
 
@@ -180,8 +187,11 @@ export function WorkspaceManagerDialog({
   const [openingWorkspaceId, setOpeningWorkspaceId] = useState<string | null>(
     null,
   );
+  const [openingFolder, setOpeningFolder] = useState(false);
+  const [folderError, setFolderError] = useState<string | null>(null);
 
   const activeNotice = localNotice ?? notice;
+  const showUseFolder = isTauri();
 
   const settingsWorkspace =
     workspaces.find((workspace) => workspace.id === settingsWorkspaceId) ??
@@ -227,6 +237,7 @@ export function WorkspaceManagerDialog({
     setCreateSlugEdited(false);
     setCreateError(null);
     setSettingsError(null);
+    setFolderError(null);
     setLocalNotice(notice ?? null);
   }, [
     open,
@@ -310,7 +321,7 @@ export function WorkspaceManagerDialog({
       } else {
         const saved: SavedWorkspace = {
           id: crypto.randomUUID(),
-          label: workspace.name,
+          label: workspace.title,
           serverHost,
           serverPort: parsedPort,
           workspaceId: workspace.id,
@@ -324,7 +335,7 @@ export function WorkspaceManagerDialog({
 
       onOpenChange(false);
     } catch (error) {
-      handleOpenFailure(existing?.label ?? workspace.name, error, existing);
+      handleOpenFailure(existing?.label ?? workspace.title, error, existing);
       if (isWorkspaceNotFoundError(error)) {
         setRemoteWorkspaces((prev) =>
           prev.filter((item) => item.id !== workspace.id),
@@ -340,11 +351,18 @@ export function WorkspaceManagerDialog({
     setOpeningWorkspaceId(workspace.id);
 
     try {
-      await verifySavedWorkspaceConnection(
-        workspace.serverHost,
-        workspace.serverPort,
-        workspace.workspaceId,
-      );
+      if (isLocalWorkspace(workspace) && workspace.localPath) {
+        await verifyLocalWorkspaceConnection(
+          workspace.localPath,
+          workspace.workspaceId,
+        );
+      } else {
+        await verifySavedWorkspaceConnection(
+          workspace.serverHost,
+          workspace.serverPort,
+          workspace.workspaceId,
+        );
+      }
       setActive(workspace.id);
       navigate(`/${workspace.slug}`);
       onOpenChange(false);
@@ -381,6 +399,56 @@ export function WorkspaceManagerDialog({
     }
   };
 
+  const openLocalFolderWorkspace = async (
+    path: string,
+    info: WorkspaceInfo,
+  ) => {
+    const existing = workspaces.find(
+      (item) => item.localPath === path || item.workspaceId === info.id,
+    );
+
+    if (existing) {
+      setActive(existing.id);
+      navigate(`/${existing.slug}`);
+    } else {
+      const saved: SavedWorkspace = {
+        id: crypto.randomUUID(),
+        label: info.title,
+        serverHost: "local",
+        serverPort: 0,
+        workspaceId: info.id,
+        slug: info.slug,
+        icon: info.icon,
+        localPath: path,
+      };
+      addWorkspace(saved);
+      setActive(saved.id);
+      navigate(`/${saved.slug}`);
+    }
+
+    onOpenChange(false);
+  };
+
+  const handleUseFolder = async () => {
+    if (!showUseFolder) return;
+
+    setFolderError(null);
+    setLocalNotice(null);
+    setOpeningFolder(true);
+
+    try {
+      const path = await pickWorkspaceFolder();
+      if (!path) return;
+
+      const workspace = await openLocalWorkspace(path);
+      await openLocalFolderWorkspace(path, workspace);
+    } catch (error) {
+      setFolderError(formatUnknownError(error, "Failed to open folder"));
+    } finally {
+      setOpeningFolder(false);
+    }
+  };
+
   const handleCreate = async () => {
     setCreateError(null);
 
@@ -389,16 +457,16 @@ export function WorkspaceManagerDialog({
       return;
     }
 
-    const name = createName.trim();
-    if (!name) {
-      setCreateError("Name is required");
+    const title = createName.trim();
+    if (!title) {
+      setCreateError("Title is required");
       return;
     }
 
     setCreating(true);
     try {
       const workspace = await createWorkspace(serverHost, parsedPort, {
-        name,
+        title,
         slug: createSlug.trim() || undefined,
         icon: createIcon.trim() || undefined,
       });
@@ -419,17 +487,10 @@ export function WorkspaceManagerDialog({
     setSettingsError(null);
     setSettingsSaving(true);
 
-    const port = Number(settingsPort);
-    if (!Number.isFinite(port) || port <= 0) {
-      setSettingsError("Enter a valid port number");
-      setSettingsSaving(false);
-      return;
-    }
-
-    const name = settingsName.trim();
+    const title = settingsName.trim();
     const slug = settingsSlug.trim();
-    if (!name) {
-      setSettingsError("Workspace name is required");
+    if (!title) {
+      setSettingsError("Workspace title is required");
       setSettingsSaving(false);
       return;
     }
@@ -440,18 +501,52 @@ export function WorkspaceManagerDialog({
     }
 
     try {
+      if (isLocalWorkspace(settingsWorkspace)) {
+        if (settingsWorkspace.localPath) {
+          await openLocalWorkspace(settingsWorkspace.localPath);
+        }
+        const updated = await updateLocalWorkspaceSettings(
+          settingsWorkspace.workspaceId,
+          {
+            title,
+            slug,
+            icon: settingsIcon.trim(),
+          },
+        );
+        const label = settingsLabel.trim() || updated.title;
+        updateWorkspace(settingsWorkspace.id, {
+          label,
+          slug: updated.slug,
+          icon: updated.icon,
+        });
+
+        if (
+          activeWorkspaceId === settingsWorkspace.id &&
+          updated.slug !== settingsWorkspace.slug
+        ) {
+          navigate(`/${updated.slug}`, { replace: true });
+        }
+        return;
+      }
+
+      const port = Number(settingsPort);
+      if (!Number.isFinite(port) || port <= 0) {
+        setSettingsError("Enter a valid port number");
+        return;
+      }
+
       const updated = await updateWorkspaceSettings(
         settingsHost.trim() || settingsWorkspace.serverHost,
         port,
         settingsWorkspace.workspaceId,
         {
-          name,
+          title,
           slug,
           icon: settingsIcon.trim(),
         },
       );
 
-      const label = settingsLabel.trim() || updated.name;
+      const label = settingsLabel.trim() || updated.title;
       updateWorkspace(settingsWorkspace.id, {
         label,
         slug: updated.slug,
@@ -593,6 +688,26 @@ export function WorkspaceManagerDialog({
                     {connectionError}
                   </p>
                 )}
+                {showUseFolder && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[var(--app-border)] pt-3">
+                    <button
+                      type="button"
+                      onClick={() => void handleUseFolder()}
+                      disabled={openingFolder}
+                      className={buttonSecondaryClassName}
+                    >
+                      {openingFolder ? "Opening..." : "Use folder"}
+                    </button>
+                    <p className="text-xs text-stone-600 dark:text-stone-400">
+                      Open or create a workspace from a local folder (no server).
+                    </p>
+                  </div>
+                )}
+                {folderError && (
+                  <p className="mt-2 text-sm text-red-600 dark:text-red-400">
+                    {folderError}
+                  </p>
+                )}
               </section>
 
               {connectionStatus === "connected" && (
@@ -624,7 +739,7 @@ export function WorkspaceManagerDialog({
                             maxLength={4}
                           />
                         </Field>
-                        <Field label="Name">
+                        <Field label="Title">
                           <input
                             value={createName}
                             onChange={(event) => {
@@ -681,7 +796,7 @@ export function WorkspaceManagerDialog({
                             <WorkspaceIcon icon={workspace.icon} />
                           </span>
                           <div className="min-w-0 flex-1">
-                            <p className="truncate font-medium">{workspace.name}</p>
+                            <p className="truncate font-medium">{workspace.title}</p>
                             <p className="truncate text-xs text-stone-600 dark:text-stone-400">
                               /{workspace.slug}
                               <span
@@ -733,8 +848,9 @@ export function WorkspaceManagerDialog({
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-medium">{workspace.label}</p>
                           <p className="truncate text-xs text-stone-600 dark:text-stone-400">
-                            {workspace.serverHost}:{workspace.serverPort} · /
-                            {workspace.slug}
+                            {isLocalWorkspace(workspace)
+                              ? workspace.localPath
+                              : `${workspace.serverHost}:${workspace.serverPort} · /${workspace.slug}`}
                           </p>
                         </div>
                         <div className="flex shrink-0 gap-2">
@@ -804,7 +920,7 @@ export function WorkspaceManagerDialog({
                             maxLength={4}
                           />
                         </Field>
-                        <Field label="Workspace name">
+                        <Field label="Title">
                           <input
                             value={settingsName}
                             onChange={(event) =>
@@ -838,29 +954,39 @@ export function WorkspaceManagerDialog({
                         />
                       </Field>
 
-                      <div className="grid grid-cols-[1fr_5rem] gap-2">
-                        <Field label="Server host">
+                      {isLocalWorkspace(settingsWorkspace) ? (
+                        <Field label="Folder">
                           <input
-                            value={settingsHost}
-                            onChange={(event) =>
-                              setSettingsHost(event.target.value)
-                            }
-                            className={inputClassName}
-                            placeholder="127.0.0.1"
+                            value={settingsWorkspace.localPath ?? ""}
+                            readOnly
+                            className={cn(inputClassName, "opacity-80")}
                           />
                         </Field>
-                        <Field label="Port">
-                          <input
-                            value={settingsPort}
-                            onChange={(event) =>
-                              setSettingsPort(event.target.value)
-                            }
-                            className={inputClassName}
-                            placeholder="8080"
-                            type="number"
-                          />
-                        </Field>
-                      </div>
+                      ) : (
+                        <div className="grid grid-cols-[1fr_5rem] gap-2">
+                          <Field label="Server host">
+                            <input
+                              value={settingsHost}
+                              onChange={(event) =>
+                                setSettingsHost(event.target.value)
+                              }
+                              className={inputClassName}
+                              placeholder="127.0.0.1"
+                            />
+                          </Field>
+                          <Field label="Port">
+                            <input
+                              value={settingsPort}
+                              onChange={(event) =>
+                                setSettingsPort(event.target.value)
+                              }
+                              className={inputClassName}
+                              placeholder="8080"
+                              type="number"
+                            />
+                          </Field>
+                        </div>
+                      )}
 
                       {settingsError && (
                         <p className="text-sm text-red-600 dark:text-red-400">

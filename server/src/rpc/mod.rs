@@ -236,3 +236,149 @@ pub fn build_workspace_module(state: WorkspaceRpcState) -> RpcModule<WorkspaceRp
 
     module
 }
+
+fn params_or_null(params: serde_json::Value) -> serde_json::Value {
+    if params.is_null() {
+        serde_json::json!({})
+    } else {
+        params
+    }
+}
+
+/// Dispatch a workspace RPC method without going through JSON-RPC transport.
+/// Used by the Tauri local-folder path so no HTTP/WebSocket server is required.
+pub async fn call_workspace_rpc(
+    workspace: &Workspace,
+    method: &str,
+    params: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    match method {
+        "ping" => Ok(serde_json::Value::String("pong".to_owned())),
+        "health" => Ok(serde_json::Value::String("ok".to_owned())),
+        "workspace_info" => serde_json::to_value(workspace.info()).map_err(|error| error.to_string()),
+        "list_pages" => {
+            let request: ListPagesParams =
+                serde_json::from_value(params_or_null(params)).map_err(|error| error.to_string())?;
+            let workspace = workspace.clone();
+            let parent_path = request.parent_path;
+            let pages = tokio::task::spawn_blocking(move || {
+                workspace.list_pages(parent_path.as_deref())
+            })
+            .await
+            .map_err(|error| error.to_string())?
+            .map_err(|error| error)?;
+            serde_json::to_value(pages).map_err(|error| error.to_string())
+        }
+        "get_page" => {
+            let request: GetPageParams =
+                serde_json::from_value(params_or_null(params)).map_err(|error| error.to_string())?;
+            let workspace = workspace.clone();
+            let page_id = request.id;
+            let page = tokio::task::spawn_blocking(move || workspace.get_page(&page_id))
+                .await
+                .map_err(|error| error.to_string())?
+                .map_err(|error| error)?;
+            serde_json::to_value(page).map_err(|error| error.to_string())
+        }
+        "create_page" => {
+            let request: CreatePageParams =
+                serde_json::from_value(params_or_null(params)).map_err(|error| error.to_string())?;
+            let workspace = workspace.clone();
+            let page = tokio::task::spawn_blocking(move || {
+                workspace.create_page(CreatePageInput {
+                    parent_path: request.parent_path,
+                    title: request.title,
+                    slug: request.slug,
+                    icon: request.icon,
+                    body: request.body,
+                })
+            })
+            .await
+            .map_err(|error| error.to_string())?
+            .map_err(|error| error)?;
+            serde_json::to_value(page).map_err(|error| error.to_string())
+        }
+        "update_page" => {
+            let request: UpdatePageParams =
+                serde_json::from_value(params_or_null(params)).map_err(|error| error.to_string())?;
+            let workspace = workspace.clone();
+            let page = tokio::task::spawn_blocking(move || {
+                workspace.update_page(UpdatePageInput {
+                    id: request.id,
+                    title: request.title,
+                    slug: request.slug,
+                    icon: request.icon,
+                    body: request.body,
+                })
+            })
+            .await
+            .map_err(|error| error.to_string())?
+            .map_err(|error| error)?;
+            serde_json::to_value(page).map_err(|error| error.to_string())
+        }
+        "trash_page" => {
+            let request: TrashPageParams =
+                serde_json::from_value(params_or_null(params)).map_err(|error| error.to_string())?;
+            let workspace = workspace.clone();
+            let page_id = request.id;
+            let trashed_ids = tokio::task::spawn_blocking(move || workspace.trash_page(&page_id))
+                .await
+                .map_err(|error| error.to_string())?
+                .map_err(|error| error)?;
+            Ok(serde_json::json!({ "trashedIds": trashed_ids }))
+        }
+        "list_trashed_pages" => {
+            let workspace = workspace.clone();
+            let pages = tokio::task::spawn_blocking(move || workspace.list_trashed_pages())
+                .await
+                .map_err(|error| error.to_string())?
+                .map_err(|error| error)?;
+            serde_json::to_value(pages).map_err(|error| error.to_string())
+        }
+        "get_trashed_page" => {
+            let request: GetPageParams =
+                serde_json::from_value(params_or_null(params)).map_err(|error| error.to_string())?;
+            let workspace = workspace.clone();
+            let page_id = request.id;
+            let page = tokio::task::spawn_blocking(move || workspace.get_trashed_page(&page_id))
+                .await
+                .map_err(|error| error.to_string())?
+                .map_err(|error| error)?;
+            serde_json::to_value(page).map_err(|error| error.to_string())
+        }
+        "restore_page" => {
+            let request: RestorePageParams =
+                serde_json::from_value(params_or_null(params)).map_err(|error| error.to_string())?;
+            let workspace = workspace.clone();
+            let page_id = request.id;
+            let page = tokio::task::spawn_blocking(move || workspace.restore_page(&page_id))
+                .await
+                .map_err(|error| error.to_string())?
+                .map_err(|error| error)?;
+            serde_json::to_value(page).map_err(|error| error.to_string())
+        }
+        "purge_page" => {
+            let request: PurgePageParams =
+                serde_json::from_value(params_or_null(params)).map_err(|error| error.to_string())?;
+            let workspace = workspace.clone();
+            let page_id = request.id;
+            tokio::task::spawn_blocking(move || workspace.purge_page(&page_id))
+                .await
+                .map_err(|error| error.to_string())?
+                .map_err(|error| error)?;
+            Ok(serde_json::json!({ "ok": true }))
+        }
+        "duplicate_page" => {
+            let request: DuplicatePageParams =
+                serde_json::from_value(params_or_null(params)).map_err(|error| error.to_string())?;
+            let workspace = workspace.clone();
+            let page_id = request.id;
+            let page = tokio::task::spawn_blocking(move || workspace.duplicate_page(&page_id))
+                .await
+                .map_err(|error| error.to_string())?
+                .map_err(|error| error)?;
+            serde_json::to_value(page).map_err(|error| error.to_string())
+        }
+        other => Err(format!("unknown method: {other}")),
+    }
+}

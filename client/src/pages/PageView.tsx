@@ -7,11 +7,7 @@ import { usePageSave } from "../context/PageSaveContext";
 import { useTabs } from "../context/TabContext";
 import { useWorkspacePages } from "../hooks/useWorkspacePages";
 import { cn } from "../lib/utils";
-import {
-  bodyMatchesStored,
-  ensureLeadingH1,
-  stripLeadingH1,
-} from "../lib/pageBodyTitle";
+import { bodyMatchesStored } from "../lib/pageBodyTitle";
 import {
   ROOT_PAGES_DIR,
   buildPageSegment,
@@ -159,14 +155,14 @@ function PageEditor({
 function draftFromDetail(detail: WorkspacePageDetail): PageDraft {
   return {
     title: pageLabel(detail),
-    body: stripLeadingH1(detail.body),
+    body: detail.body,
   };
 }
 
 function draftFromTrashed(trashed: TrashedPageDetail): PageDraft {
   return {
     title: pageLabel(trashed),
-    body: stripLeadingH1(trashed.body),
+    body: trashed.body,
   };
 }
 
@@ -413,7 +409,7 @@ export function PageView() {
 
     const savedTitle = pageLabel(page);
     const savedBody = activeDetail.body;
-    if (title === savedTitle && bodyMatchesStored(body, title, savedBody)) {
+    if (title === savedTitle && bodyMatchesStored(body, savedBody)) {
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current);
         saveTimerRef.current = null;
@@ -432,7 +428,7 @@ export function PageView() {
       saveTimerRef.current = null;
       updatePage(page.id, {
         title,
-        body: ensureLeadingH1(body, title),
+        body,
         slug: slugifyPageTitle(title),
       })
         .then((updated) => {

@@ -17,12 +17,19 @@ export function useSavedWorkspaces() {
   const addWorkspace = useCallback(
     (workspace: SavedWorkspace) => {
       setWorkspaces((prev) => {
-        const exists = prev.some(
-          (item) =>
+        const exists = prev.some((item) => {
+          if (workspace.localPath || item.localPath) {
+            return (
+              Boolean(workspace.localPath) &&
+              item.localPath === workspace.localPath
+            );
+          }
+          return (
             item.serverHost === workspace.serverHost &&
             item.serverPort === workspace.serverPort &&
-            item.workspaceId === workspace.workspaceId,
-        );
+            item.workspaceId === workspace.workspaceId
+          );
+        });
         if (exists) return prev;
         return [...prev, workspace];
       });

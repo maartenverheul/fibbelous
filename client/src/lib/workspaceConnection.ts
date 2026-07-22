@@ -4,8 +4,14 @@ import type { RpcClient } from "./rpc";
 export type WorkspaceConnectionKey = string;
 
 export function buildWorkspaceConnectionKey(
-  workspace: Pick<SavedWorkspace, "serverHost" | "serverPort" | "workspaceId">,
+  workspace: Pick<
+    SavedWorkspace,
+    "serverHost" | "serverPort" | "workspaceId" | "localPath"
+  >,
 ): WorkspaceConnectionKey {
+  if (workspace.localPath) {
+    return `local:${workspace.localPath}`;
+  }
   return `${workspace.serverHost}:${workspace.serverPort}:${workspace.workspaceId}`;
 }
 

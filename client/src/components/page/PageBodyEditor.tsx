@@ -15,7 +15,6 @@ import {
   isValidEditorLink,
   pageIdFromInternalLink,
 } from "../../lib/pageLinks";
-import { dropLeadingH1Block, stripLeadingH1 } from "../../lib/pageBodyTitle";
 import { cn } from "../../lib/utils";
 import { buildPageSegment, pageLabel } from "../../types/page";
 
@@ -34,8 +33,7 @@ async function parseBodyToBlocks(editor: BlockNoteEditor, body: string) {
   }
 
   const html = await markdownToHtml(body);
-  const blocks = editor.tryParseHTMLToBlocks(html);
-  return dropLeadingH1Block(blocks);
+  return editor.tryParseHTMLToBlocks(html);
 }
 
 export function PageBodyEditor({
@@ -152,7 +150,7 @@ export function PageBodyEditor({
       serializeTimerRef.current = null;
 
       try {
-        const markdown = stripLeadingH1(editor.blocksToMarkdownLossy());
+        const markdown = editor.blocksToMarkdownLossy();
         onBodyChangeRef.current(markdown);
       } catch (error) {
         console.error("Failed to serialize page body", error);

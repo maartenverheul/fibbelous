@@ -14,8 +14,9 @@ import {
   fetchWorkspaces,
   isWorkspaceNotFoundError,
   workspaceWsUrl,
+  ApiError,
 } from "../lib/api";
-import { createRpcClient, isIgnorableRpcError, type RpcClient } from "../lib/rpc";
+import { createRpcClient, createLocalRpcClient, isIgnorableRpcError, type RpcClient } from "../lib/rpc";
 import {
   buildWorkspaceConnectionKey,
   closePooledConnection,
@@ -26,10 +27,12 @@ import {
   workspaceManagerRedirectState,
   type WorkspaceNotice,
 } from "../lib/navigation";
-import type {
-  SavedWorkspace,
-  WorkspaceConnectionStatus,
+import {
+  isLocalWorkspace,
+  type SavedWorkspace,
+  type WorkspaceConnectionStatus,
 } from "../types/workspace";
+import { openLocalWorkspace } from "../lib/tauri";
 import {
   ROOT_PAGES_DIR,
   buildPageBreadcrumbs,
@@ -249,26 +252,32 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
     void (async () => {
       try {
-        const remoteWorkspaces = await fetchWorkspaces(
-          workspace.serverHost,
-          workspace.serverPort,
-        );
-        if (cancelled) return;
-
-        if (
-          !remoteWorkspaces.some((item) => item.id === workspace.workspaceId)
-        ) {
-          if (connectAttempt !== connectAttemptRef.current) return;
-          suppressActiveSyncRef.current = true;
-          removeWorkspace(workspace.id);
-          redirectToWorkspaceManager({
-            kind: "missing",
-            label: workspace.label,
-          });
-          return;
-        }
-
         const client = await openPooledConnection(connectionKey, async () => {
+          if (isLocalWorkspace(workspace) && workspace.localPath) {
+            const info = await openLocalWorkspace(workspace.localPath);
+            if (info.id !== workspace.workspaceId) {
+              throw new ApiError(404, "Workspace not found");
+            }
+            const rpcClient = createLocalRpcClient(workspace.workspaceId);
+            try {
+              await rpcClient.call("ping");
+              return rpcClient;
+            } catch (error) {
+              rpcClient.close();
+              throw error;
+            }
+          }
+
+          const remoteWorkspaces = await fetchWorkspaces(
+            workspace.serverHost,
+            workspace.serverPort,
+          );
+          if (
+            !remoteWorkspaces.some((item) => item.id === workspace.workspaceId)
+          ) {
+            throw new ApiError(404, "Workspace not found");
+          }
+
           const rpcClient = createRpcClient(
             workspaceWsUrl(
               workspace.serverHost,
@@ -319,6 +328,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     workspaceFromUrl?.serverHost,
     workspaceFromUrl?.serverPort,
     workspaceFromUrl?.workspaceId,
+    workspaceFromUrl?.localPath,
     removeWorkspace,
     navigate,
     setActive,

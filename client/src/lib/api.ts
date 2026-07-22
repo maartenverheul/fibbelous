@@ -3,7 +3,8 @@ import type {
   UpdateWorkspaceInput,
   WorkspaceInfo,
 } from "../types/workspace";
-import { createRpcClient } from "./rpc";
+import { createLocalRpcClient, createRpcClient } from "./rpc";
+import { openLocalWorkspace } from "./tauri";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -115,6 +116,23 @@ export async function verifySavedWorkspaceConnection(
   }
 
   const client = createRpcClient(workspaceWsUrl(host, port, workspaceId));
+  try {
+    await client.call("ping");
+  } finally {
+    client.close();
+  }
+}
+
+export async function verifyLocalWorkspaceConnection(
+  localPath: string,
+  workspaceId: string,
+): Promise<void> {
+  const info = await openLocalWorkspace(localPath);
+  if (info.id !== workspaceId) {
+    throw new ApiError(404, "Workspace not found");
+  }
+
+  const client = createLocalRpcClient(workspaceId);
   try {
     await client.call("ping");
   } finally {

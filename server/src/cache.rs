@@ -411,5 +411,32 @@ pub fn runtime_dir(workspace_path: &Path) -> PathBuf {
 pub fn ensure_runtime_dir(workspace_path: &Path) -> std::io::Result<PathBuf> {
     let path = runtime_dir(workspace_path);
     fs::create_dir_all(&path)?;
+    ensure_workspace_gitignore(workspace_path)?;
     Ok(path)
+}
+
+fn ensure_workspace_gitignore(workspace_path: &Path) -> std::io::Result<()> {
+    const ENTRY: &str = ".fibbelous/";
+    let gitignore_path = workspace_path.join(".gitignore");
+
+    if gitignore_path.is_file() {
+        let contents = fs::read_to_string(&gitignore_path)?;
+        let already_ignored = contents.lines().any(|line| {
+            let trimmed = line.trim();
+            trimmed == ENTRY || trimmed == ".fibbelous" || trimmed == "**/.fibbelous/" || trimmed == "**/.fibbelous"
+        });
+        if already_ignored {
+            return Ok(());
+        }
+
+        let mut updated = contents;
+        if !updated.is_empty() && !updated.ends_with('\n') {
+            updated.push('\n');
+        }
+        updated.push_str(ENTRY);
+        updated.push('\n');
+        return fs::write(gitignore_path, updated);
+    }
+
+    fs::write(gitignore_path, format!("{ENTRY}\n"))
 }

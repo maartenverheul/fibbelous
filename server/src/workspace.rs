@@ -28,7 +28,7 @@ pub enum IndexStatus {
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceSettings {
     pub slug: String,
-    pub name: String,
+    pub title: String,
     pub icon: String,
     pub created_at: String,
 }
@@ -56,7 +56,7 @@ impl std::fmt::Debug for Workspace {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateWorkspaceRequest {
-    pub name: String,
+    pub title: String,
     pub slug: Option<String>,
     pub icon: Option<String>,
 }
@@ -76,8 +76,45 @@ impl From<std::io::Error> for CreateWorkspaceError {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct OpenWorkspaceRequest {
+    pub path: String,
+}
+
+#[derive(Debug)]
+pub enum OpenWorkspaceError {
+    Validation(String),
+    IdConflict,
+    SlugConflict,
+    Io(std::io::Error),
+}
+
+impl OpenWorkspaceError {
+    pub fn message(&self) -> String {
+        match self {
+            Self::Validation(message) => message.clone(),
+            Self::IdConflict => "workspace id already exists".to_owned(),
+            Self::SlugConflict => "slug already exists".to_owned(),
+            Self::Io(error) => error.to_string(),
+        }
+    }
+}
+
+impl From<std::io::Error> for OpenWorkspaceError {
+    fn from(error: std::io::Error) -> Self {
+        Self::Io(error)
+    }
+}
+
+#[derive(Debug)]
+pub enum OpenWorkspaceOutcome {
+    AlreadyLoaded(WorkspaceInfo),
+    Opened(Workspace),
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UpdateWorkspaceRequest {
-    pub name: Option<String>,
+    pub title: Option<String>,
     pub slug: Option<String>,
     pub icon: Option<String>,
 }
@@ -96,7 +133,8 @@ impl From<std::io::Error> for UpdateWorkspaceError {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct WorkspaceInfo {
     pub id: String,
     pub index_status: IndexStatus,
@@ -210,14 +248,14 @@ impl Workspace {
         all_workspaces: &[Workspace],
         input: UpdateWorkspaceRequest,
     ) -> Result<WorkspaceInfo, UpdateWorkspaceError> {
-        if let Some(name) = input.name {
-            let name = name.trim().to_owned();
-            if name.is_empty() {
+        if let Some(title) = input.title {
+            let title = title.trim().to_owned();
+            if title.is_empty() {
                 return Err(UpdateWorkspaceError::Validation(
-                    "name is required".to_owned(),
+                    "title is required".to_owned(),
                 ));
             }
-            self.settings.name = name;
+            self.settings.title = title;
         }
 
         if let Some(slug) = input.slug {
@@ -305,8 +343,11 @@ fn open_workspace(id: String, path: PathBuf) -> Result<Workspace, String> {
     }
 
     let contents = fs::read_to_string(&workspace_json).map_err(|error| error.to_string())?;
-    let settings =
-        serde_json::from_str::<WorkspaceSettings>(&contents).map_err(|error| error.to_string())?;
+    let settings = serde_json::from_str::<WorkspaceSettings>(&contents).map_err(|error| {
+        format!(
+            "invalid workspace.json ({error}). Expected fields: title, slug, icon, createdAt"
+        )
+    })?;
 
     let runtime_dir = ensure_runtime_dir(&path).map_err(|error| error.to_string())?;
     let cache = CacheDb::open(&runtime_dir).map_err(|error| error.to_string())?;
@@ -320,15 +361,80 @@ fn open_workspace(id: String, path: PathBuf) -> Result<Workspace, String> {
     })
 }
 
+fn seed_welcome_page(workspace: &Workspace) -> Result<(), String> {
+    workspace.create_page(CreatePageInput {
+        parent_path: "pages".to_owned(),
+        title: Some("Welcome".to_owned()),
+        slug: Some("welcome".to_owned()),
+        icon: None,
+        body: Some(
+            "# Welcome\n\nThis is your first page. Start writing here.".to_owned(),
+        ),
+    })?;
+    Ok(())
+}
+
+fn initialize_workspace_at_path(
+    path: &Path,
+    id: String,
+    title: String,
+    slug: String,
+    icon: String,
+) -> Result<Workspace, String> {
+    fs::create_dir_all(path).map_err(|error| error.to_string())?;
+    fs::create_dir_all(path.join("pages")).map_err(|error| error.to_string())?;
+
+    let settings = WorkspaceSettings {
+        slug: slug.clone(),
+        title: title.clone(),
+        icon,
+        created_at: now_timestamp(),
+    };
+
+    let workspace_json = path.join("workspace.json");
+    let contents = serde_json::to_string_pretty(&settings)
+        .map_err(|error| format!("failed to serialize workspace.json: {error}"))?;
+    fs::write(&workspace_json, contents).map_err(|error| error.to_string())?;
+
+    let workspace = open_workspace(id, path.to_path_buf())?;
+    seed_welcome_page(&workspace)?;
+
+    tracing::info!(
+        workspace = %workspace.id,
+        title = %workspace.settings.title,
+        slug = %workspace.settings.slug,
+        path = %log_path(path),
+        "created workspace"
+    );
+
+    Ok(workspace)
+}
+
+fn paths_equal(a: &Path, b: &Path) -> bool {
+    if a == b {
+        return true;
+    }
+    match (fs::canonicalize(a), fs::canonicalize(b)) {
+        (Ok(left), Ok(right)) => left == right,
+        _ => false,
+    }
+}
+
+fn folder_name(path: &Path) -> Option<String> {
+    path.file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .filter(|name| !name.is_empty())
+}
+
 pub fn create_workspace(
     workspaces_dir: &Path,
     existing: &[Workspace],
     input: CreateWorkspaceRequest,
 ) -> Result<Workspace, CreateWorkspaceError> {
-    let name = input.name.trim().to_owned();
-    if name.is_empty() {
+    let title = input.title.trim().to_owned();
+    if title.is_empty() {
         return Err(CreateWorkspaceError::Validation(
-            "name is required".to_owned(),
+            "title is required".to_owned(),
         ));
     }
 
@@ -336,7 +442,7 @@ pub fn create_workspace(
         .slug
         .map(|value| slugify(&value))
         .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| slugify(&name));
+        .unwrap_or_else(|| slugify(&title));
 
     if slug.is_empty() {
         return Err(CreateWorkspaceError::Validation(
@@ -352,51 +458,95 @@ pub fn create_workspace(
     }
 
     let icon = input.icon.unwrap_or_default();
-    let id = unique_workspace_id(workspaces_dir, &format!("{name}:{slug}"));
+    let id = unique_workspace_id(workspaces_dir, &format!("{title}:{slug}"));
     let path = workspaces_dir.join(&id);
 
-    fs::create_dir_all(&path)?;
-    fs::create_dir_all(path.join("pages"))?;
+    initialize_workspace_at_path(&path, id, title, slug, icon).map_err(|error| {
+        CreateWorkspaceError::Validation(format!("failed to create workspace: {error}"))
+    })
+}
 
-    let settings = WorkspaceSettings {
-        slug: slug.clone(),
-        name: name.clone(),
-        icon,
-        created_at: now_timestamp(),
-    };
+pub fn open_workspace_at_path(
+    existing: &[Workspace],
+    path_input: &str,
+) -> Result<OpenWorkspaceOutcome, OpenWorkspaceError> {
+    let trimmed = path_input.trim();
+    if trimmed.is_empty() {
+        return Err(OpenWorkspaceError::Validation(
+            "path is required".to_owned(),
+        ));
+    }
 
-    let workspace_json = path.join("workspace.json");
-    let contents = serde_json::to_string_pretty(&settings).map_err(|error| {
-        CreateWorkspaceError::Validation(format!("failed to serialize workspace.json: {error}"))
+    let path = PathBuf::from(trimmed);
+    if path.exists() && !path.is_dir() {
+        return Err(OpenWorkspaceError::Validation(
+            "path must be a directory".to_owned(),
+        ));
+    }
+
+    if let Some(loaded) = existing
+        .iter()
+        .find(|workspace| paths_equal(&workspace.path, &path))
+    {
+        return Ok(OpenWorkspaceOutcome::AlreadyLoaded(loaded.info()));
+    }
+
+    let id = folder_name(&path).ok_or_else(|| {
+        OpenWorkspaceError::Validation("path must include a folder name".to_owned())
     })?;
-    fs::write(&workspace_json, contents)?;
 
-    let workspace = open_workspace(id, path).map_err(|error| {
-        CreateWorkspaceError::Validation(format!("failed to open created workspace: {error}"))
-    })?;
+    if existing.iter().any(|workspace| workspace.id == id) {
+        return Err(OpenWorkspaceError::IdConflict);
+    }
 
-    workspace
-        .create_page(CreatePageInput {
-            parent_path: "pages".to_owned(),
-            title: Some("Welcome".to_owned()),
-            slug: Some("welcome".to_owned()),
-            icon: None,
-            body: Some(
-                "# Welcome\n\nThis is your first page. Start writing here.".to_owned(),
-            ),
-        })
-        .map_err(|error| {
-            CreateWorkspaceError::Validation(format!("failed to seed example page: {error}"))
-        })?;
+    if path.join("workspace.json").is_file() {
+        let workspace = open_workspace(id, path).map_err(OpenWorkspaceError::Validation)?;
 
-    tracing::info!(
-        workspace = %workspace.id,
-        name = %workspace.settings.name,
-        slug = %workspace.settings.slug,
-        "created workspace"
-    );
+        if existing
+            .iter()
+            .any(|item| item.settings.slug == workspace.settings.slug)
+        {
+            return Err(OpenWorkspaceError::SlugConflict);
+        }
 
-    Ok(workspace)
+        tracing::info!(
+            workspace = %workspace.id,
+            title = %workspace.settings.title,
+            path = %log_path(&workspace.path),
+            "opened workspace from path"
+        );
+
+        return Ok(OpenWorkspaceOutcome::Opened(workspace));
+    }
+
+    if path.exists() {
+        let is_empty = fs::read_dir(&path)?.next().is_none();
+        if !is_empty {
+            return Err(OpenWorkspaceError::Validation(
+                "folder is not empty and has no workspace.json".to_owned(),
+            ));
+        }
+    }
+
+    let title = id.clone();
+    let slug = slugify(&title);
+    if slug.is_empty() {
+        return Err(OpenWorkspaceError::Validation(
+            "folder name must produce a valid slug".to_owned(),
+        ));
+    }
+
+    if existing
+        .iter()
+        .any(|workspace| workspace.settings.slug == slug)
+    {
+        return Err(OpenWorkspaceError::SlugConflict);
+    }
+
+    let workspace = initialize_workspace_at_path(&path, id, title, slug, String::new())
+        .map_err(OpenWorkspaceError::Validation)?;
+
+    Ok(OpenWorkspaceOutcome::Opened(workspace))
 }
 
 pub fn discover_workspaces(dir: &Path) -> std::io::Result<Vec<Workspace>> {
@@ -420,7 +570,7 @@ pub fn discover_workspaces(dir: &Path) -> std::io::Result<Vec<Workspace>> {
             Ok(workspace) => {
                 tracing::info!(
                     workspace = %workspace.id,
-                    name = %workspace.settings.name,
+                    title = %workspace.settings.title,
                     "discovered workspace"
                 );
                 workspaces.push(workspace);

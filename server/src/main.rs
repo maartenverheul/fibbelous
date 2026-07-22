@@ -1,22 +1,13 @@
-mod cache;
-mod config;
-mod data;
-mod http;
-mod index;
-mod pages;
-mod rpc;
-mod workspace;
-
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 
 use tracing::Level;
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
-use crate::config::Config;
-use crate::data::{ensure_workspaces_dir, log_path};
-use crate::http::run_server;
-use crate::workspace::{discover_workspaces, start_indexing};
+use server::config::Config;
+use server::data::{ensure_workspaces_dir, log_path};
+use server::http::run_server;
+use server::workspace::{discover_workspaces, start_indexing};
 
 fn init_tracing() {
     let env_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(".env");
@@ -66,7 +57,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tracing::info!(
         %server_addr,
-        "server ready (GET/POST /workspaces, ws://{server_addr}/{{workspaceId}})"
+        "server ready (GET/POST /workspaces, POST /workspaces/open, ws://{server_addr}/{{workspaceId}})"
     );
 
     tokio::signal::ctrl_c().await?;
