@@ -1,6 +1,7 @@
 pub mod cache;
 pub mod config;
 pub mod data;
+pub mod databases;
 pub mod http;
 pub mod index;
 pub mod logging;

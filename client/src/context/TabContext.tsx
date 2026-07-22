@@ -15,6 +15,7 @@ import {
 } from "../routes";
 import { useWorkspacePages } from "../hooks/useWorkspacePages";
 import { pageLabel, parsePageIdFromSegment } from "../types/page";
+import { registerPageNavigator } from "../lib/pageNavigate";
 
 export type TabTarget = {
   label: string;
@@ -294,6 +295,11 @@ export function TabProvider({ children }: { children: ReactNode }) {
     },
     [activeTabId, navigate, slug],
   );
+
+  useEffect(() => {
+    registerPageNavigator(navigateInTab, findPageById);
+    return () => registerPageNavigator(null, null);
+  }, [navigateInTab, findPageById]);
 
   const value = useMemo(
     () => ({

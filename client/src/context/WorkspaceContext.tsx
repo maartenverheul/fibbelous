@@ -46,6 +46,16 @@ import {
   type TrashedPage,
   type TrashedPageDetail,
 } from "../types/page";
+import type {
+  DatabaseRowsPage,
+  WorkspaceDatabaseDetail,
+} from "../types/database";
+import {
+  registerDatabaseFetcher,
+  registerDatabaseRowsFetcher,
+  registerDatabaseRowCreator,
+  registerDatabaseViewUpdater,
+} from "../lib/databaseFetch";
 
 type WorkspaceContextValue = {
   workspaces: SavedWorkspace[];
@@ -415,6 +425,57 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setPageDetailsById((prev) => ({ ...prev, [detail.id]: detail }));
   }, []);
 
+  useEffect(() => {
+    if (!rpc || connectionStatus !== "connected") {
+      registerDatabaseFetcher(null);
+      registerDatabaseRowsFetcher(null);
+      registerDatabaseRowCreator(null);
+      registerDatabaseViewUpdater(null);
+      return;
+    }
+
+    registerDatabaseFetcher(async (id) => {
+      return rpc.call<WorkspaceDatabaseDetail | null>("get_database", { id });
+    });
+    registerDatabaseRowsFetcher(async (id, { limit, offset, sort }) => {
+      return rpc.call<DatabaseRowsPage | null>("list_database_rows", {
+        id,
+        limit,
+        offset,
+        sort: sort ?? null,
+      });
+    });
+    registerDatabaseRowCreator(async (id, title) => {
+      const detail = await rpc.call<WorkspacePageDetail>("create_database_row", {
+        id,
+        title,
+      });
+      storePageDetail(detail);
+      return detail;
+    });
+    registerDatabaseViewUpdater(async (databaseId, viewId, update) => {
+      const detail = await rpc.call<WorkspaceDatabaseDetail | null>(
+        "update_database_view",
+        {
+          id: databaseId,
+          viewId,
+          ...update,
+        },
+      );
+      if (!detail) {
+        throw new Error("Database not found");
+      }
+      return detail;
+    });
+
+    return () => {
+      registerDatabaseFetcher(null);
+      registerDatabaseRowsFetcher(null);
+      registerDatabaseRowCreator(null);
+      registerDatabaseViewUpdater(null);
+    };
+  }, [rpc, connectionStatus, storePageDetail]);
+
   const removePageIdFromCache = useCallback((id: string) => {
     setPagesById((prev) => {
       if (!(id in prev)) return prev;
@@ -527,6 +588,50 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     [findPageById],
   );
 
+  const ensurePageAncestorsVisible = useCallback(
+    async (page: WorkspacePage) => {
+      if (page.databaseId) {
+        let host = findPageById(page.databaseId);
+        if (!host && rpc && connectionStatus === "connected") {
+          const hostDetail = await rpc.call<WorkspacePageDetail | null>(
+            "get_page",
+            { id: page.databaseId },
+          );
+          if (hostDetail) {
+            storePageDetail(hostDetail);
+            host = pageFromDetail(hostDetail);
+          }
+        }
+        if (host) {
+          ensureChildren(parentDirOfPage(host));
+          const crumbs = buildPageBreadcrumbs(host, findPageById);
+          for (const crumb of crumbs) {
+            if (crumb.hasChildren) {
+              ensureChildren(childrenDir(crumb));
+            }
+          }
+        }
+        return;
+      }
+
+      ensureChildren(parentDirOfPage(page));
+      const crumbs = buildPageBreadcrumbs(page, findPageById);
+      for (const crumb of crumbs) {
+        if (crumb.hasChildren) {
+          ensureChildren(childrenDir(crumb));
+        }
+      }
+    },
+    [
+      findPageById,
+      rpc,
+      connectionStatus,
+      storePageDetail,
+      pageFromDetail,
+      ensureChildren,
+    ],
+  );
+
   const ensurePageTreeVisible = useCallback(
     (segment: string) => {
       if (!isPagePathSegment(segment)) return;
@@ -537,14 +642,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       const page = findPageById(pageId);
       if (!page) return;
 
-      const crumbs = buildPageBreadcrumbs(page, findPageById);
-      for (const crumb of crumbs) {
-        if (crumb.hasChildren) {
-          ensureChildren(childrenDir(crumb));
-        }
-      }
+      void ensurePageAncestorsVisible(page);
     },
-    [findPageById, ensureChildren],
+    [findPageById, ensurePageAncestorsVisible],
   );
 
   const fetchPageById = useCallback(
@@ -557,11 +657,17 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       if (!detail) return null;
 
       storePageDetail(detail);
-      ensureChildren(parentDirOfPage(detail));
       const { body: _body, ...page } = detail;
+      await ensurePageAncestorsVisible(page);
       return page;
     },
-    [pagesById, rpc, connectionStatus, ensureChildren, storePageDetail],
+    [
+      pagesById,
+      rpc,
+      connectionStatus,
+      storePageDetail,
+      ensurePageAncestorsVisible,
+    ],
   );
 
   const fetchPageDetail = useCallback(
@@ -575,10 +681,17 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       if (!detail) return null;
 
       storePageDetail(detail);
-      ensureChildren(parentDirOfPage(detail));
+      await ensurePageAncestorsVisible(pageFromDetail(detail));
       return detail;
     },
-    [pageDetailsById, rpc, connectionStatus, ensureChildren, storePageDetail],
+    [
+      pageDetailsById,
+      rpc,
+      connectionStatus,
+      storePageDetail,
+      ensurePageAncestorsVisible,
+      pageFromDetail,
+    ],
   );
 
   const fetchTrashedPageDetail = useCallback(

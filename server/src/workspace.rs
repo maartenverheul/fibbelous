@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cache::{CacheDb, ensure_runtime_dir};
 use crate::data::log_path;
+use crate::databases;
 use crate::index::sync_workspace;
 use crate::pages::{
     CreatePageInput, UpdatePageInput, create_page, duplicate_page, get_trashed_page,
@@ -181,9 +182,85 @@ impl Workspace {
             .cache
             .lock()
             .map_err(|_| "cache mutex poisoned".to_string())?;
-        cache
+
+        if let Some(page) = cache
             .get_page_by_id(id)
-            .map_err(|error| error.to_string())
+            .map_err(|error| error.to_string())?
+        {
+            return Ok(Some(page));
+        }
+
+        let Some(row) = cache
+            .get_database_row_by_id(id)
+            .map_err(|error| error.to_string())?
+        else {
+            return Ok(None);
+        };
+
+        let content = std::fs::read_to_string(self.path.join(&row.path))
+            .map_err(|error| error.to_string())?;
+        let body = crate::cache::page_body_from_content(&content);
+
+        Ok(Some(crate::cache::PageDetail {
+            id: row.id,
+            slug: row.slug,
+            title: row.title,
+            icon: row.icon,
+            path: row.path,
+            has_children: false,
+            database_id: Some(row.database_id),
+            body,
+        }))
+    }
+
+    pub fn get_database(
+        &self,
+        id: &str,
+    ) -> Result<Option<crate::cache::DatabaseDetail>, String> {
+        let cache = self
+            .cache
+            .lock()
+            .map_err(|_| "cache mutex poisoned".to_string())?;
+        databases::get_database(&self.path, &cache, id)
+    }
+
+    pub fn list_database_rows(
+        &self,
+        id: &str,
+        limit: Option<usize>,
+        offset: Option<usize>,
+        sort: Option<crate::databases::DatabaseViewSort>,
+    ) -> Result<Option<crate::cache::DatabaseRowsPage>, String> {
+        let cache = self
+            .cache
+            .lock()
+            .map_err(|_| "cache mutex poisoned".to_string())?;
+        databases::list_database_rows(&self.path, &cache, id, limit, offset, sort)
+    }
+
+    pub fn update_database_view(
+        &self,
+        database_id: &str,
+        view_id: &str,
+        update: crate::databases::DatabaseViewUpdate,
+    ) -> Result<Option<crate::cache::DatabaseDetail>, String> {
+        let cache = self
+            .cache
+            .lock()
+            .map_err(|_| "cache mutex poisoned".to_string())?;
+        databases::update_database_view(&self.path, &cache, database_id, view_id, update)
+    }
+
+    pub fn create_database_row(
+        &self,
+        database_id: &str,
+        title: Option<String>,
+    ) -> Result<crate::cache::PageDetail, String> {
+        let mut cache = self
+            .cache
+            .lock()
+            .map_err(|_| "cache mutex poisoned".to_string())?;
+        databases::create_database_row(&self.path, &mut cache, database_id, title)
     }
 
     pub fn search_pages(

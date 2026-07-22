@@ -5,6 +5,8 @@ export type WorkspacePage = {
   icon: string | null;
   path: string;
   hasChildren: boolean;
+  /** Present when this page is a database row; id of the host database page. */
+  databaseId?: string | null;
 };
 
 export type SearchPageHit = WorkspacePage & {
@@ -137,6 +139,14 @@ export function buildPageBreadcrumbs(
   page: WorkspacePage,
   findPageById: (id: string) => WorkspacePage | undefined,
 ) {
+  if (page.databaseId) {
+    const host = findPageById(page.databaseId);
+    if (host) {
+      return [...buildPageBreadcrumbs(host, findPageById), page];
+    }
+    return [page];
+  }
+
   const crumbs: WorkspacePage[] = [page];
   let dir = parentDirOfPage(page);
 

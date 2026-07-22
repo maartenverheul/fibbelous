@@ -17,6 +17,40 @@ struct GetPageParams {
 }
 
 #[derive(Debug, Deserialize)]
+struct GetDatabaseParams {
+    id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ListDatabaseRowsParams {
+    id: String,
+    #[serde(default)]
+    limit: Option<usize>,
+    #[serde(default)]
+    offset: Option<usize>,
+    #[serde(default)]
+    sort: Option<crate::databases::DatabaseViewSort>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateDatabaseRowParams {
+    id: String,
+    #[serde(default)]
+    title: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateDatabaseViewParams {
+    id: String,
+    view_id: String,
+    #[serde(flatten)]
+    update: crate::databases::DatabaseViewUpdate,
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SearchPagesParams {
     query: String,
@@ -125,6 +159,71 @@ pub fn build_workspace_module(state: WorkspaceRpcState) -> RpcModule<WorkspaceRp
             Ok::<serde_json::Value, ErrorObjectOwned>(serde_json::to_value(page).unwrap())
         })
         .expect("get_page method registration");
+
+    module
+        .register_async_method("get_database", |params, ctx, _| async move {
+            let request: GetDatabaseParams = params.parse()?;
+            let workspace = ctx.workspace.clone();
+            let database_id = request.id;
+            let database =
+                tokio::task::spawn_blocking(move || workspace.get_database(&database_id))
+                    .await
+                    .map_err(|error| ErrorObjectOwned::owned(1, error.to_string(), None::<()>))?
+                    .map_err(|error| ErrorObjectOwned::owned(2, error, None::<()>))?;
+            Ok::<serde_json::Value, ErrorObjectOwned>(serde_json::to_value(database).unwrap())
+        })
+        .expect("get_database method registration");
+
+    module
+        .register_async_method("list_database_rows", |params, ctx, _| async move {
+            let request: ListDatabaseRowsParams = params.parse()?;
+            let workspace = ctx.workspace.clone();
+            let database_id = request.id;
+            let limit = request.limit;
+            let offset = request.offset;
+            let sort = request.sort;
+            let rows = tokio::task::spawn_blocking(move || {
+                workspace.list_database_rows(&database_id, limit, offset, sort)
+            })
+            .await
+            .map_err(|error| ErrorObjectOwned::owned(1, error.to_string(), None::<()>))?
+            .map_err(|error| ErrorObjectOwned::owned(2, error, None::<()>))?;
+            Ok::<serde_json::Value, ErrorObjectOwned>(serde_json::to_value(rows).unwrap())
+        })
+        .expect("list_database_rows method registration");
+
+    module
+        .register_async_method("update_database_view", |params, ctx, _| async move {
+            let request: UpdateDatabaseViewParams = params.parse()?;
+            let workspace = ctx.workspace.clone();
+            let database_id = request.id;
+            let view_id = request.view_id;
+            let update = request.update;
+            let database = tokio::task::spawn_blocking(move || {
+                workspace.update_database_view(&database_id, &view_id, update)
+            })
+            .await
+            .map_err(|error| ErrorObjectOwned::owned(1, error.to_string(), None::<()>))?
+            .map_err(|error| ErrorObjectOwned::owned(2, error, None::<()>))?;
+            Ok::<serde_json::Value, ErrorObjectOwned>(serde_json::to_value(database).unwrap())
+        })
+        .expect("update_database_view method registration");
+
+    module
+        .register_async_method("create_database_row", |params, ctx, _| async move {
+            let request: CreateDatabaseRowParams = params.parse()?;
+            let workspace = ctx.workspace.clone();
+            let database_id = request.id;
+            let title = request.title;
+            let page = tokio::task::spawn_blocking(move || {
+                workspace.create_database_row(&database_id, title)
+            })
+            .await
+            .map_err(|error| ErrorObjectOwned::owned(1, error.to_string(), None::<()>))?
+            .map_err(|error| ErrorObjectOwned::owned(2, error, None::<()>))?;
+            Ok::<serde_json::Value, ErrorObjectOwned>(serde_json::to_value(page).unwrap())
+        })
+        .expect("create_database_row method registration");
 
     module
         .register_async_method("search_pages", |params, ctx, _| async move {
@@ -315,6 +414,63 @@ pub async fn call_workspace_rpc(
                 .await
                 .map_err(|error| error.to_string())?
                 .map_err(|error| error)?;
+            serde_json::to_value(page).map_err(|error| error.to_string())
+        }
+        "get_database" => {
+            let request: GetDatabaseParams =
+                serde_json::from_value(params_or_null(params)).map_err(|error| error.to_string())?;
+            let workspace = workspace.clone();
+            let database_id = request.id;
+            let database =
+                tokio::task::spawn_blocking(move || workspace.get_database(&database_id))
+                    .await
+                    .map_err(|error| error.to_string())?
+                    .map_err(|error| error)?;
+            serde_json::to_value(database).map_err(|error| error.to_string())
+        }
+        "list_database_rows" => {
+            let request: ListDatabaseRowsParams =
+                serde_json::from_value(params_or_null(params)).map_err(|error| error.to_string())?;
+            let workspace = workspace.clone();
+            let database_id = request.id;
+            let limit = request.limit;
+            let offset = request.offset;
+            let sort = request.sort;
+            let rows = tokio::task::spawn_blocking(move || {
+                workspace.list_database_rows(&database_id, limit, offset, sort)
+            })
+            .await
+            .map_err(|error| error.to_string())?
+            .map_err(|error| error)?;
+            serde_json::to_value(rows).map_err(|error| error.to_string())
+        }
+        "update_database_view" => {
+            let request: UpdateDatabaseViewParams =
+                serde_json::from_value(params_or_null(params)).map_err(|error| error.to_string())?;
+            let workspace = workspace.clone();
+            let database_id = request.id;
+            let view_id = request.view_id;
+            let update = request.update;
+            let database = tokio::task::spawn_blocking(move || {
+                workspace.update_database_view(&database_id, &view_id, update)
+            })
+            .await
+            .map_err(|error| error.to_string())?
+            .map_err(|error| error)?;
+            serde_json::to_value(database).map_err(|error| error.to_string())
+        }
+        "create_database_row" => {
+            let request: CreateDatabaseRowParams =
+                serde_json::from_value(params_or_null(params)).map_err(|error| error.to_string())?;
+            let workspace = workspace.clone();
+            let database_id = request.id;
+            let title = request.title;
+            let page = tokio::task::spawn_blocking(move || {
+                workspace.create_database_row(&database_id, title)
+            })
+            .await
+            .map_err(|error| error.to_string())?
+            .map_err(|error| error)?;
             serde_json::to_value(page).map_err(|error| error.to_string())
         }
         "search_pages" => {

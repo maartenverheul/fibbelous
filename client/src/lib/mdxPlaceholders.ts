@@ -197,6 +197,18 @@ export function urlAttrFromMdxRaw(raw: string): string {
   return parsed?.getAttribute("url")?.trim() ?? "";
 }
 
+/** Read the `id` attribute from a stored raw MDX tag string. */
+export function idAttrFromMdxRaw(raw: string): string {
+  const parsed = parseMdxTagString(raw);
+  return parsed?.getAttribute("id")?.trim() ?? "";
+}
+
+/** Read the `view` attribute from a stored raw MDX tag string. */
+export function viewAttrFromMdxRaw(raw: string): string {
+  const parsed = parseMdxTagString(raw);
+  return parsed?.getAttribute("view")?.trim() ?? "";
+}
+
 /** Short label for bookmark chips (hostname + path, no scheme). */
 export function bookmarkDisplayLabel(url: string): string {
   try {

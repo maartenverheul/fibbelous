@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { PageBodyEditor } from "../components/page/PageBodyEditor";
+import { PageDatabaseView } from "../components/page/PageDatabaseView";
 import { PageIconPicker } from "../components/page/PageIconPicker";
 import { EmojiIcon } from "../components/emoji/EmojiIcon";
 import { usePageSave } from "../context/PageSaveContext";
 import { useTabs } from "../context/TabContext";
 import { useWorkspacePages } from "../hooks/useWorkspacePages";
+import { isDatabaseOnlyBody } from "../lib/databaseBlock";
 import { cn } from "../lib/utils";
 import { bodyMatchesStored } from "../lib/pageBodyTitle";
 import {
@@ -51,6 +53,8 @@ function PageEditor({
   onIconChange,
   onRestore,
 }: PageEditorProps) {
+  const databasePage = isDatabaseOnlyBody(body);
+
   return (
     <div className="flex min-h-full flex-col">
       {showTrashBanner && (
@@ -128,18 +132,25 @@ function PageEditor({
       </header>
       <div
         className={cn(
-          "mx-auto w-full max-w-3xl flex-1 px-4 pb-48",
+          "mx-auto w-full flex-1 pb-48",
+          databasePage
+            ? "page-database-body max-w-none px-4 sm:px-6 lg:px-8"
+            : "max-w-3xl px-4",
           icon ? "pt-20" : "pt-24",
         )}
       >
         {isBodyReady ? (
-          <PageBodyEditor
-            key={pageId}
-            pageId={pageId}
-            body={body}
-            readOnly={readOnly}
-            onBodyChange={onBodyChange}
-          />
+          databasePage ? (
+            <PageDatabaseView key={pageId} body={body} />
+          ) : (
+            <PageBodyEditor
+              key={pageId}
+              pageId={pageId}
+              body={body}
+              readOnly={readOnly}
+              onBodyChange={onBodyChange}
+            />
+          )
         ) : (
           <div
             className="min-h-6 animate-pulse rounded bg-stone-100 dark:bg-stone-800"

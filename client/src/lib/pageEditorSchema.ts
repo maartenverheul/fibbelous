@@ -6,9 +6,17 @@ import {
 } from "@blocknote/core";
 import { commitMapsUrl, mapsRawFromUrl } from "./mapsBlock";
 import {
+  databaseRawFromId,
+  paintDatabaseError,
+  paintDatabaseTable,
+} from "./databaseBlock";
+import { fetchDatabaseDetail } from "./databaseFetch";
+import { dbMutedText, dbRoot } from "./databaseUi";
+import {
   bookmarkDisplayLabel,
   elementToMdxTag,
   googleMapsEmbedSrc,
+  idAttrFromMdxRaw,
   mdxExportMarker,
   mdxTagWriteName,
   urlAttrFromMdxRaw,
@@ -49,6 +57,31 @@ function parseMdxBlockProps(tag: MdxPlaceholderTag, element: HTMLElement) {
   };
 }
 
+function parseDatabaseBlockProps(element: HTMLElement) {
+  if (
+    element.tagName === "DIV" &&
+    element.getAttribute("data-content-type") === "database"
+  ) {
+    const fromAttr = element.getAttribute("data-raw");
+    if (fromAttr) {
+      return {
+        raw: fromAttr,
+        databaseId: idAttrFromMdxRaw(fromAttr),
+      };
+    }
+  }
+
+  if (element.tagName.toLowerCase() !== "database") {
+    return undefined;
+  }
+
+  const raw = elementToMdxTag(element);
+  return {
+    raw,
+    databaseId: element.getAttribute("id")?.trim() ?? idAttrFromMdxRaw(raw),
+  };
+}
+
 function createMdxPlaceholderBlockSpec(tag: MdxPlaceholderTag) {
   const defaultRaw = `<${mdxTagWriteName(tag)} />`;
 
@@ -82,6 +115,47 @@ function createMdxPlaceholderBlockSpec(tag: MdxPlaceholderTag) {
       toExternalHTML(block) {
         const raw = String(block.props.raw);
         return { dom: mdxExportMarker(tag, raw) };
+      },
+    },
+  );
+}
+
+function createDatabaseBlockSpec() {
+  return createBlockSpec(
+    {
+      type: "database",
+      propSchema: {
+        raw: {
+          default: `<${mdxTagWriteName("database")} />`,
+        },
+        databaseId: {
+          default: "",
+        },
+      },
+      content: "none",
+    },
+    {
+      meta: {
+        selectable: true,
+      },
+      parse(element) {
+        return parseDatabaseBlockProps(element);
+      },
+      render(block) {
+        const databaseId =
+          String(block.props.databaseId || "").trim() ||
+          idAttrFromMdxRaw(String(block.props.raw));
+        const { dom, destroy } = renderDatabaseDom(databaseId);
+        dom.dataset.mdxTag = "database";
+        dom.contentEditable = "false";
+        return { dom, destroy };
+      },
+      toExternalHTML(block) {
+        const databaseId =
+          String(block.props.databaseId || "").trim() ||
+          idAttrFromMdxRaw(String(block.props.raw));
+        const raw = databaseRawFromId(databaseId, String(block.props.raw));
+        return { dom: mdxExportMarker("database", raw) };
       },
     },
   );
@@ -184,6 +258,60 @@ function bindExternalOpen(link: HTMLAnchorElement, url: string) {
     event.stopPropagation();
     void openExternalUrl(url);
   });
+}
+
+type DatabaseRenderResult = {
+  dom: HTMLElement;
+  destroy?: () => void;
+};
+
+function renderDatabaseDom(databaseId: string): DatabaseRenderResult {
+  const dom = document.createElement("div");
+  dom.className = dbRoot;
+
+  if (!databaseId) {
+    paintDatabaseError(dom, "", "Database (missing id)");
+    return { dom };
+  }
+
+  const body = document.createElement("div");
+  body.className = dbMutedText;
+  body.textContent = "Loading…";
+
+  dom.appendChild(body);
+
+  let cancelled = false;
+  let destroyTable: (() => void) | undefined;
+
+  void (async () => {
+    try {
+      const detail = await fetchDatabaseDetail(databaseId);
+      if (cancelled) return;
+
+      if (!detail) {
+        paintDatabaseError(dom, databaseId, "Not found");
+        return;
+      }
+
+      const painted = paintDatabaseTable(dom, detail);
+      destroyTable = painted.destroy;
+    } catch (error) {
+      if (cancelled) return;
+      paintDatabaseError(
+        dom,
+        databaseId,
+        error instanceof Error ? error.message : "Failed to load database",
+      );
+    }
+  })();
+
+  return {
+    dom,
+    destroy: () => {
+      cancelled = true;
+      destroyTable?.();
+    },
+  };
 }
 
 function renderBookmarkDom(url: string): HTMLElement {
@@ -407,7 +535,7 @@ function mountMapsUrlInput(
 export const pageEditorSchema = BlockNoteSchema.create({
   blockSpecs: {
     ...defaultBlockSpecs,
-    database: createMdxPlaceholderBlockSpec("database")(),
+    database: createDatabaseBlockSpec()(),
     unknown: createMdxPlaceholderBlockSpec("unknown")(),
     bookmark: createBookmarkBlockSpec()(),
     maps: createMapsBlockSpec()(),

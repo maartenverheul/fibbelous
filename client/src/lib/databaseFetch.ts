@@ -1,0 +1,104 @@
+import type {
+  DatabaseRowsPage,
+  DatabaseViewLayout,
+  DatabaseViewSort,
+  WorkspaceDatabaseDetail,
+} from "../types/database";
+import type { WorkspacePageDetail } from "../types/page";
+
+type DatabaseFetcher = (
+  id: string,
+) => Promise<WorkspaceDatabaseDetail | null>;
+
+type DatabaseRowsFetcher = (
+  id: string,
+  options: {
+    limit: number;
+    offset: number;
+    sort?: DatabaseViewSort | null;
+  },
+) => Promise<DatabaseRowsPage | null>;
+
+type DatabaseRowCreator = (
+  id: string,
+  title?: string,
+) => Promise<WorkspacePageDetail>;
+
+/** Partial view update. Omitted fields are unchanged; `sort: null` clears sort. */
+export type DatabaseViewUpdate = {
+  name?: string;
+  layout?: DatabaseViewLayout;
+  sort?: DatabaseViewSort | null;
+};
+
+type DatabaseViewUpdater = (
+  databaseId: string,
+  viewId: string,
+  update: DatabaseViewUpdate,
+) => Promise<WorkspaceDatabaseDetail>;
+
+let detailFetcher: DatabaseFetcher | null = null;
+let rowsFetcher: DatabaseRowsFetcher | null = null;
+let rowCreator: DatabaseRowCreator | null = null;
+let viewUpdater: DatabaseViewUpdater | null = null;
+
+/** Wired from WorkspaceProvider so BlockNote DOM renders can load databases. */
+export function registerDatabaseFetcher(next: DatabaseFetcher | null) {
+  detailFetcher = next;
+}
+
+export function registerDatabaseRowsFetcher(next: DatabaseRowsFetcher | null) {
+  rowsFetcher = next;
+}
+
+export function registerDatabaseRowCreator(next: DatabaseRowCreator | null) {
+  rowCreator = next;
+}
+
+export function registerDatabaseViewUpdater(next: DatabaseViewUpdater | null) {
+  viewUpdater = next;
+}
+
+export async function fetchDatabaseDetail(
+  id: string,
+): Promise<WorkspaceDatabaseDetail | null> {
+  if (!detailFetcher) {
+    throw new Error("No workspace connection");
+  }
+  return detailFetcher(id);
+}
+
+export async function fetchDatabaseRows(
+  id: string,
+  options: {
+    limit: number;
+    offset: number;
+    sort?: DatabaseViewSort | null;
+  },
+): Promise<DatabaseRowsPage | null> {
+  if (!rowsFetcher) {
+    throw new Error("No workspace connection");
+  }
+  return rowsFetcher(id, options);
+}
+
+export async function createDatabaseRow(
+  id: string,
+  title?: string,
+): Promise<WorkspacePageDetail> {
+  if (!rowCreator) {
+    throw new Error("No workspace connection");
+  }
+  return rowCreator(id, title);
+}
+
+export async function updateDatabaseView(
+  databaseId: string,
+  viewId: string,
+  update: DatabaseViewUpdate,
+): Promise<WorkspaceDatabaseDetail> {
+  if (!viewUpdater) {
+    throw new Error("No workspace connection");
+  }
+  return viewUpdater(databaseId, viewId, update);
+}
