@@ -4,6 +4,16 @@ import type { WorkspaceInfo } from "../types/workspace";
 
 export { isTauri };
 
+/** Open a URL in the system browser (Tauri) or a new tab (web). */
+export async function openExternalUrl(url: string): Promise<void> {
+  if (isTauri()) {
+    const { openUrl } = await import("@tauri-apps/plugin-opener");
+    await openUrl(url);
+    return;
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
 export async function pickWorkspaceFolder(): Promise<string | null> {
   if (!isTauri()) return null;
 

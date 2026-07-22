@@ -7,6 +7,11 @@ export type WorkspacePage = {
   hasChildren: boolean;
 };
 
+export type SearchPageHit = WorkspacePage & {
+  matchIn: "title" | "slug" | "body";
+  snippet: string | null;
+};
+
 export type WorkspacePageDetail = WorkspacePage & {
   body: string;
 };
@@ -76,7 +81,12 @@ export function buildPageSegment(
 }
 
 export function isPagePathSegment(segment: string) {
-  return segment !== "" && segment !== "settings" && parsePageIdFromSegment(segment) !== null;
+  return (
+    segment !== "" &&
+    segment !== "settings" &&
+    segment !== "search" &&
+    parsePageIdFromSegment(segment) !== null
+  );
 }
 
 /** @deprecated Use isPagePathSegment */

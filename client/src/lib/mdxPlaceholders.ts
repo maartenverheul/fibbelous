@@ -1,5 +1,10 @@
-/** MDX tags that get placeholder BlockNote blocks until real UIs exist. */
-export const MDX_PLACEHOLDER_TAGS = ["database", "unknown"] as const;
+/** Custom MDX tags that get dedicated BlockNote blocks (placeholders or rich UI). */
+export const MDX_PLACEHOLDER_TAGS = [
+  "database",
+  "unknown",
+  "bookmark",
+  "maps",
+] as const;
 
 export type MdxPlaceholderTag = (typeof MDX_PLACEHOLDER_TAGS)[number];
 
@@ -16,6 +21,7 @@ export function isMdxPlaceholderTag(tag: string): tag is MdxPlaceholderTag {
  */
 const BLOCKNOTE_PROP_ATTRS = new Set([
   "data-raw",
+  "data-url",
   "data-content-type",
   "data-nesting-level",
   "data-file-block",
@@ -137,4 +143,125 @@ export function sanitizeMdxPlaceholderHtml(html: string): string {
   }
 
   return root.innerHTML;
+}
+
+/** Read the `url` attribute from a stored raw MDX tag string. */
+export function urlAttrFromMdxRaw(raw: string): string {
+  const parsed = parseMdxTagString(raw);
+  return parsed?.getAttribute("url")?.trim() ?? "";
+}
+
+/** Short label for bookmark chips (hostname + path, no scheme). */
+export function bookmarkDisplayLabel(url: string): string {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, "");
+    const path = u.pathname === "/" ? "" : u.pathname;
+    return `${host}${path}${u.search}`;
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * Decimal coordinates: `52.37, 4.90` / `52.37,4.90` / `52.37;4.90`.
+ */
+export function parseMapsCoordinates(
+  input: string,
+): { lat: number; lng: number } | null {
+  const match = input
+    .trim()
+    .match(/^(-?\d+(?:\.\d+)?)\s*[,;]\s*(-?\d+(?:\.\d+)?)$/);
+  if (!match) return null;
+
+  const lat = Number(match[1]);
+  const lng = Number(match[2]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  return { lat, lng };
+}
+
+function isGoogleMapsHost(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  if (host === "maps.app.goo.gl" || host === "maps.google.com") return true;
+  // google.com, www.google.nl, maps.google.co.uk, …
+  return /(^|\.)google\.[a-z.]+$/.test(host);
+}
+
+/**
+ * Accept only a Google Maps URL we can embed, or bare lat/lng coordinates.
+ * Returns the normalized URL to store, or null to cancel.
+ */
+export function normalizeMapsInput(input: string): string | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+
+  const coords = parseMapsCoordinates(trimmed);
+  if (coords) {
+    return `https://www.google.com/maps?q=${coords.lat},${coords.lng}`;
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    return null;
+  }
+
+  if (!/^https?:$/i.test(parsed.protocol)) return null;
+  if (!isGoogleMapsHost(parsed.hostname)) return null;
+
+  // Must resolve to a real embed (rejects bare `/maps/@…` viewport links, etc.).
+  if (!googleMapsEmbedSrc(trimmed)) return null;
+  return trimmed;
+}
+
+/**
+ * Turn a Google Maps place/search/share URL into an embeddable iframe `src`.
+ * Already-embed URLs are returned as-is.
+ *
+ * The `@lat,lng,zoomz` camera segment is ignored — it is viewport-only and must
+ * not become a pin or drive the embed. Prefer place / search / `q` identity.
+ */
+export function googleMapsEmbedSrc(url: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+
+  const host = parsed.hostname.toLowerCase();
+  if (!isGoogleMapsHost(host)) {
+    return null;
+  }
+
+  if (parsed.pathname.includes("/maps/embed") || parsed.pathname.includes("/embed")) {
+    return url;
+  }
+
+  const placeMatch = parsed.pathname.match(/\/maps\/place\/([^/]+)/);
+  if (placeMatch) {
+    const place = decodeURIComponent(placeMatch[1].replace(/\+/g, " "));
+    return `https://www.google.com/maps?q=${encodeURIComponent(place)}&output=embed`;
+  }
+
+  const searchMatch = parsed.pathname.match(/\/maps\/(?:search|dir)\/([^/]+)/);
+  if (searchMatch) {
+    const q = decodeURIComponent(searchMatch[1].replace(/\+/g, " "));
+    return `https://www.google.com/maps?q=${encodeURIComponent(q)}&output=embed`;
+  }
+
+  const q = parsed.searchParams.get("q") ?? parsed.searchParams.get("query");
+  if (q) {
+    return `https://www.google.com/maps?q=${encodeURIComponent(q)}&output=embed`;
+  }
+
+  // Short links: embed via the short URL as query (Google resolves it).
+  if (host === "maps.app.goo.gl") {
+    return `https://www.google.com/maps?q=${encodeURIComponent(url)}&output=embed`;
+  }
+
+  // Bare `/maps/@…` viewport links (and anything else without place/search/`q`) → reject.
+  return null;
 }

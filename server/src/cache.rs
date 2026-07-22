@@ -68,6 +68,19 @@ pub struct PageDetail {
     pub body: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchPageHit {
+    pub id: String,
+    pub slug: Option<String>,
+    pub title: Option<String>,
+    pub icon: Option<String>,
+    pub path: String,
+    pub has_children: bool,
+    pub match_in: String,
+    pub snippet: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct IndexedPage {
     pub path: String,
@@ -273,6 +286,62 @@ impl CacheDb {
         }))
     }
 
+    pub fn search_pages(&self, query: &str, limit: usize) -> rusqlite::Result<Vec<SearchPageHit>> {
+        let query = query.trim();
+        if query.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let limit = limit.clamp(1, 100);
+        let pattern = format!("%{}%", escape_like(query));
+
+        let mut stmt = self.conn.prepare(
+            "SELECT id, slug, title, icon, path, content FROM pages
+             WHERE title LIKE ?1 ESCAPE '\\' COLLATE NOCASE
+                OR slug LIKE ?1 ESCAPE '\\' COLLATE NOCASE
+                OR content LIKE ?1 ESCAPE '\\' COLLATE NOCASE
+             ORDER BY
+               CASE
+                 WHEN title LIKE ?1 ESCAPE '\\' COLLATE NOCASE THEN 0
+                 WHEN slug LIKE ?1 ESCAPE '\\' COLLATE NOCASE THEN 1
+                 ELSE 2
+               END,
+               COALESCE(title, id) COLLATE NOCASE
+             LIMIT ?2",
+        )?;
+
+        let rows = stmt
+            .query_map(params![pattern, limit as i64], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut hits = Vec::with_capacity(rows.len());
+        for (id, slug, title, icon, path, content) in rows {
+            let (match_in, snippet) = classify_match(query, title.as_deref(), slug.as_deref(), &content);
+            let has_children = self.dir_has_pages(&children_dir(&path, &id))?;
+            hits.push(SearchPageHit {
+                id,
+                slug,
+                title,
+                icon,
+                path,
+                has_children,
+                match_in,
+                snippet,
+            });
+        }
+
+        Ok(hits)
+    }
+
     fn dir_has_pages(&self, dir: &str) -> rusqlite::Result<bool> {
         self.conn.query_row(
             "SELECT EXISTS(
@@ -402,6 +471,70 @@ fn strip_frontmatter(content: &str) -> &str {
     };
 
     rest[end + 4..].trim_start()
+}
+
+fn escape_like(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
+
+fn contains_nocase(haystack: &str, needle: &str) -> bool {
+    haystack.to_lowercase().contains(&needle.to_lowercase())
+}
+
+fn classify_match(
+    query: &str,
+    title: Option<&str>,
+    slug: Option<&str>,
+    content: &str,
+) -> (String, Option<String>) {
+    if title.is_some_and(|title| contains_nocase(title, query)) {
+        return ("title".to_owned(), None);
+    }
+    if slug.is_some_and(|slug| contains_nocase(slug, query)) {
+        return ("slug".to_owned(), None);
+    }
+
+    let body = strip_frontmatter(content);
+    ("body".to_owned(), make_snippet(body, query))
+}
+
+fn make_snippet(body: &str, query: &str) -> Option<String> {
+    const RADIUS: usize = 50;
+
+    let lower_body = body.to_lowercase();
+    let lower_query = query.to_lowercase();
+    let match_start = lower_body.find(&lower_query)?;
+    let match_end = match_start + query.len();
+
+    let prefix_chars = body[..match_start].chars().count();
+    let start_char = prefix_chars.saturating_sub(RADIUS);
+    let end_char = prefix_chars + query.chars().count() + RADIUS;
+
+    let byte_start = body
+        .char_indices()
+        .nth(start_char)
+        .map(|(offset, _)| offset)
+        .unwrap_or(0);
+    let byte_end = body
+        .char_indices()
+        .nth(end_char)
+        .map(|(offset, _)| offset)
+        .unwrap_or_else(|| body.len());
+
+    // Keep match_end visible even if char math underestimates UTF-8 length.
+    let byte_end = byte_end.max(match_end.min(body.len()));
+
+    let mut snippet = body[byte_start..byte_end].trim().to_owned();
+    if byte_start > 0 {
+        snippet.insert_str(0, "…");
+    }
+    if byte_end < body.len() {
+        snippet.push('…');
+    }
+    Some(snippet)
 }
 
 pub fn runtime_dir(workspace_path: &Path) -> PathBuf {

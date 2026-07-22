@@ -42,6 +42,7 @@ import {
   parsePageIdFromSegment,
   type WorkspacePage,
   type WorkspacePageDetail,
+  type SearchPageHit,
   type TrashedPage,
   type TrashedPageDetail,
 } from "../types/page";
@@ -75,6 +76,7 @@ type WorkspaceContextValue = {
   ) => Promise<WorkspacePageDetail>;
   duplicatePage: (id: string) => Promise<WorkspacePageDetail>;
   trashPage: (page: WorkspacePage) => Promise<string[]>;
+  searchPages: (query: string) => Promise<SearchPageHit[]>;
   listTrashedPages: () => Promise<TrashedPage[]>;
   restorePage: (id: string) => Promise<WorkspacePageDetail>;
   purgePage: (id: string) => Promise<void>;
@@ -687,6 +689,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     return rpc.call<TrashedPage[]>("list_trashed_pages");
   }, [rpc, connectionStatus]);
 
+  const searchPages = useCallback(
+    async (query: string) => {
+      if (!rpc || connectionStatus !== "connected") {
+        throw new Error("Workspace not connected");
+      }
+      return rpc.call<SearchPageHit[]>("search_pages", { query });
+    },
+    [rpc, connectionStatus],
+  );
+
   const restorePage = useCallback(
     async (id: string) => {
       if (!rpc || connectionStatus !== "connected") {
@@ -757,6 +769,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       updatePage,
       duplicatePage,
       trashPage,
+      searchPages,
       listTrashedPages,
       restorePage,
       purgePage,
@@ -787,6 +800,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       updatePage,
       duplicatePage,
       trashPage,
+      searchPages,
       listTrashedPages,
       restorePage,
       purgePage,

@@ -18,6 +18,14 @@ struct GetPageParams {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct SearchPagesParams {
+    query: String,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct CreatePageParams {
     parent_path: String,
     #[serde(default)]
@@ -117,6 +125,22 @@ pub fn build_workspace_module(state: WorkspaceRpcState) -> RpcModule<WorkspaceRp
             Ok::<serde_json::Value, ErrorObjectOwned>(serde_json::to_value(page).unwrap())
         })
         .expect("get_page method registration");
+
+    module
+        .register_async_method("search_pages", |params, ctx, _| async move {
+            let request: SearchPagesParams = params.parse()?;
+            let workspace = ctx.workspace.clone();
+            let query = request.query;
+            let limit = request.limit;
+            let pages = tokio::task::spawn_blocking(move || {
+                workspace.search_pages(&query, limit)
+            })
+            .await
+            .map_err(|error| ErrorObjectOwned::owned(1, error.to_string(), None::<()>))?
+            .map_err(|error| ErrorObjectOwned::owned(2, error, None::<()>))?;
+            Ok::<serde_json::Value, ErrorObjectOwned>(serde_json::to_value(pages).unwrap())
+        })
+        .expect("search_pages method registration");
 
     module
         .register_async_method("create_page", |params, ctx, _| async move {
@@ -292,6 +316,18 @@ pub async fn call_workspace_rpc(
                 .map_err(|error| error.to_string())?
                 .map_err(|error| error)?;
             serde_json::to_value(page).map_err(|error| error.to_string())
+        }
+        "search_pages" => {
+            let request: SearchPagesParams =
+                serde_json::from_value(params_or_null(params)).map_err(|error| error.to_string())?;
+            let workspace = workspace.clone();
+            let query = request.query;
+            let limit = request.limit;
+            let pages = tokio::task::spawn_blocking(move || workspace.search_pages(&query, limit))
+                .await
+                .map_err(|error| error.to_string())?
+                .map_err(|error| error)?;
+            serde_json::to_value(pages).map_err(|error| error.to_string())
         }
         "create_page" => {
             let request: CreatePageParams =

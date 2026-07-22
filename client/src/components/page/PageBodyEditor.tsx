@@ -1,6 +1,9 @@
 import { BlockNoteView } from "@blocknote/ariakit";
 import "@blocknote/ariakit/style.css";
+import { filterSuggestionItems } from "@blocknote/core/extensions";
 import {
+  getDefaultReactSlashMenuItems,
+  SuggestionMenuController,
   useCreateBlockNote,
   useEditorChange,
 } from "@blocknote/react";
@@ -11,6 +14,7 @@ import {
   htmlToMarkdown,
   markdownToHtml,
 } from "../../lib/markdownPipeline";
+import { insertMapsSlashMenuItem } from "../../lib/mapsSlashMenu";
 import type { PageEditor } from "../../lib/pageEditorSchema";
 import { pageEditorSchema } from "../../lib/pageEditorSchema";
 import {
@@ -19,6 +23,7 @@ import {
   isValidEditorLink,
   pageIdFromInternalLink,
 } from "../../lib/pageLinks";
+import { openExternalUrl } from "../../lib/tauri";
 import { cn } from "../../lib/utils";
 import { buildPageSegment, pageLabel } from "../../types/page";
 
@@ -42,9 +47,16 @@ async function parseBodyToBlocks(editor: PageEditor, body: string) {
 
 async function serializeBody(editor: PageEditor): Promise<string> {
   // BlockNote's markdown exporter strips unknown tags; go HTML → markdown so
-  // `<database />` / `<unknown />` placeholders survive.
+  // custom MDX tags (`<database />`, `<bookmark />`, …) survive.
   const html = editor.blocksToHTMLLossy();
   return htmlToMarkdown(html);
+}
+
+function getSlashMenuItems(editor: PageEditor) {
+  return [
+    ...getDefaultReactSlashMenuItems(editor),
+    insertMapsSlashMenuItem(editor),
+  ];
 }
 
 export function PageBodyEditor({
@@ -91,7 +103,8 @@ export function PageBodyEditor({
           }
 
           if (isExternalLink(href)) {
-            window.open(href, "_blank", "noopener,noreferrer");
+            event.preventDefault();
+            void openExternalUrl(href);
           }
         },
       },
@@ -180,9 +193,17 @@ export function PageBodyEditor({
       <BlockNoteView
         editor={editor}
         editable={!readOnly}
+        slashMenu={false}
         aria-label="Page content"
         className="[&_.bn-editor]:min-h-6"
-      />
+      >
+        <SuggestionMenuController
+          triggerCharacter="/"
+          getItems={async (query) =>
+            filterSuggestionItems(getSlashMenuItems(editor), query)
+          }
+        />
+      </BlockNoteView>
     </div>
   );
 }

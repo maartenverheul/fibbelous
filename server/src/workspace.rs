@@ -186,6 +186,20 @@ impl Workspace {
             .map_err(|error| error.to_string())
     }
 
+    pub fn search_pages(
+        &self,
+        query: &str,
+        limit: Option<usize>,
+    ) -> Result<Vec<crate::cache::SearchPageHit>, String> {
+        let cache = self
+            .cache
+            .lock()
+            .map_err(|_| "cache mutex poisoned".to_string())?;
+        cache
+            .search_pages(query, limit.unwrap_or(50))
+            .map_err(|error| error.to_string())
+    }
+
     fn with_cache_mut<T>(
         &self,
         operation: impl FnOnce(&PathBuf, &mut CacheDb) -> Result<T, String>,

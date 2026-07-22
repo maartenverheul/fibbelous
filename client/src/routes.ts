@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 import { isPagePathSegment, parsePageIdFromSegment, parsePageKey, humanizeSlug } from "./types/page";
 import { HomePage } from "./pages/HomePage";
+import { SearchPage } from "./pages/SearchPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { TrashPage } from "./pages/TrashPage";
 
@@ -15,6 +16,7 @@ export const appRoutes: AppRoute[] = [
   { id: "home", segment: "", label: "Home", component: HomePage },
   { id: "settings", segment: "settings", label: "Settings", component: SettingsPage },
   { id: "trash", segment: "trash", label: "Trash", component: TrashPage },
+  { id: "search", segment: "search", label: "Search", component: SearchPage },
 ];
 
 export type TabRouteInfo = {

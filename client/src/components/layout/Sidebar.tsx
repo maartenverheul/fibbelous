@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { PiGear, PiTrash, PiX } from "react-icons/pi";
+import { PiGear, PiMagnifyingGlass, PiTrash, PiX } from "react-icons/pi";
 import { useSidebar } from "../../context/SidebarContext";
 import { useTabs, type TabTarget } from "../../context/TabContext";
 import { useWorkspacePages } from "../../hooks/useWorkspacePages";
@@ -185,6 +185,21 @@ export function Sidebar() {
             ))}
           </CollapsibleSection>
         </div>
+
+        <button
+          type="button"
+          onClick={() => navigateInTab("search", { label: "Search" })}
+          onContextMenu={(event) =>
+            openContextMenu(event, "search", { label: "Search" })
+          }
+          className={cn(
+            navButtonClassName(activeSegment === "search"),
+            "mx-3 mt-2 flex shrink-0 items-center gap-2",
+          )}
+        >
+          <PiMagnifyingGlass className="h-4 w-4 shrink-0" aria-hidden />
+          Search
+        </button>
 
         <button
           type="button"
