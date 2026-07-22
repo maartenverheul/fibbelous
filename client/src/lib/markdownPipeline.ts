@@ -9,10 +9,8 @@ import remarkRehype from "remark-rehype";
 import remarkStringify from "remark-stringify";
 import { unified } from "unified";
 import {
-  elementToMdxTag,
   MDX_PLACEHOLDER_TAG_RE,
   mdxTagsToBlockNoteMarkers,
-  parseMdxTagString,
   sanitizeMdxPlaceholderHtml,
 } from "./mdxPlaceholders";
 
@@ -51,12 +49,30 @@ export function protectMdxPlaceholderTags(html: string): {
   tags: string[];
 } {
   const tags: string[] = [];
-  const next = html.replace(MDX_PLACEHOLDER_TAG_RE, (match) => {
+
+  // Prefer export carriers — they keep the exact written casing from data-raw.
+  let next = html.replace(
+    /<span\b[^>]*\bdata-mdx-export\b[^>]*>([\s\S]*?)<\/span>/gi,
+    (_match, escaped: string) => {
+      const index = tags.length;
+      tags.push(
+        escaped
+          .replace(/&lt;/g, "<")
+          .replace(/&gt;/g, ">")
+          .replace(/&quot;/g, '"')
+          .replace(/&amp;/g, "&"),
+      );
+      return `<p>MDXPLACEHOLDER${index}ENDMDX</p>`;
+    },
+  );
+
+  // Bare tags (legacy export): keep the matched spelling, do not re-case.
+  next = next.replace(MDX_PLACEHOLDER_TAG_RE, (match) => {
     const index = tags.length;
-    const parsed = parseMdxTagString(match);
-    tags.push(parsed ? elementToMdxTag(parsed) : match.trim());
+    tags.push(match.trim());
     return `<p>MDXPLACEHOLDER${index}ENDMDX</p>`;
   });
+
   return { html: next, tags };
 }
 
@@ -74,7 +90,7 @@ export async function markdownToHtml(markdown: string): Promise<string> {
     return "<p></p>";
   }
 
-  // Turn <database … /> into closed div markers before HTML5 parsing, otherwise
+  // Turn <Database … /> into closed div markers before HTML5 parsing, otherwise
   // custom self-closing tags are treated as open and can swallow following blocks.
   const prepared = mdxTagsToBlockNoteMarkers(markdown);
   const file = await markdownToHtmlProcessor.process(prepared);

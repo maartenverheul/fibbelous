@@ -128,7 +128,7 @@ function PageEditor({
       </header>
       <div
         className={cn(
-          "mx-auto w-full max-w-3xl flex-1 px-4 pb-4",
+          "mx-auto w-full max-w-3xl flex-1 px-4 pb-48",
           icon ? "pt-20" : "pt-24",
         )}
       >

@@ -7,13 +7,15 @@ import {
   useCreateBlockNote,
   useEditorChange,
 } from "@blocknote/react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTabs } from "../../context/TabContext";
 import { useWorkspacePages } from "../../hooks/useWorkspacePages";
+import { insertBookmarkBlock } from "../../lib/bookmarkBlock";
 import {
   htmlToMarkdown,
   markdownToHtml,
 } from "../../lib/markdownPipeline";
+import { insertMapsBlock } from "../../lib/mapsBlock";
 import { insertMapsSlashMenuItem } from "../../lib/mapsSlashMenu";
 import type { PageEditor } from "../../lib/pageEditorSchema";
 import { pageEditorSchema } from "../../lib/pageEditorSchema";
@@ -23,9 +25,19 @@ import {
   isValidEditorLink,
   pageIdFromInternalLink,
 } from "../../lib/pageLinks";
+import {
+  getPasteLinkChoiceOptions,
+  insertPastedInlineLink,
+  insertPastedPlainText,
+  shouldOfferPasteLinkChoice,
+} from "../../lib/pasteLinkChoice";
 import { openExternalUrl } from "../../lib/tauri";
 import { cn } from "../../lib/utils";
 import { buildPageSegment, pageLabel } from "../../types/page";
+import {
+  PasteLinkChoiceMenu,
+  type PasteLinkChoice,
+} from "./PasteLinkChoiceMenu";
 
 type PageBodyEditorProps = {
   pageId: string;
@@ -47,7 +59,7 @@ async function parseBodyToBlocks(editor: PageEditor, body: string) {
 
 async function serializeBody(editor: PageEditor): Promise<string> {
   // BlockNote's markdown exporter strips unknown tags; go HTML → markdown so
-  // custom MDX tags (`<database />`, `<bookmark />`, …) survive.
+  // custom MDX tags (`<Database />`, `<Bookmark />`, …) survive.
   const html = editor.blocksToHTMLLossy();
   return htmlToMarkdown(html);
 }
@@ -69,9 +81,15 @@ export function PageBodyEditor({
   const { findPageById } = useWorkspacePages();
   const findPageByIdRef = useRef(findPageById);
   const navigateInTabRef = useRef(navigateInTab);
+  const openPasteChoiceRef = useRef<(choice: PasteLinkChoice) => void>(
+    () => {},
+  );
 
   findPageByIdRef.current = findPageById;
   navigateInTabRef.current = navigateInTab;
+
+  const [pasteChoice, setPasteChoice] = useState<PasteLinkChoice | null>(null);
+  openPasteChoiceRef.current = setPasteChoice;
 
   const editor = useCreateBlockNote(
     {
@@ -108,6 +126,35 @@ export function PageBodyEditor({
           }
         },
       },
+      pasteHandler: ({ event, editor: pasteEditor, defaultPasteHandler }) => {
+        const rawText = event.clipboardData?.getData("text/plain") ?? "";
+
+        // Ctrl+Shift+V / Cmd+Shift+V — always paste as plain text.
+        if ("shiftKey" in event && event.shiftKey) {
+          if (rawText) {
+            pasteEditor.pasteText(rawText);
+            return true;
+          }
+          return defaultPasteHandler({ plainTextAsMarkdown: false });
+        }
+
+        const text = rawText.trim();
+        if (!shouldOfferPasteLinkChoice(pasteEditor as PageEditor, text)) {
+          return defaultPasteHandler();
+        }
+
+        const options = getPasteLinkChoiceOptions(text);
+        if (!options) return defaultPasteHandler();
+
+        const box = pasteEditor.getSelectionBoundingBox();
+        openPasteChoiceRef.current({
+          url: text,
+          left: box?.left ?? 16,
+          top: (box?.bottom ?? 16) + 6,
+          ...options,
+        });
+        return true;
+      },
     },
     [pageId],
   );
@@ -119,6 +166,45 @@ export function PageBodyEditor({
   const onBodyChangeRef = useRef(onBodyChange);
 
   onBodyChangeRef.current = onBodyChange;
+
+  const pasteChoiceRef = useRef(pasteChoice);
+  pasteChoiceRef.current = pasteChoice;
+
+  const applyPasteAsPlainText = useCallback(() => {
+    const choice = pasteChoiceRef.current;
+    if (!choice) return;
+    setPasteChoice(null);
+    insertPastedPlainText(editor, choice.url);
+    editor.focus();
+  }, [editor]);
+
+  const applyPasteAsLink = useCallback(() => {
+    const choice = pasteChoiceRef.current;
+    if (!choice) return;
+    setPasteChoice(null);
+    insertPastedInlineLink(editor, choice.url);
+    editor.focus();
+  }, [editor]);
+
+  const applyPasteAsBookmark = useCallback(() => {
+    const choice = pasteChoiceRef.current;
+    if (!choice) return;
+    setPasteChoice(null);
+    insertBookmarkBlock(editor, choice.url);
+    editor.focus();
+  }, [editor]);
+
+  const applyPasteAsMaps = useCallback(() => {
+    const choice = pasteChoiceRef.current;
+    if (!choice) return;
+    setPasteChoice(null);
+    insertMapsBlock(editor, choice.url);
+    editor.focus();
+  }, [editor]);
+
+  useEffect(() => {
+    setPasteChoice(null);
+  }, [pageId]);
 
   useEffect(() => {
     if (userEditedRef.current || appliedBodyRef.current === body) {
@@ -204,6 +290,16 @@ export function PageBodyEditor({
           }
         />
       </BlockNoteView>
+      {pasteChoice && !readOnly && (
+        <PasteLinkChoiceMenu
+          choice={pasteChoice}
+          onPlainText={applyPasteAsPlainText}
+          onLink={applyPasteAsLink}
+          onBookmark={applyPasteAsBookmark}
+          onMaps={applyPasteAsMaps}
+          onDismiss={applyPasteAsPlainText}
+        />
+      )}
     </div>
   );
 }

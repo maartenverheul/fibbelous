@@ -9,11 +9,13 @@ import {
   bookmarkDisplayLabel,
   elementToMdxTag,
   googleMapsEmbedSrc,
-  parseMdxTagString,
+  mdxExportMarker,
+  mdxTagWriteName,
   urlAttrFromMdxRaw,
   type MdxPlaceholderTag,
 } from "./mdxPlaceholders";
 import { openExternalUrl } from "./tauri";
+import { bookmarkRawFromUrl } from "./bookmarkBlock";
 
 export {
   elementToMdxTag,
@@ -48,7 +50,7 @@ function parseMdxBlockProps(tag: MdxPlaceholderTag, element: HTMLElement) {
 }
 
 function createMdxPlaceholderBlockSpec(tag: MdxPlaceholderTag) {
-  const defaultRaw = `<${tag} />`;
+  const defaultRaw = `<${mdxTagWriteName(tag)} />`;
 
   return createBlockSpec(
     {
@@ -79,12 +81,7 @@ function createMdxPlaceholderBlockSpec(tag: MdxPlaceholderTag) {
       },
       toExternalHTML(block) {
         const raw = String(block.props.raw);
-        const parsed = parseMdxTagString(raw);
-        if (parsed && parsed.tagName.toLowerCase() === tag) {
-          return { dom: parsed.cloneNode(true) as HTMLElement };
-        }
-        const fallback = document.createElement(tag);
-        return { dom: fallback };
+        return { dom: mdxExportMarker(tag, raw) };
       },
     },
   );
@@ -96,7 +93,7 @@ function createBookmarkBlockSpec() {
       type: "bookmark",
       propSchema: {
         raw: {
-          default: `<bookmark url="" />`,
+          default: `<${mdxTagWriteName("bookmark")} url="" />`,
         },
         url: {
           default: "",
@@ -124,11 +121,8 @@ function createBookmarkBlockSpec() {
         const url =
           String(block.props.url || "").trim() ||
           urlAttrFromMdxRaw(String(block.props.raw));
-        const el = document.createElement("bookmark");
-        if (url) {
-          el.setAttribute("url", url);
-        }
-        return { dom: el };
+        const raw = bookmarkRawFromUrl(url, String(block.props.raw));
+        return { dom: mdxExportMarker("bookmark", raw) };
       },
     },
   );
@@ -159,23 +153,23 @@ function createMapsBlockSpec() {
         const url =
           String(block.props.url || "").trim() ||
           urlAttrFromMdxRaw(String(block.props.raw));
-        const { dom, destroy } = renderMapsDom(url, {
-          editable: editor.isEditable,
-          onCommitUrl: (nextUrl) => commitMapsUrl(editor, block.id, nextUrl),
-        });
+        const { dom, destroy, stopEvent, ignoreMutation } = renderMapsDom(
+          url,
+          {
+            editable: editor.isEditable,
+            onCommitUrl: (nextUrl) => commitMapsUrl(editor, block.id, nextUrl),
+          },
+        );
         dom.dataset.mdxTag = "maps";
         dom.contentEditable = "false";
-        return { dom, destroy };
+        return { dom, destroy, stopEvent, ignoreMutation };
       },
       toExternalHTML(block) {
         const url =
           String(block.props.url || "").trim() ||
           urlAttrFromMdxRaw(String(block.props.raw));
-        const el = document.createElement("maps");
-        if (url) {
-          el.setAttribute("url", url);
-        }
-        return { dom: el };
+        const raw = mapsRawFromUrl(url, String(block.props.raw));
+        return { dom: mdxExportMarker("maps", raw) };
       },
     },
   );
@@ -216,10 +210,18 @@ type MapsRenderOptions = {
   onCommitUrl: (url: string) => boolean | void;
 };
 
+type MapsRenderResult = {
+  dom: HTMLElement;
+  destroy?: () => void;
+  /** Keep ProseMirror from handling keys/clicks inside the URL form. */
+  stopEvent?: (event: Event) => boolean;
+  ignoreMutation?: (mutation: { target: Node | null }) => boolean;
+};
+
 function renderMapsDom(
   url: string,
   options: MapsRenderOptions,
-): { dom: HTMLElement; destroy?: () => void } {
+): MapsRenderResult {
   const dom = document.createElement("div");
   dom.className = "bn-mdx-maps";
 
@@ -231,6 +233,17 @@ function renderMapsDom(
       return {
         dom,
         destroy: mountMapsUrlInput(dom, options.onCommitUrl),
+        // Without this, the first keypress is handled by the editor and the
+        // node view remounts (BlockNote has no `update`), wiping the input.
+        stopEvent: (event) => {
+          const target = event.target;
+          return target instanceof Node && dom.contains(target);
+        },
+        ignoreMutation: (mutation) => {
+          return (
+            mutation.target instanceof Node && dom.contains(mutation.target)
+          );
+        },
       };
     }
 
@@ -315,20 +328,25 @@ function mountMapsUrlInput(
     setError(null);
   };
 
-  const onMouseDown = (event: MouseEvent) => {
-    // Keep focus in the input instead of the surrounding block selection.
+  // Capture-phase stop so ProseMirror never sees keys while the field is focused
+  // (otherwise the first character replaces/removes the empty Maps block).
+  const stopEditor = (event: Event) => {
     event.stopPropagation();
   };
+
+  const onMouseDown = (event: MouseEvent) => {
+    event.stopPropagation();
+  };
+
   const onKeyDown = (event: KeyboardEvent) => {
-    // Stop editor shortcuts while typing/pasting in the URL field.
     event.stopPropagation();
     if (event.key === "Enter") {
       event.preventDefault();
       commit();
     }
   };
+
   const onPaste = (event: ClipboardEvent) => {
-    // BlockNote/ProseMirror otherwise steals paste from this input.
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation();
@@ -342,18 +360,26 @@ function mountMapsUrlInput(
     input.setSelectionRange(cursor, cursor);
     setError(null);
   };
+
   const onSubmitClick = (event: MouseEvent) => {
     event.preventDefault();
     event.stopPropagation();
     commit();
   };
-  const onInput = () => setError(null);
 
-  input.addEventListener("mousedown", onMouseDown);
-  input.addEventListener("keydown", onKeyDown);
+  const onInput = (event: Event) => {
+    event.stopPropagation();
+    setError(null);
+  };
+
+  input.addEventListener("mousedown", onMouseDown, true);
+  input.addEventListener("keydown", onKeyDown, true);
+  input.addEventListener("keyup", stopEditor, true);
+  input.addEventListener("keypress", stopEditor, true);
+  input.addEventListener("beforeinput", stopEditor, true);
+  input.addEventListener("input", onInput, true);
   input.addEventListener("paste", onPaste, true);
-  input.addEventListener("input", onInput);
-  submit.addEventListener("mousedown", onMouseDown);
+  submit.addEventListener("mousedown", onMouseDown, true);
   submit.addEventListener("click", onSubmitClick);
 
   row.appendChild(input);
@@ -366,11 +392,14 @@ function mountMapsUrlInput(
   });
 
   return () => {
-    input.removeEventListener("mousedown", onMouseDown);
-    input.removeEventListener("keydown", onKeyDown);
+    input.removeEventListener("mousedown", onMouseDown, true);
+    input.removeEventListener("keydown", onKeyDown, true);
+    input.removeEventListener("keyup", stopEditor, true);
+    input.removeEventListener("keypress", stopEditor, true);
+    input.removeEventListener("beforeinput", stopEditor, true);
+    input.removeEventListener("input", onInput, true);
     input.removeEventListener("paste", onPaste, true);
-    input.removeEventListener("input", onInput);
-    submit.removeEventListener("mousedown", onMouseDown);
+    submit.removeEventListener("mousedown", onMouseDown, true);
     submit.removeEventListener("click", onSubmitClick);
   };
 }

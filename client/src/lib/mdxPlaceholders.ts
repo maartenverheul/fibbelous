@@ -36,7 +36,7 @@ function isBlockNotePropAttr(name: string): boolean {
   return BLOCKNOTE_PROP_ATTRS.has(name);
 }
 
-/** Match `<database ... />`, `<unknown ...></unknown>`, multiline attrs, etc. */
+/** Match `<Database ... />`, `<Unknown ...></Unknown>`, multiline attrs, etc. */
 export const MDX_PLACEHOLDER_TAG_RE = new RegExp(
   `<(${MDX_PLACEHOLDER_TAGS.join("|")})(\\s[^>]*?)?\\s*(?:\\/>|>([\\s\\S]*?)<\\/\\1>)`,
   "gi",
@@ -54,9 +54,27 @@ function unescapeHtmlAttr(value: string): string {
     .replace(/&gt;/g, ">");
 }
 
-/** Serialize a DOM element back to an MDX/HTML tag string. */
-export function elementToMdxTag(el: HTMLElement): string {
-  const tag = el.tagName.toLowerCase();
+/** Written form for new custom MDX tags: `maps` → `Maps`. */
+export function mdxTagWriteName(tag: string): string {
+  const lower = tag.toLowerCase();
+  if (!lower) return tag;
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+/** Exact tag spelling from a stored raw string, or null if not a placeholder. */
+export function mdxTagNameFromRaw(raw: string): string | null {
+  MDX_PLACEHOLDER_TAG_RE.lastIndex = 0;
+  const match = MDX_PLACEHOLDER_TAG_RE.exec(raw.trim());
+  return match?.[1] ?? null;
+}
+
+/**
+ * Serialize a DOM element back to an MDX/HTML tag string.
+ * Pass `writeName` to preserve existing casing or use the capitalized new-tag form.
+ * Without it, uses lowercase (DOM round-trip default).
+ */
+export function elementToMdxTag(el: HTMLElement, writeName?: string): string {
+  const tag = writeName ?? el.tagName.toLowerCase();
   const attrs = Array.from(el.attributes)
     .filter((attr) => !isBlockNotePropAttr(attr.name))
     .map((attr) => ` ${attr.name}="${escapeHtmlAttr(attr.value)}"`)
@@ -67,6 +85,33 @@ export function elementToMdxTag(el: HTMLElement): string {
     return `<${tag}${attrs} />`;
   }
   return `<${tag}${attrs}>${el.innerHTML}</${tag}>`;
+}
+
+/** Build a raw tag string, keeping casing from `existingRaw` when present. */
+export function mdxRawWithAttrs(
+  tag: MdxPlaceholderTag,
+  attrs: Record<string, string>,
+  existingRaw?: string,
+): string {
+  const writeName =
+    (existingRaw ? mdxTagNameFromRaw(existingRaw) : null) ??
+    mdxTagWriteName(tag);
+  const el = document.createElement(tag);
+  for (const [name, value] of Object.entries(attrs)) {
+    if (value) el.setAttribute(name, value);
+  }
+  return elementToMdxTag(el, writeName);
+}
+
+/** Marker div that round-trips custom tags without losing write casing. */
+export function mdxExportMarker(
+  tag: MdxPlaceholderTag,
+  raw: string,
+): HTMLElement {
+  const div = document.createElement("div");
+  div.setAttribute("data-content-type", tag);
+  div.setAttribute("data-raw", raw);
+  return div;
 }
 
 /**
@@ -131,15 +176,16 @@ export function sanitizeMdxPlaceholderHtml(html: string): string {
     }
   }
 
-  // Also normalize marker divs back if any leaked through.
+  // Keep exact `data-raw` casing via a text carrier — DOM tag serialization
+  // would lowercase `<Maps>` back to `<maps>`.
   for (const el of root.querySelectorAll("[data-content-type][data-raw]")) {
     const tag = el.getAttribute("data-content-type");
     const raw = el.getAttribute("data-raw");
     if (!tag || !raw || !isMdxPlaceholderTag(tag)) continue;
-    const parsed = parseMdxTagString(unescapeHtmlAttr(raw));
-    if (parsed) {
-      el.replaceWith(parsed);
-    }
+    const carrier = doc.createElement("span");
+    carrier.setAttribute("data-mdx-export", "");
+    carrier.textContent = unescapeHtmlAttr(raw);
+    el.replaceWith(carrier);
   }
 
   return root.innerHTML;
