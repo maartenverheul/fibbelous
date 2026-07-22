@@ -106,8 +106,23 @@
   color: var(--app-fg);
 }
 
+/* Placeholder blocks for MDX tags (<database />, <unknown />, …) */
+.page-body-editor .bn-mdx-placeholder {
+  margin-block: 0.35rem;
+  padding: 0.4rem 0.65rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--app-fg-muted);
+  background: color-mix(in srgb, var(--app-border) 28%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--app-fg-muted) 35%, transparent);
+  border-radius: 0.375rem;
+  user-select: none;
+}
+
 /* Internal page links vs external links */
-.page-body-editor .bn-editor a[href^="pages/"] {
+.page-body-editor .bn-editor a[href$=".mdx"],
+.page-body-editor .bn-editor a[href*=".mdx?"] {
   color: var(--app-fg);
   font-weight: 500;
   text-decoration: none;
@@ -119,7 +134,8 @@
     border-color 0.15s ease;
 }
 
-.page-body-editor .bn-editor a[href^="pages/"]:hover {
+.page-body-editor .bn-editor a[href$=".mdx"]:hover,
+.page-body-editor .bn-editor a[href*=".mdx?"]:hover {
   background-color: color-mix(in srgb, var(--app-border) 35%, transparent);
   border-bottom-color: var(--app-fg-muted);
 }

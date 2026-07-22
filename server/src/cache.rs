@@ -367,7 +367,7 @@ fn remove_cache_file(db_path: &Path) {
     tracing::info!(
         path = %log_path(db_path),
         expected = CACHE_DB_VERSION,
-        "reset cache database for reindexing"
+        "removed outdated cache database"
     );
 }
 

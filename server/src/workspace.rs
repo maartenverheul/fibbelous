@@ -233,6 +233,36 @@ impl Workspace {
         self.with_cache_mut(|path, cache| duplicate_page(path, cache, id))
     }
 
+    /// Rescan workspace files and update the cache for pages that changed on disk
+    /// (same incremental sync path as startup indexing).
+    pub fn reindex(&self) -> Result<crate::index::SyncStats, String> {
+        self.set_index_status(IndexStatus::Indexing);
+
+        let result = self.with_cache_mut(|path, cache| {
+            sync_workspace(path, cache).map_err(|error| error.to_string())
+        });
+
+        match &result {
+            Ok(stats) => {
+                self.set_index_status(IndexStatus::Ready);
+                tracing::info!(
+                    workspace = %self.id,
+                    scanned = stats.scanned,
+                    updated = stats.updated,
+                    skipped = stats.skipped,
+                    removed = stats.removed,
+                    "reindexed workspace"
+                );
+            }
+            Err(error) => {
+                self.set_index_status(IndexStatus::Failed);
+                tracing::warn!(workspace = %self.id, %error, "failed to reindex workspace");
+            }
+        }
+
+        result
+    }
+
     fn persist_settings(&self) -> Result<(), std::io::Error> {
         let contents = serde_json::to_string_pretty(&self.settings).map_err(|error| {
             std::io::Error::new(

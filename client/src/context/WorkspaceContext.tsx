@@ -78,6 +78,7 @@ type WorkspaceContextValue = {
   listTrashedPages: () => Promise<TrashedPage[]>;
   restorePage: (id: string) => Promise<WorkspacePageDetail>;
   purgePage: (id: string) => Promise<void>;
+  reloadPages: () => Promise<void>;
   setActiveWorkspace: (workspace: SavedWorkspace) => void;
   addWorkspace: ReturnType<typeof useSavedWorkspaces>["addWorkspace"];
   updateWorkspace: ReturnType<typeof useSavedWorkspaces>["updateWorkspace"];
@@ -710,6 +711,20 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     [rpc, connectionStatus],
   );
 
+  const reloadPages = useCallback(async () => {
+    resetPageTree(
+      setChildrenByDir,
+      setPagesById,
+      setPageDetailsById,
+      setRootError,
+      loadedDirsRef,
+      inflightDirsRef,
+      childrenByDirStableRef,
+    );
+    if (!rpc || connectionStatus !== "connected") return;
+    await refreshDir(ROOT_PAGES_DIR);
+  }, [rpc, connectionStatus, refreshDir]);
+
   const setActiveWorkspace = useCallback(
     (workspace: SavedWorkspace) => {
       setActive(workspace.id);
@@ -745,6 +760,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       listTrashedPages,
       restorePage,
       purgePage,
+      reloadPages,
       setActiveWorkspace,
       addWorkspace,
       updateWorkspace,
@@ -774,6 +790,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       listTrashedPages,
       restorePage,
       purgePage,
+      reloadPages,
       setActiveWorkspace,
       addWorkspace,
       updateWorkspace,
@@ -794,4 +811,8 @@ export function useWorkspace() {
     throw new Error("useWorkspace must be used within WorkspaceProvider");
   }
   return context;
+}
+
+export function useWorkspaceOptional() {
+  return useContext(WorkspaceContext);
 }

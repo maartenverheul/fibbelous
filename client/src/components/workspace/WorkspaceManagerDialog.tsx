@@ -10,6 +10,8 @@ import {
   createWorkspace,
   fetchWorkspaces,
   isWorkspaceNotFoundError,
+  reindexLocalWorkspace,
+  reindexRemoteWorkspace,
   updateWorkspaceSettings,
   verifyLocalWorkspaceConnection,
   verifySavedWorkspaceConnection,
@@ -24,6 +26,7 @@ import {
   type SavedWorkspace,
   type WorkspaceInfo,
 } from "../../types/workspace";
+import { useWorkspaceOptional } from "../../context/WorkspaceContext";
 
 export type WorkspaceManagerTab = "browse" | "settings";
 
@@ -147,6 +150,7 @@ export function WorkspaceManagerDialog({
     setActive,
     isBookmarked,
   } = useSavedWorkspaces();
+  const workspaceContext = useWorkspaceOptional();
   const navigate = useNavigate();
   const [lastServer, setLastServer] = useLocalStorageState<LastServer | null>(
     "fibbelous.lastServer",
@@ -183,6 +187,7 @@ export function WorkspaceManagerDialog({
   const [settingsPort, setSettingsPort] = useState("");
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsReindexing, setSettingsReindexing] = useState(false);
   const [localNotice, setLocalNotice] = useState<WorkspaceNotice | null>(null);
   const [openingWorkspaceId, setOpeningWorkspaceId] = useState<string | null>(
     null,
@@ -583,6 +588,72 @@ export function WorkspaceManagerDialog({
       );
     } finally {
       setSettingsSaving(false);
+    }
+  };
+
+  const handleReindex = async () => {
+    if (!settingsWorkspace) return;
+
+    setSettingsError(null);
+    setSettingsReindexing(true);
+
+    try {
+      let updated: WorkspaceInfo;
+
+      if (isLocalWorkspace(settingsWorkspace)) {
+        if (!settingsWorkspace.localPath) {
+          setSettingsError("Local workspace folder is missing");
+          return;
+        }
+        updated = await reindexLocalWorkspace(
+          settingsWorkspace.localPath,
+          settingsWorkspace.workspaceId,
+        );
+      } else {
+        const port = Number(settingsPort);
+        if (!Number.isFinite(port) || port <= 0) {
+          setSettingsError("Enter a valid port number");
+          return;
+        }
+        updated = await reindexRemoteWorkspace(
+          settingsHost.trim() || settingsWorkspace.serverHost,
+          port,
+          settingsWorkspace.workspaceId,
+        );
+      }
+
+      setRemoteWorkspaces((prev) =>
+        prev.map((workspace) =>
+          workspace.id === updated.id ? updated : workspace,
+        ),
+      );
+
+      if (
+        workspaceContext &&
+        activeWorkspaceId === settingsWorkspace.id &&
+        workspaceContext.activeWorkspace?.id === settingsWorkspace.id
+      ) {
+        await workspaceContext.reloadPages();
+      }
+    } catch (error) {
+      if (isWorkspaceNotFoundError(error)) {
+        const removedId = settingsWorkspace.id;
+        removeWorkspace(removedId);
+        setActiveTab("browse");
+        setLocalNotice({
+          kind: "missing",
+          label: settingsWorkspace.label,
+        });
+        setSettingsWorkspaceId(
+          workspaces.find((workspace) => workspace.id !== removedId)?.id ?? null,
+        );
+        return;
+      }
+      setSettingsError(
+        error instanceof Error ? error.message : "Failed to reindex workspace",
+      );
+    } finally {
+      setSettingsReindexing(false);
     }
   };
 
@@ -998,10 +1069,20 @@ export function WorkspaceManagerDialog({
                         <button
                           type="button"
                           onClick={handleSaveSettings}
-                          disabled={settingsSaving}
+                          disabled={settingsSaving || settingsReindexing}
                           className={buttonPrimaryClassName}
                         >
                           {settingsSaving ? "Saving..." : "Save changes"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleReindex}
+                          disabled={settingsSaving || settingsReindexing}
+                          className={buttonSecondaryClassName}
+                        >
+                          {settingsReindexing
+                            ? "Reindexing..."
+                            : "Rebuild index"}
                         </button>
                         <button
                           type="button"

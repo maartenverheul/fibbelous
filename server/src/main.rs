@@ -1,28 +1,10 @@
-use std::path::Path;
 use std::sync::{Arc, RwLock};
-
-use tracing::Level;
-use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 use server::config::Config;
 use server::data::{ensure_workspaces_dir, log_path};
 use server::http::run_server;
+use server::logging::init_tracing;
 use server::workspace::{discover_workspaces, start_indexing};
-
-fn init_tracing() {
-    let env_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(".env");
-    dotenvy::from_path(&env_path).ok();
-    dotenvy::dotenv().ok();
-
-    let filter = EnvFilter::builder()
-        .with_default_directive(Level::INFO.into())
-        .from_env_lossy();
-
-    tracing_subscriber::registry()
-        .with(fmt::layer().with_writer(std::io::stdout))
-        .with(filter)
-        .init();
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

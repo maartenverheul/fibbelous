@@ -140,6 +140,32 @@ export async function verifyLocalWorkspaceConnection(
   }
 }
 
+export async function reindexLocalWorkspace(
+  localPath: string,
+  workspaceId: string,
+): Promise<WorkspaceInfo> {
+  await openLocalWorkspace(localPath);
+  const client = createLocalRpcClient(workspaceId);
+  try {
+    return await client.call<WorkspaceInfo>("reindex");
+  } finally {
+    client.close();
+  }
+}
+
+export async function reindexRemoteWorkspace(
+  host: string,
+  port: number,
+  workspaceId: string,
+): Promise<WorkspaceInfo> {
+  const client = createRpcClient(workspaceWsUrl(host, port, workspaceId));
+  try {
+    return await client.call<WorkspaceInfo>("reindex");
+  } finally {
+    client.close();
+  }
+}
+
 export function isWorkspaceNotFoundError(error: unknown): boolean {
   return error instanceof ApiError && error.status === 404;
 }

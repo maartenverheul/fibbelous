@@ -1,4 +1,3 @@
-import type { BlockNoteEditor } from "@blocknote/core";
 import { BlockNoteView } from "@blocknote/ariakit";
 import "@blocknote/ariakit/style.css";
 import {
@@ -8,7 +7,12 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { useTabs } from "../../context/TabContext";
 import { useWorkspacePages } from "../../hooks/useWorkspacePages";
-import { markdownToHtml } from "../../lib/markdownPipeline";
+import {
+  htmlToMarkdown,
+  markdownToHtml,
+} from "../../lib/markdownPipeline";
+import type { PageEditor } from "../../lib/pageEditorSchema";
+import { pageEditorSchema } from "../../lib/pageEditorSchema";
 import {
   isExternalLink,
   isInternalPageLink,
@@ -27,13 +31,20 @@ type PageBodyEditorProps = {
 
 const SERIALIZE_DEBOUNCE_MS = 150;
 
-async function parseBodyToBlocks(editor: BlockNoteEditor, body: string) {
+async function parseBodyToBlocks(editor: PageEditor, body: string) {
   if (!body.trim()) {
     return [{ type: "paragraph" as const, content: [] }];
   }
 
   const html = await markdownToHtml(body);
   return editor.tryParseHTMLToBlocks(html);
+}
+
+async function serializeBody(editor: PageEditor): Promise<string> {
+  // BlockNote's markdown exporter strips unknown tags; go HTML → markdown so
+  // `<database />` / `<unknown />` placeholders survive.
+  const html = editor.blocksToHTMLLossy();
+  return htmlToMarkdown(html);
 }
 
 export function PageBodyEditor({
@@ -52,6 +63,7 @@ export function PageBodyEditor({
 
   const editor = useCreateBlockNote(
     {
+      schema: pageEditorSchema,
       links: {
         isValidLink: isValidEditorLink,
         onClick: (event) => {
@@ -149,12 +161,14 @@ export function PageBodyEditor({
     serializeTimerRef.current = setTimeout(() => {
       serializeTimerRef.current = null;
 
-      try {
-        const markdown = editor.blocksToMarkdownLossy();
-        onBodyChangeRef.current(markdown);
-      } catch (error) {
-        console.error("Failed to serialize page body", error);
-      }
+      void (async () => {
+        try {
+          const markdown = await serializeBody(editor);
+          onBodyChangeRef.current(markdown);
+        } catch (error) {
+          console.error("Failed to serialize page body", error);
+        }
+      })();
     }, SERIALIZE_DEBOUNCE_MS);
   }, editor);
 
