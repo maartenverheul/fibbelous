@@ -13,6 +13,7 @@ use tower::Service;
 use tower::service_fn;
 
 use crate::rpc::{WorkspaceRpcState, build_workspace_module};
+use crate::static_files::{read_response, resolve_file, should_spa_fallback, spa_index};
 use crate::workspace::{
     CreateWorkspaceError, CreateWorkspaceRequest, OpenWorkspaceError, OpenWorkspaceOutcome,
     OpenWorkspaceRequest, UpdateWorkspaceError, UpdateWorkspaceRequest, Workspace,
@@ -28,6 +29,7 @@ type RpcServiceBuilder = jsonrpsee::server::TowerServiceBuilder<
 pub struct AppState {
     pub workspaces: Arc<RwLock<Vec<Workspace>>>,
     pub workspaces_dir: PathBuf,
+    pub static_dir: PathBuf,
     pub svc_builder: RpcServiceBuilder,
 }
 
@@ -35,6 +37,7 @@ pub async fn run_server(
     addr: SocketAddr,
     workspaces: Arc<RwLock<Vec<Workspace>>>,
     workspaces_dir: PathBuf,
+    static_dir: PathBuf,
 ) -> Result<ServerHandle, Box<dyn std::error::Error>> {
     let listener = tokio::net::TcpListener::bind(addr).await?;
     let (stop_handle, server_handle) = stop_channel();
@@ -42,6 +45,7 @@ pub async fn run_server(
     let app_state = AppState {
         workspaces,
         workspaces_dir,
+        static_dir,
         svc_builder,
     };
 
@@ -159,6 +163,13 @@ pub async fn run_server(
                             };
                         }
 
+                        if method == Method::GET {
+                            return Ok::<_, Infallible>(with_cors(
+                                &req,
+                                serve_static(&path, &app_state.static_dir).await,
+                            ));
+                        }
+
                         Ok::<_, Infallible>(with_cors(&req, not_found_response()))
                     }
                 });
@@ -177,6 +188,28 @@ pub async fn run_server(
     });
 
     Ok(server_handle)
+}
+
+async fn serve_static(path: &str, static_dir: &std::path::Path) -> RpcResponse {
+    if !static_dir.is_dir() {
+        return not_found_response();
+    }
+
+    if let Some(file) = resolve_file(static_dir, path) {
+        if let Some(response) = read_response(&file).await {
+            return response;
+        }
+    }
+
+    if should_spa_fallback(path) {
+        if let Some(index) = spa_index(static_dir) {
+            if let Some(response) = read_response(&index).await {
+                return response;
+            }
+        }
+    }
+
+    not_found_response()
 }
 
 fn handle_get_rest(req: &Request<Incoming>, state: &AppState) -> Option<RpcResponse> {

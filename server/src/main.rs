@@ -28,18 +28,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::from_env();
     let server_addr = config.server_addr().parse()?;
 
+    if config.static_dir.is_dir() {
+        tracing::info!(
+            path = %config.static_dir.display(),
+            "serving client static files"
+        );
+    } else {
+        tracing::warn!(
+            path = %config.static_dir.display(),
+            "static directory missing; UI will not be served"
+        );
+    }
+
     tracing::info!(%server_addr, "starting http and websocket server");
 
     let handle = run_server(
         server_addr,
         Arc::clone(&workspaces),
         workspaces_dir.clone(),
+        config.static_dir.clone(),
     )
     .await?;
 
     tracing::info!(
         %server_addr,
-        "server ready (GET/POST /workspaces, POST /workspaces/open, ws://{server_addr}/{{workspaceId}})"
+        "server ready (static UI, GET/POST /workspaces, POST /workspaces/open, ws://{server_addr}/{{workspaceId}})"
     );
 
     tokio::signal::ctrl_c().await?;

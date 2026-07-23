@@ -5,8 +5,8 @@ services:
     image: maartenv/fibbelous
     container_name: fibbelous
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: server/Dockerfile
     environment:
       NODE_ENV: production
     restart: unless-stopped
@@ -14,14 +14,12 @@ services:
       - data:/app/.data
     expose:
       - 8080
-    volumes:
-      - ./.data:/app/.data
     networks:
       - proxy
 
 networks:
-    proxy:
-      external: true
+  proxy:
+    external: true
 
 volumes:
   data:

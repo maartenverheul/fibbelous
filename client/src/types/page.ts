@@ -138,7 +138,7 @@ export function parentDirOfPage(page: WorkspacePage) {
 export function buildPageBreadcrumbs(
   page: WorkspacePage,
   findPageById: (id: string) => WorkspacePage | undefined,
-) {
+): WorkspacePage[] {
   if (page.databaseId) {
     const host = findPageById(page.databaseId);
     if (host) {

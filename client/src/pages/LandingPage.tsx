@@ -15,12 +15,13 @@ export function LandingPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const redirectState = location.state as LandingLocationState | null;
-  const [managerOpen, setManagerOpen] = useState(() =>
-    shouldOpenWorkspaceManager(redirectState) ||
-      Boolean(redirectState?.notice),
+  const noticeFromRedirect = redirectState?.notice ?? null;
+  const [managerOpen, setManagerOpen] = useState(
+    () =>
+      shouldOpenWorkspaceManager(redirectState) || Boolean(noticeFromRedirect),
   );
   const [notice, setNotice] = useState<WorkspaceNotice | null>(
-    () => redirectState?.notice ?? null,
+    () => noticeFromRedirect,
   );
 
   useEffect(() => {

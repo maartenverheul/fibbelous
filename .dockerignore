@@ -1,0 +1,11 @@
+**/node_modules/
+**/target/
+**/.data/
+**/.fibbelous/
+**/.env
+**/.git/
+**/dist/
+client/src-tauri/
+device/**
+!device/package.json
+*.md

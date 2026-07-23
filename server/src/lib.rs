@@ -7,4 +7,5 @@ pub mod index;
 pub mod logging;
 pub mod pages;
 pub mod rpc;
+pub mod static_files;
 pub mod workspace;
