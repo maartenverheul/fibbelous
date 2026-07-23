@@ -10,6 +10,8 @@ services:
     environment:
       NODE_ENV: production
     restart: unless-stopped
+    volumes:
+      - data:/app/.data
     expose:
       - 8080
     networks:
@@ -18,3 +20,6 @@ services:
 networks:
     proxy:
       external: true
+
+volumes:
+  data:
