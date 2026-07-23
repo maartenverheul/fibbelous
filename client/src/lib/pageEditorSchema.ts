@@ -5,6 +5,7 @@ import {
   defaultInlineContentSpecs,
   type BlockNoteEditor,
 } from "@blocknote/core";
+import { calloutBlock } from "./calloutBlock";
 import { commitMapsUrl, mapsRawFromUrl } from "./mapsBlock";
 import {
   databaseRawFromId,
@@ -576,6 +577,7 @@ export const pageEditorSchema = BlockNoteSchema.create({
     bookmark: createBookmarkBlockSpec()(),
     maps: createMapsBlockSpec()(),
     toc: createTocBlockSpec()(),
+    callout: calloutBlock(),
   },
   inlineContentSpecs: {
     ...defaultInlineContentSpecs,

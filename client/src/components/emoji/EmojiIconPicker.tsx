@@ -1,6 +1,6 @@
 import * as Popover from "@radix-ui/react-popover";
 import EmojiPicker, { Theme } from "emoji-picker-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { PiFolder } from "react-icons/pi";
 import { cn } from "../../lib/utils";
 import { EmojiIcon } from "./EmojiIcon";
@@ -9,12 +9,15 @@ type EmojiIconPickerProps = {
   icon?: string | null;
   onSelect: (emoji: string) => void;
   className?: string;
+  /** Shown when `icon` is empty. Defaults to a folder glyph. */
+  emptyIcon?: ReactNode;
 };
 
 export function EmojiIconPicker({
   icon,
   onSelect,
   className,
+  emptyIcon,
 }: EmojiIconPickerProps) {
   const [open, setOpen] = useState(false);
 
@@ -33,7 +36,9 @@ export function EmojiIconPicker({
           {icon ? (
             <EmojiIcon icon={icon} size={20} />
           ) : (
-            <PiFolder className="h-5 w-5 text-stone-500" aria-hidden />
+            (emptyIcon ?? (
+              <PiFolder className="h-5 w-5 text-stone-500" aria-hidden />
+            ))
           )}
         </button>
       </Popover.Trigger>

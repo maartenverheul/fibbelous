@@ -12,9 +12,21 @@
   --color-select-pink: #69314c;
   --color-select-red: #6e3630;
   --color-select-fg: #ffffff;
+
+  /* Callout backgrounds (BlockNote palette) */
+  --color-callout-gray: #ebeced;
+  --color-callout-brown: #e9e5e3;
+  --color-callout-red: #fbe4e4;
+  --color-callout-orange: #f6e9d9;
+  --color-callout-yellow: #fbf3db;
+  --color-callout-green: #ddedea;
+  --color-callout-blue: #ddebf1;
+  --color-callout-purple: #eae4f2;
+  --color-callout-pink: #f4dfeb;
 }
 
 @source inline("bg-select-{default,gray,brown,orange,yellow,green,blue,purple,pink,red}");
+@source inline("bg-callout-{gray,brown,red,orange,yellow,green,blue,purple,pink}");
 
 :root {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
@@ -41,6 +53,16 @@
     --app-fg: #f5f4f1;
     --app-fg-muted: #a8a29e;
     --app-fg-subtle: #8a847c;
+
+    --color-callout-gray: #3f3f3c;
+    --color-callout-brown: #3d2e26;
+    --color-callout-red: #4a2424;
+    --color-callout-orange: #4a3218;
+    --color-callout-yellow: #4a3d14;
+    --color-callout-green: #2a3d38;
+    --color-callout-blue: #1e3540;
+    --color-callout-purple: #322640;
+    --color-callout-pink: #402030;
   }
 }
 
@@ -396,6 +418,67 @@
   outline: none;
 }
 
+/* <Callout icon="…" color="gray">…</Callout> */
+.page-body-editor .bn-mdx-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-block: 0.65rem;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 1.1rem 1.25rem;
+  border-radius: 0.5rem;
+  background-color: color-mix(in srgb, var(--app-border) 28%, var(--app-surface));
+}
+
+.page-body-editor .bn-mdx-callout[data-callout-color="gray"] {
+  background-color: var(--color-callout-gray);
+}
+.page-body-editor .bn-mdx-callout[data-callout-color="brown"] {
+  background-color: var(--color-callout-brown);
+}
+.page-body-editor .bn-mdx-callout[data-callout-color="red"] {
+  background-color: var(--color-callout-red);
+}
+.page-body-editor .bn-mdx-callout[data-callout-color="orange"] {
+  background-color: var(--color-callout-orange);
+}
+.page-body-editor .bn-mdx-callout[data-callout-color="yellow"] {
+  background-color: var(--color-callout-yellow);
+}
+.page-body-editor .bn-mdx-callout[data-callout-color="green"] {
+  background-color: var(--color-callout-green);
+}
+.page-body-editor .bn-mdx-callout[data-callout-color="blue"] {
+  background-color: var(--color-callout-blue);
+}
+.page-body-editor .bn-mdx-callout[data-callout-color="purple"] {
+  background-color: var(--color-callout-purple);
+}
+.page-body-editor .bn-mdx-callout[data-callout-color="pink"] {
+  background-color: var(--color-callout-pink);
+}
+
+.page-body-editor .bn-mdx-callout__icon-btn {
+  margin-top: 0.05rem;
+}
+
+.page-body-editor .bn-mdx-callout__icon {
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+  font-size: 1.25rem;
+  line-height: 1.35;
+  user-select: none;
+}
+
+.page-body-editor .bn-mdx-callout__content {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-block: 0.1rem;
+  font-size: 1rem;
+  line-height: 1.625;
+}
+
 /* Internal page links: alone on a row = chip; among text = icon + link */
 .page-body-editor .bn-editor .bn-page-link,
 .page-body-editor .bn-editor [data-inline-content-type="pageLink"] .bn-page-link {
@@ -501,7 +584,7 @@
   text-decoration-color: #2563eb;
 }
 
-/* Dim block handles (+, drag, table handles, nest guides) */
+/* Dim block handles (+, drag, table handles, nest guides) — not their menus */
 .page-body-editor .bn-root {
   --bn-colors-side-menu: color-mix(
     in srgb,
@@ -510,7 +593,7 @@
   );
 }
 
-.page-body-editor .bn-side-menu,
+.page-body-editor .bn-side-menu .bn-button,
 .page-body-editor .bn-table-handle,
 .page-body-editor .bn-table-cell-handle,
 .page-body-editor .bn-extend-button {
@@ -523,14 +606,34 @@
   gap: 0.125rem;
 }
 
-.page-body-editor .bn-side-menu:hover,
-.page-body-editor .bn-side-menu:focus-within,
+.page-body-editor .bn-side-menu:hover .bn-button,
+.page-body-editor .bn-side-menu:focus-within .bn-button,
 .page-body-editor .bn-table-handle:hover,
 .page-body-editor .bn-table-cell-handle:hover,
 .page-body-editor .bn-extend-button:hover,
 .page-body-editor .bn-table-handle:focus-within,
 .page-body-editor .bn-table-cell-handle:focus-within {
   opacity: 0.85;
+}
+
+/* Drag-handle / color menus must stay fully opaque */
+.page-body-editor .bn-ak-menu,
+.bn-ak-menu.bn-drag-handle-menu,
+.bn-ak-menu.bn-color-picker-dropdown {
+  opacity: 1;
+  background-color: var(--app-surface);
+  border-color: var(--app-border);
+  color: var(--app-fg);
+}
+
+.bn-ak-menu.bn-color-picker-dropdown {
+  overflow: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.bn-ak-menu.bn-color-picker-dropdown::-webkit-scrollbar {
+  display: none;
 }
 
 /* Formatting / link toolbar: hide scrollbars, tighter layout */

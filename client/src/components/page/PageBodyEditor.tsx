@@ -3,6 +3,7 @@ import "@blocknote/ariakit/style.css";
 import { filterSuggestionItems } from "@blocknote/core/extensions";
 import {
   getDefaultReactSlashMenuItems,
+  SideMenuController,
   SuggestionMenuController,
   useCreateBlockNote,
   useEditorChange,
@@ -16,9 +17,11 @@ import {
   markdownToHtml,
 } from "../../lib/markdownPipeline";
 import { insertMapsBlock } from "../../lib/mapsBlock";
+import { insertCalloutSlashMenuItem } from "../../lib/calloutSlashMenu";
 import { insertMapsSlashMenuItem } from "../../lib/mapsSlashMenu";
 import type { PageEditor } from "../../lib/pageEditorSchema";
 import { pageEditorSchema } from "../../lib/pageEditorSchema";
+import { PageEditorSideMenu } from "../../lib/pageEditorSideMenu";
 import { insertTocSlashMenuItem } from "../../lib/tocSlashMenu";
 import {
   internalPageLinksToMarkers,
@@ -92,7 +95,7 @@ async function parseBodyToBlocks(
 
 async function serializeBody(editor: PageEditor): Promise<string> {
   // BlockNote's markdown exporter strips unknown tags; go HTML → markdown so
-  // custom MDX tags (`<Database />`, `<Bookmark />`, …) survive.
+  // custom MDX tags (`<Database />`, `<Bookmark />`, `<Callout />`, …) survive.
   const html = pageLinkMarkersToAnchors(editor.blocksToHTMLLossy());
   return htmlToMarkdown(html);
 }
@@ -102,6 +105,7 @@ function getSlashMenuItems(editor: PageEditor) {
     ...getDefaultReactSlashMenuItems(editor),
     insertMapsSlashMenuItem(editor),
     insertTocSlashMenuItem(editor),
+    insertCalloutSlashMenuItem(editor),
   ];
 }
 
@@ -354,6 +358,7 @@ export function PageBodyEditor({
         editor={editor}
         editable={!readOnly}
         slashMenu={false}
+        sideMenu={false}
         aria-label="Page content"
         className="[&_.bn-editor]:min-h-6"
       >
@@ -363,6 +368,7 @@ export function PageBodyEditor({
             filterSuggestionItems(getSlashMenuItems(editor), query)
           }
         />
+        <SideMenuController sideMenu={PageEditorSideMenu} />
       </BlockNoteView>
       {pasteChoice && !readOnly && (
         <PasteLinkChoiceMenu

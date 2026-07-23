@@ -5,6 +5,7 @@ export const MDX_PLACEHOLDER_TAGS = [
   "bookmark",
   "maps",
   "toc",
+  "callout",
 ] as const;
 
 export type MdxPlaceholderTag = (typeof MDX_PLACEHOLDER_TAGS)[number];
@@ -23,6 +24,8 @@ export function isMdxPlaceholderTag(tag: string): tag is MdxPlaceholderTag {
 const BLOCKNOTE_PROP_ATTRS = new Set([
   "data-raw",
   "data-url",
+  "data-icon",
+  "data-color",
   "data-content-type",
   "data-nesting-level",
   "data-file-block",
@@ -151,12 +154,70 @@ export function parseMdxTagString(raw: string): HTMLElement | null {
  * Rewrite MDX placeholder tags in markdown to closed `<div data-content-type
  * data-raw>` markers so HTML5 parsing cannot absorb following blocks, and so
  * BlockNote's prop/`parse` path sees a stable shape.
+ *
+ * Callout keeps its body as children (editable inline content) instead of
+ * folding everything into `data-raw`.
  */
 export function mdxTagsToBlockNoteMarkers(markdown: string): string {
-  return markdown.replace(MDX_PLACEHOLDER_TAG_RE, (match, tagName: string) => {
-    const raw = match.trim();
-    return `\n\n<div data-content-type="${tagName.toLowerCase()}" data-raw="${escapeHtmlAttr(raw)}"></div>\n\n`;
-  });
+  return markdown.replace(
+    MDX_PLACEHOLDER_TAG_RE,
+    (
+      match,
+      tagName: string,
+      attrChunk: string | undefined,
+      inner: string | undefined,
+    ) => {
+      const tag = tagName.toLowerCase();
+      if (tag === "callout") {
+        const attrs = parseAttrChunk(attrChunk ?? "");
+        const icon = attrs.icon?.trim() ?? "";
+        const color = attrs.color?.trim() ?? "";
+        const iconAttr = icon ? ` data-icon="${escapeHtmlAttr(icon)}"` : "";
+        const colorAttr = color ? ` data-color="${escapeHtmlAttr(color)}"` : "";
+        const body = inner ?? "";
+        return `\n\n<div data-content-type="callout"${iconAttr}${colorAttr}><div class="bn-inline-content">${body}</div></div>\n\n`;
+      }
+
+      const raw = match.trim();
+      return `\n\n<div data-content-type="${tag}" data-raw="${escapeHtmlAttr(raw)}"></div>\n\n`;
+    },
+  );
+}
+
+function parseAttrChunk(attrChunk: string): Record<string, string> {
+  const attrs: Record<string, string> = {};
+  const attrRe =
+    /([^\s=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?/g;
+  let attrMatch: RegExpExecArray | null;
+  while ((attrMatch = attrRe.exec(attrChunk)) !== null) {
+    const name = attrMatch[1];
+    if (!name || name === "/") continue;
+    attrs[name.toLowerCase()] =
+      attrMatch[2] ?? attrMatch[3] ?? attrMatch[4] ?? "";
+  }
+  return attrs;
+}
+
+function calloutExportCarrier(
+  doc: Document,
+  icon: string,
+  color: string,
+  innerHtml: string,
+): HTMLElement {
+  const writeName = mdxTagWriteName("callout");
+  const attrs: string[] = [];
+  if (icon) attrs.push(` icon="${escapeHtmlAttr(icon)}"`);
+  if (color) attrs.push(` color="${escapeHtmlAttr(color)}"`);
+  const attrStr = attrs.join("");
+  const trimmed = innerHtml.trim();
+  const text = trimmed
+    ? `<${writeName}${attrStr}>${innerHtml}</${writeName}>`
+    : `<${writeName}${attrStr} />`;
+
+  const carrier = doc.createElement("span");
+  carrier.setAttribute("data-mdx-export", "");
+  carrier.textContent = text;
+  return carrier;
 }
 
 /** Drop BlockNote prop mirrors from placeholder tags in exported HTML. */
@@ -176,6 +237,27 @@ export function sanitizeMdxPlaceholderHtml(html: string): string {
         }
       }
     }
+  }
+
+  // Contentful callout: rebuild `<Callout …>…</Callout>` from marker + body.
+  for (const el of Array.from(
+    root.querySelectorAll('[data-content-type="callout"]'),
+  )) {
+    if (!(el instanceof HTMLElement)) continue;
+    if (el.hasAttribute("data-raw")) continue;
+
+    const icon =
+      el.getAttribute("data-icon")?.trim() ||
+      el.getAttribute("icon")?.trim() ||
+      "";
+    const color =
+      el.getAttribute("data-color")?.trim() ||
+      el.getAttribute("color")?.trim() ||
+      "";
+    const contentEl = el.querySelector(".bn-inline-content");
+    const inner =
+      contentEl instanceof HTMLElement ? contentEl.innerHTML : el.innerHTML;
+    el.replaceWith(calloutExportCarrier(doc, icon, color, inner));
   }
 
   // Keep exact `data-raw` casing via a text carrier — DOM tag serialization
