@@ -16,6 +16,11 @@ import {
   verifyLocalWorkspaceConnection,
   verifySavedWorkspaceConnection,
 } from "../../lib/api";
+import {
+  DEFAULT_SERVER_URL,
+  normalizeServerUrl,
+  parseServerUrl,
+} from "../../lib/serverAddress";
 import { cn, formatUnknownError } from "../../lib/utils";
 import { isTauri, openLocalWorkspace, pickWorkspaceFolder, updateLocalWorkspaceSettings } from "../../lib/tauri";
 import { workspaceNoticeMessage, type WorkspaceNotice } from "../../lib/navigation";
@@ -39,11 +44,6 @@ type WorkspaceManagerDialogProps = {
 };
 
 type ConnectionStatus = "idle" | "connecting" | "connected" | "error";
-
-type LastServer = {
-  host: string;
-  port: number;
-};
 
 const inputClassName = cn(
   "w-full rounded-md border border-[var(--app-border)] bg-[var(--app-surface)] px-2.5 py-1.5 text-sm text-stone-900 placeholder:text-stone-500 dark:text-stone-50 dark:placeholder:text-stone-500",
@@ -152,7 +152,7 @@ export function WorkspaceManagerDialog({
   } = useSavedWorkspaces();
   const workspaceContext = useWorkspaceOptional();
   const navigate = useNavigate();
-  const [lastServer, setLastServer] = useLocalStorageState<LastServer | null>(
+  const [lastServer, setLastServer] = useLocalStorageState<string | null>(
     "fibbelous.lastServer",
     { defaultValue: null },
   );
@@ -162,8 +162,7 @@ export function WorkspaceManagerDialog({
     null,
   );
 
-  const [serverHost, setServerHost] = useState("127.0.0.1");
-  const [serverPort, setServerPort] = useState("8080");
+  const [serverAddress, setServerAddress] = useState(DEFAULT_SERVER_URL);
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>("idle");
   const [connectionError, setConnectionError] = useState<string | null>(null);
@@ -183,8 +182,7 @@ export function WorkspaceManagerDialog({
   const [settingsSlug, setSettingsSlug] = useState("");
   const [settingsIcon, setSettingsIcon] = useState("");
   const [settingsLabel, setSettingsLabel] = useState("");
-  const [settingsHost, setSettingsHost] = useState("");
-  const [settingsPort, setSettingsPort] = useState("");
+  const [settingsAddress, setSettingsAddress] = useState("");
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsReindexing, setSettingsReindexing] = useState(false);
@@ -224,12 +222,10 @@ export function WorkspaceManagerDialog({
         ? workspaces.find((workspace) => workspace.id === focusSavedWorkspaceId)
         : null);
 
-    if (serverSource) {
-      setServerHost(serverSource.serverHost);
-      setServerPort(String(serverSource.serverPort));
+    if (serverSource && !isLocalWorkspace(serverSource)) {
+      setServerAddress(serverSource.serverUrl);
     } else if (lastServer) {
-      setServerHost(lastServer.host);
-      setServerPort(String(lastServer.port));
+      setServerAddress(lastServer);
     }
 
     setConnectionStatus("idle");
@@ -271,12 +267,17 @@ export function WorkspaceManagerDialog({
     setSettingsSlug(settingsWorkspace.slug);
     setSettingsIcon(settingsWorkspace.icon ?? "");
     setSettingsLabel(settingsWorkspace.label);
-    setSettingsHost(settingsWorkspace.serverHost);
-    setSettingsPort(String(settingsWorkspace.serverPort));
+    setSettingsAddress(
+      isLocalWorkspace(settingsWorkspace) ? "" : settingsWorkspace.serverUrl,
+    );
     setSettingsError(null);
   }, [settingsWorkspace]);
 
-  const parsedPort = Number(serverPort);
+  const parsedServer = parseServerUrl(serverAddress);
+  const serverUrl =
+    "error" in parsedServer
+      ? null
+      : normalizeServerUrl(parsedServer);
 
   const handleOpenFailure = (
     label: string,
@@ -301,24 +302,18 @@ export function WorkspaceManagerDialog({
   };
 
   const openWorkspace = async (workspace: WorkspaceInfo) => {
-    if (!Number.isFinite(parsedPort) || parsedPort <= 0) return;
+    if (!serverUrl) return;
 
     setLocalNotice(null);
     setOpeningWorkspaceId(workspace.id);
 
     const existing = workspaces.find(
       (item) =>
-        item.serverHost === serverHost &&
-        item.serverPort === parsedPort &&
-        item.workspaceId === workspace.id,
+        item.serverUrl === serverUrl && item.workspaceId === workspace.id,
     );
 
     try {
-      await verifySavedWorkspaceConnection(
-        serverHost,
-        parsedPort,
-        workspace.id,
-      );
+      await verifySavedWorkspaceConnection(serverUrl, workspace.id);
 
       if (existing) {
         setActive(existing.id);
@@ -327,8 +322,7 @@ export function WorkspaceManagerDialog({
         const saved: SavedWorkspace = {
           id: crypto.randomUUID(),
           label: workspace.title,
-          serverHost,
-          serverPort: parsedPort,
+          serverUrl,
           workspaceId: workspace.id,
           slug: workspace.slug,
           icon: workspace.icon,
@@ -363,8 +357,7 @@ export function WorkspaceManagerDialog({
         );
       } else {
         await verifySavedWorkspaceConnection(
-          workspace.serverHost,
-          workspace.serverPort,
+          workspace.serverUrl,
           workspace.workspaceId,
         );
       }
@@ -381,20 +374,22 @@ export function WorkspaceManagerDialog({
   const handleConnect = async () => {
     setConnectionError(null);
 
-    if (!Number.isFinite(parsedPort) || parsedPort <= 0) {
+    if ("error" in parsedServer) {
       setConnectionStatus("error");
-      setConnectionError("Enter a valid port number");
+      setConnectionError(parsedServer.error);
       return;
     }
 
+    const url = normalizeServerUrl(parsedServer);
+    setServerAddress(url);
     setConnectionStatus("connecting");
 
     try {
-      await checkServerHealth(serverHost, parsedPort);
-      const results = await fetchWorkspaces(serverHost, parsedPort);
+      await checkServerHealth(url);
+      const results = await fetchWorkspaces(url);
       setRemoteWorkspaces(results);
       setConnectionStatus("connected");
-      setLastServer({ host: serverHost, port: parsedPort });
+      setLastServer(url);
     } catch (error) {
       setConnectionStatus("error");
       setConnectionError(
@@ -419,8 +414,7 @@ export function WorkspaceManagerDialog({
       const saved: SavedWorkspace = {
         id: crypto.randomUUID(),
         label: info.title,
-        serverHost: "local",
-        serverPort: 0,
+        serverUrl: "",
         workspaceId: info.id,
         slug: info.slug,
         icon: info.icon,
@@ -457,7 +451,7 @@ export function WorkspaceManagerDialog({
   const handleCreate = async () => {
     setCreateError(null);
 
-    if (!Number.isFinite(parsedPort) || parsedPort <= 0) {
+    if (!serverUrl) {
       setCreateError("Connect to a server first");
       return;
     }
@@ -470,7 +464,7 @@ export function WorkspaceManagerDialog({
 
     setCreating(true);
     try {
-      const workspace = await createWorkspace(serverHost, parsedPort, {
+      const workspace = await createWorkspace(serverUrl, {
         title,
         slug: createSlug.trim() || undefined,
         icon: createIcon.trim() || undefined,
@@ -534,15 +528,17 @@ export function WorkspaceManagerDialog({
         return;
       }
 
-      const port = Number(settingsPort);
-      if (!Number.isFinite(port) || port <= 0) {
-        setSettingsError("Enter a valid port number");
+      const parsedSettings = parseServerUrl(settingsAddress);
+      if ("error" in parsedSettings) {
+        setSettingsError(parsedSettings.error);
         return;
       }
 
+      const url = normalizeServerUrl(parsedSettings);
+      setSettingsAddress(url);
+
       const updated = await updateWorkspaceSettings(
-        settingsHost.trim() || settingsWorkspace.serverHost,
-        port,
+        url,
         settingsWorkspace.workspaceId,
         {
           title,
@@ -556,8 +552,7 @@ export function WorkspaceManagerDialog({
         label,
         slug: updated.slug,
         icon: updated.icon,
-        serverHost: settingsHost.trim() || settingsWorkspace.serverHost,
-        serverPort: port,
+        serverUrl: url,
       });
 
       setRemoteWorkspaces((prev) =>
@@ -610,14 +605,13 @@ export function WorkspaceManagerDialog({
           settingsWorkspace.workspaceId,
         );
       } else {
-        const port = Number(settingsPort);
-        if (!Number.isFinite(port) || port <= 0) {
-          setSettingsError("Enter a valid port number");
+        const parsedSettings = parseServerUrl(settingsAddress);
+        if ("error" in parsedSettings) {
+          setSettingsError(parsedSettings.error);
           return;
         }
         updated = await reindexRemoteWorkspace(
-          settingsHost.trim() || settingsWorkspace.serverHost,
-          port,
+          normalizeServerUrl(parsedSettings),
           settingsWorkspace.workspaceId,
         );
       }
@@ -720,22 +714,13 @@ export function WorkspaceManagerDialog({
           {activeTab === "browse" ? (
             <div className="mt-5 space-y-5">
               <section className="rounded-lg border border-[var(--app-border)] bg-[var(--app-bg)]/40 p-3">
-                <div className="grid grid-cols-[1fr_5rem_auto] gap-2">
-                  <Field label="Server host">
+                <div className="grid grid-cols-[1fr_auto] gap-2">
+                  <Field label="Server">
                     <input
-                      value={serverHost}
-                      onChange={(event) => setServerHost(event.target.value)}
+                      value={serverAddress}
+                      onChange={(event) => setServerAddress(event.target.value)}
                       className={inputClassName}
-                      placeholder="127.0.0.1"
-                    />
-                  </Field>
-                  <Field label="Port">
-                    <input
-                      value={serverPort}
-                      onChange={(event) => setServerPort(event.target.value)}
-                      className={inputClassName}
-                      placeholder="8080"
-                      type="number"
+                      placeholder={DEFAULT_SERVER_URL}
                     />
                   </Field>
                   <div className="flex items-end">
@@ -751,7 +736,7 @@ export function WorkspaceManagerDialog({
                 </div>
                 {connectionStatus === "connected" && (
                   <p className="mt-2 text-xs text-green-700 dark:text-green-400">
-                    Connected to {serverHost}:{serverPort}
+                    Connected to {serverUrl}
                   </p>
                 )}
                 {connectionError && (
@@ -878,11 +863,9 @@ export function WorkspaceManagerDialog({
                               >
                                 {indexStatusLabel(workspace.indexStatus)}
                               </span>
-                              {isBookmarked(
-                                serverHost,
-                                parsedPort,
-                                workspace.id,
-                              ) && " · Saved"}
+                              {serverUrl &&
+                                isBookmarked(serverUrl, workspace.id) &&
+                                " · Saved"}
                             </p>
                           </div>
                           <button
@@ -921,7 +904,7 @@ export function WorkspaceManagerDialog({
                           <p className="truncate text-xs text-stone-600 dark:text-stone-400">
                             {isLocalWorkspace(workspace)
                               ? workspace.localPath
-                              : `${workspace.serverHost}:${workspace.serverPort} · /${workspace.slug}`}
+                              : `${workspace.serverUrl} · /${workspace.slug}`}
                           </p>
                         </div>
                         <div className="flex shrink-0 gap-2">
@@ -1034,29 +1017,16 @@ export function WorkspaceManagerDialog({
                           />
                         </Field>
                       ) : (
-                        <div className="grid grid-cols-[1fr_5rem] gap-2">
-                          <Field label="Server host">
-                            <input
-                              value={settingsHost}
-                              onChange={(event) =>
-                                setSettingsHost(event.target.value)
-                              }
-                              className={inputClassName}
-                              placeholder="127.0.0.1"
-                            />
-                          </Field>
-                          <Field label="Port">
-                            <input
-                              value={settingsPort}
-                              onChange={(event) =>
-                                setSettingsPort(event.target.value)
-                              }
-                              className={inputClassName}
-                              placeholder="8080"
-                              type="number"
-                            />
-                          </Field>
-                        </div>
+                        <Field label="Server">
+                          <input
+                            value={settingsAddress}
+                            onChange={(event) =>
+                              setSettingsAddress(event.target.value)
+                            }
+                            className={inputClassName}
+                            placeholder={DEFAULT_SERVER_URL}
+                          />
+                        </Field>
                       )}
 
                       {settingsError && (

@@ -281,10 +281,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
             }
           }
 
-          const remoteWorkspaces = await fetchWorkspaces(
-            workspace.serverHost,
-            workspace.serverPort,
-          );
+          const remoteWorkspaces = await fetchWorkspaces(workspace.serverUrl);
           if (
             !remoteWorkspaces.some((item) => item.id === workspace.workspaceId)
           ) {
@@ -292,11 +289,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
           }
 
           const rpcClient = createRpcClient(
-            workspaceWsUrl(
-              workspace.serverHost,
-              workspace.serverPort,
-              workspace.workspaceId,
-            ),
+            workspaceWsUrl(workspace.serverUrl, workspace.workspaceId),
           );
           try {
             await rpcClient.call("ping");
@@ -338,8 +331,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     };
   }, [
     workspaceFromUrl?.id,
-    workspaceFromUrl?.serverHost,
-    workspaceFromUrl?.serverPort,
+    workspaceFromUrl?.serverUrl,
     workspaceFromUrl?.workspaceId,
     workspaceFromUrl?.localPath,
     removeWorkspace,

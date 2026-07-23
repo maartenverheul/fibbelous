@@ -25,8 +25,7 @@ export function useSavedWorkspaces() {
             );
           }
           return (
-            item.serverHost === workspace.serverHost &&
-            item.serverPort === workspace.serverPort &&
+            item.serverUrl === workspace.serverUrl &&
             item.workspaceId === workspace.workspaceId
           );
         });
@@ -72,12 +71,10 @@ export function useSavedWorkspaces() {
   );
 
   const isBookmarked = useCallback(
-    (host: string, port: number, workspaceId: string) =>
+    (serverUrl: string, workspaceId: string) =>
       workspaces.some(
         (item) =>
-          item.serverHost === host &&
-          item.serverPort === port &&
-          item.workspaceId === workspaceId,
+          item.serverUrl === serverUrl && item.workspaceId === workspaceId,
       ),
     [workspaces],
   );

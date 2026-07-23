@@ -6,13 +6,13 @@ export type WorkspaceConnectionKey = string;
 export function buildWorkspaceConnectionKey(
   workspace: Pick<
     SavedWorkspace,
-    "serverHost" | "serverPort" | "workspaceId" | "localPath"
+    "serverUrl" | "workspaceId" | "localPath"
   >,
 ): WorkspaceConnectionKey {
   if (workspace.localPath) {
     return `local:${workspace.localPath}`;
   }
-  return `${workspace.serverHost}:${workspace.serverPort}:${workspace.workspaceId}`;
+  return `${workspace.serverUrl}:${workspace.workspaceId}`;
 }
 
 type PooledConnection = {

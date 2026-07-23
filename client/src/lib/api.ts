@@ -30,21 +30,21 @@ async function failResponse(response: Response): Promise<never> {
   throw new ApiError(response.status, await readErrorMessage(response));
 }
 
-export async function checkServerHealth(
-  host: string,
-  port: number,
-): Promise<void> {
-  const response = await fetch(`http://${host}:${port}/health`);
+function httpUrl(serverUrl: string, path: string): string {
+  return new URL(path, `${serverUrl.replace(/\/$/, "")}/`).toString();
+}
+
+export async function checkServerHealth(serverUrl: string): Promise<void> {
+  const response = await fetch(httpUrl(serverUrl, "health"));
   if (!response.ok) {
     await failResponse(response);
   }
 }
 
 export async function fetchWorkspaces(
-  host: string,
-  port: number,
+  serverUrl: string,
 ): Promise<WorkspaceInfo[]> {
-  const response = await fetch(`http://${host}:${port}/workspaces`);
+  const response = await fetch(httpUrl(serverUrl, "workspaces"));
   if (!response.ok) {
     await failResponse(response);
   }
@@ -52,20 +52,18 @@ export async function fetchWorkspaces(
 }
 
 export async function remoteWorkspaceExists(
-  host: string,
-  port: number,
+  serverUrl: string,
   workspaceId: string,
 ): Promise<boolean> {
-  const workspaces = await fetchWorkspaces(host, port);
+  const workspaces = await fetchWorkspaces(serverUrl);
   return workspaces.some((workspace) => workspace.id === workspaceId);
 }
 
 export async function createWorkspace(
-  host: string,
-  port: number,
+  serverUrl: string,
   input: CreateWorkspaceInput,
 ): Promise<WorkspaceInfo> {
-  const response = await fetch(`http://${host}:${port}/workspaces`, {
+  const response = await fetch(httpUrl(serverUrl, "workspaces"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -77,13 +75,12 @@ export async function createWorkspace(
 }
 
 export async function updateWorkspaceSettings(
-  host: string,
-  port: number,
+  serverUrl: string,
   workspaceId: string,
   input: UpdateWorkspaceInput,
 ): Promise<WorkspaceInfo> {
   const response = await fetch(
-    `http://${host}:${port}/workspaces/${workspaceId}`,
+    httpUrl(serverUrl, `workspaces/${workspaceId}`),
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -97,25 +94,28 @@ export async function updateWorkspaceSettings(
 }
 
 export function workspaceWsUrl(
-  host: string,
-  port: number,
+  serverUrl: string,
   workspaceId: string,
 ): string {
-  return `ws://${host}:${port}/${workspaceId}`;
+  const url = new URL(serverUrl);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  url.pathname = `/${workspaceId}`;
+  url.search = "";
+  url.hash = "";
+  return url.toString();
 }
 
 export async function verifySavedWorkspaceConnection(
-  host: string,
-  port: number,
+  serverUrl: string,
   workspaceId: string,
 ): Promise<void> {
-  await checkServerHealth(host, port);
-  const remoteWorkspaces = await fetchWorkspaces(host, port);
+  await checkServerHealth(serverUrl);
+  const remoteWorkspaces = await fetchWorkspaces(serverUrl);
   if (!remoteWorkspaces.some((workspace) => workspace.id === workspaceId)) {
     throw new ApiError(404, "Workspace not found");
   }
 
-  const client = createRpcClient(workspaceWsUrl(host, port, workspaceId));
+  const client = createRpcClient(workspaceWsUrl(serverUrl, workspaceId));
   try {
     await client.call("ping");
   } finally {
@@ -154,11 +154,10 @@ export async function reindexLocalWorkspace(
 }
 
 export async function reindexRemoteWorkspace(
-  host: string,
-  port: number,
+  serverUrl: string,
   workspaceId: string,
 ): Promise<WorkspaceInfo> {
-  const client = createRpcClient(workspaceWsUrl(host, port, workspaceId));
+  const client = createRpcClient(workspaceWsUrl(serverUrl, workspaceId));
   try {
     return await client.call<WorkspaceInfo>("reindex");
   } finally {

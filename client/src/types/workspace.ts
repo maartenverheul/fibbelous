@@ -24,8 +24,8 @@ export type UpdateWorkspaceInput = {
 export type SavedWorkspace = {
   id: string;
   label: string;
-  serverHost: string;
-  serverPort: number;
+  /** HTTP(S) origin of the remote server, e.g. `https://example.com` or `http://127.0.0.1:8080`. */
+  serverUrl: string;
   workspaceId: string;
   slug: string;
   icon?: string;
