@@ -9,6 +9,11 @@ import remarkRehype from "remark-rehype";
 import remarkStringify from "remark-stringify";
 import { unified } from "unified";
 import {
+  colorPreserveHandlers,
+  rehypeCompactColors,
+  rehypeExpandColors,
+} from "./colorMarkdown";
+import {
   MDX_PLACEHOLDER_TAG_RE,
   mdxTagsToBlockNoteMarkers,
   sanitizeMdxPlaceholderHtml,
@@ -20,11 +25,13 @@ const markdownToHtmlProcessor = unified()
   .use(remarkBreaks)
   .use(remarkRehype, { allowDangerousHtml: true })
   .use(rehypeRaw)
+  .use(rehypeExpandColors)
   .use(rehypeStringify);
 
 const htmlToMarkdownProcessor = unified()
   .use(rehypeParse, { fragment: true })
-  .use(rehypeRemark)
+  .use(rehypeCompactColors)
+  .use(rehypeRemark, { handlers: colorPreserveHandlers })
   .use(remarkGfm)
   .use(remarkBreaks)
   .use(remarkStringify, {
