@@ -524,6 +524,10 @@ pub fn create_database_row(
     let content = fs::read_to_string(&file_path).map_err(|error| error.to_string())?;
     let body = page_body_from_content(&content);
 
+    let referenced_pages = cache
+        .referenced_pages_for_body(&body)
+        .map_err(|error| error.to_string())?;
+
     Ok(PageDetail {
         id,
         slug: Some(file_slug),
@@ -534,6 +538,7 @@ pub fn create_database_row(
         database_id: Some(database_id.to_owned()),
         body_hash: crate::cache::hash_body(&body),
         body,
+        referenced_pages,
     })
 }
 

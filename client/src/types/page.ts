@@ -22,10 +22,24 @@ export type SearchPageHit = WorkspacePage & {
   snippet: string | null;
 };
 
+/** Page linked from a body via an internal `.mdx` href (from `get_page`). */
+export type ReferencedPage = {
+  id: string;
+  name: string;
+  icon: string | null;
+  /** Workspace-relative path used as the full internal link. */
+  link: string;
+};
+
 export type WorkspacePageDetail = WorkspacePage & {
   body: string;
   /** First 10 hex chars of SHA-256(body UTF-8). */
   bodyHash: string;
+  /**
+   * Pages referenced by internal `.mdx` links in `body`.
+   * Always included with page content from `get_page` / page mutations.
+   */
+  referencedPages: ReferencedPage[];
 };
 
 /** Compact op: `[0, index, length]` delete or `[1, index, text]` insert. */

@@ -7,7 +7,7 @@ import {
   useCreateBlockNote,
   useEditorChange,
 } from "@blocknote/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTabs } from "../../context/TabContext";
 import { useWorkspacePages } from "../../hooks/useWorkspacePages";
 import { insertBookmarkBlock } from "../../lib/bookmarkBlock";
@@ -20,10 +20,14 @@ import { insertMapsSlashMenuItem } from "../../lib/mapsSlashMenu";
 import type { PageEditor } from "../../lib/pageEditorSchema";
 import { pageEditorSchema } from "../../lib/pageEditorSchema";
 import {
+  internalPageLinksToMarkers,
   isExternalLink,
   isInternalPageLink,
   isValidEditorLink,
+  normalizePageHref,
   pageIdFromInternalLink,
+  pageLinkMarkersToAnchors,
+  type PageLinkMeta,
 } from "../../lib/pageLinks";
 import {
   getPasteLinkChoiceOptions,
@@ -33,7 +37,11 @@ import {
 } from "../../lib/pasteLinkChoice";
 import { openExternalUrl } from "../../lib/tauri";
 import { cn } from "../../lib/utils";
-import { buildPageSegment, pageLabel } from "../../types/page";
+import {
+  buildPageSegment,
+  pageLabel,
+  type ReferencedPage,
+} from "../../types/page";
 import {
   PasteLinkChoiceMenu,
   type PasteLinkChoice,
@@ -43,24 +51,48 @@ type PageBodyEditorProps = {
   pageId: string;
   body: string;
   readOnly: boolean;
+  referencedPages?: ReferencedPage[];
   onBodyChange: (value: string) => void;
 };
 
 const SERIALIZE_DEBOUNCE_MS = 150;
 
-async function parseBodyToBlocks(editor: PageEditor, body: string) {
+function buildReferencedPageLookup(referencedPages: ReferencedPage[]) {
+  const byId = new Map<string, PageLinkMeta>();
+  const byLink = new Map<string, PageLinkMeta>();
+
+  for (const page of referencedPages) {
+    const meta: PageLinkMeta = {
+      id: page.id,
+      name: page.name,
+      icon: page.icon,
+      link: page.link,
+    };
+    byId.set(page.id, meta);
+    byLink.set(normalizePageHref(page.link), meta);
+  }
+
+  return { byId, byLink };
+}
+
+async function parseBodyToBlocks(
+  editor: PageEditor,
+  body: string,
+  resolvePageLink: (href: string, pageId: string) => PageLinkMeta | undefined,
+) {
   if (!body.trim()) {
     return [{ type: "paragraph" as const, content: [] }];
   }
 
   const html = await markdownToHtml(body);
-  return editor.tryParseHTMLToBlocks(html);
+  const withPageLinks = internalPageLinksToMarkers(html, resolvePageLink);
+  return editor.tryParseHTMLToBlocks(withPageLinks);
 }
 
 async function serializeBody(editor: PageEditor): Promise<string> {
   // BlockNote's markdown exporter strips unknown tags; go HTML → markdown so
   // custom MDX tags (`<Database />`, `<Bookmark />`, …) survive.
-  const html = editor.blocksToHTMLLossy();
+  const html = pageLinkMarkersToAnchors(editor.blocksToHTMLLossy());
   return htmlToMarkdown(html);
 }
 
@@ -75,6 +107,7 @@ export function PageBodyEditor({
   pageId,
   body,
   readOnly,
+  referencedPages = [],
   onBodyChange,
 }: PageBodyEditorProps) {
   const { navigateInTab } = useTabs();
@@ -88,6 +121,41 @@ export function PageBodyEditor({
   findPageByIdRef.current = findPageById;
   navigateInTabRef.current = navigateInTab;
 
+  const referencedLookup = useMemo(
+    () => buildReferencedPageLookup(referencedPages),
+    [referencedPages],
+  );
+  const referencedLookupRef = useRef(referencedLookup);
+  referencedLookupRef.current = referencedLookup;
+  const referencedKey = useMemo(
+    () =>
+      referencedPages
+        .map((page) => `${page.id}:${page.name}:${page.icon ?? ""}:${page.link}`)
+        .join("|"),
+    [referencedPages],
+  );
+
+  const resolvePageLink = useCallback(
+    (href: string, targetPageId: string): PageLinkMeta | undefined => {
+      const lookup = referencedLookupRef.current;
+      const fromRef =
+        lookup.byLink.get(normalizePageHref(href)) ??
+        lookup.byId.get(targetPageId);
+      if (fromRef) return fromRef;
+
+      const page = findPageByIdRef.current(targetPageId);
+      if (!page) return undefined;
+
+      return {
+        id: page.id,
+        name: pageLabel(page),
+        icon: page.icon,
+        link: page.path,
+      };
+    },
+    [],
+  );
+
   const [pasteChoice, setPasteChoice] = useState<PasteLinkChoice | null>(null);
   openPasteChoiceRef.current = setPasteChoice;
 
@@ -100,6 +168,9 @@ export function PageBodyEditor({
           const anchor = (event.target as HTMLElement).closest("a");
           const href = anchor?.getAttribute("href");
           if (!href) return;
+
+          // Custom pageLink inline handles its own navigation.
+          if (anchor?.classList.contains("bn-page-link")) return;
 
           if (isInternalPageLink(href)) {
             event.preventDefault();
@@ -207,7 +278,8 @@ export function PageBodyEditor({
   }, [pageId]);
 
   useEffect(() => {
-    if (userEditedRef.current || appliedBodyRef.current === body) {
+    const applyKey = `${body}\0${referencedKey}`;
+    if (userEditedRef.current || appliedBodyRef.current === applyKey) {
       return;
     }
 
@@ -217,7 +289,7 @@ export function PageBodyEditor({
 
     void (async () => {
       try {
-        const blocks = await parseBodyToBlocks(editor, body);
+        const blocks = await parseBodyToBlocks(editor, body, resolvePageLink);
         if (cancelled) return;
 
         const nextBlocks =
@@ -226,7 +298,7 @@ export function PageBodyEditor({
             : [{ type: "paragraph" as const, content: [] }];
 
         editor.replaceBlocks(editor.document, nextBlocks);
-        appliedBodyRef.current = body;
+        appliedBodyRef.current = applyKey;
       } catch (error) {
         console.error("Failed to load page body into editor", error);
       } finally {
@@ -244,7 +316,7 @@ export function PageBodyEditor({
         serializeTimerRef.current = null;
       }
     };
-  }, [body, editor, pageId]);
+  }, [body, editor, pageId, resolvePageLink, referencedKey]);
 
   useEditorChange(() => {
     if (!ready || isProgrammaticRef.current || readOnly) {

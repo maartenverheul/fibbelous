@@ -43,3 +43,101 @@ export function pageIdFromInternalLink(href: string): string | null {
   const match = stem.match(/^([0-9a-f]+)-/i);
   return match?.[1] ?? null;
 }
+
+/** Slug portion of `{id}-{slug}.mdx` (null when missing). */
+export function slugFromPageLink(href: string): string | null {
+  if (!isInternalPageLink(href)) return null;
+  const normalized = normalizePageHref(href);
+  const stem = normalized.slice(
+    normalized.lastIndexOf("/") + 1,
+    -".mdx".length,
+  );
+  const dash = stem.indexOf("-");
+  if (dash <= 0 || dash === stem.length - 1) return null;
+  return stem.slice(dash + 1);
+}
+
+export type PageLinkMeta = {
+  id: string;
+  name: string;
+  icon: string | null;
+  link: string;
+};
+
+/**
+ * Rewrite internal page `<a>` tags to pageLink markers so BlockNote parses them
+ * as custom inline content (the default link mark would otherwise win).
+ */
+export function internalPageLinksToMarkers(
+  html: string,
+  resolve: (href: string, pageId: string) => PageLinkMeta | undefined,
+): string {
+  if (!html.includes(".mdx")) return html;
+
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const anchors = [...doc.body.querySelectorAll("a[href]")];
+  if (anchors.length === 0) return html;
+
+  for (const anchor of anchors) {
+    const href = anchor.getAttribute("href") ?? "";
+    if (!isInternalPageLink(href)) continue;
+
+    const pageId = pageIdFromInternalLink(href);
+    if (!pageId) continue;
+
+    const normalized = normalizePageHref(href);
+    const meta = resolve(normalized, pageId);
+    const marker = doc.createElement("span");
+    marker.setAttribute("data-inline-content-type", "pageLink");
+    marker.setAttribute("data-href", meta?.link ?? normalized);
+    marker.setAttribute("data-page-id", pageId);
+    marker.setAttribute(
+      "data-name",
+      meta?.name ?? (anchor.textContent || pageId),
+    );
+    if (meta?.icon) {
+      marker.setAttribute("data-icon", meta.icon);
+    }
+    anchor.replaceWith(marker);
+  }
+
+  return doc.body.innerHTML;
+}
+
+/**
+ * Turn exported pageLink nodes back into plain `<a href>` for markdown round-trip.
+ */
+export function pageLinkMarkersToAnchors(html: string): string {
+  if (!html.includes("pageLink") && !html.includes("bn-page-link")) {
+    return html;
+  }
+
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const nodes = [
+    ...doc.body.querySelectorAll(
+      '[data-inline-content-type="pageLink"], a.bn-page-link',
+    ),
+  ];
+  if (nodes.length === 0) return html;
+
+  for (const node of nodes) {
+    const href =
+      node.getAttribute("data-href")?.trim() ||
+      node.getAttribute("href")?.trim() ||
+      "";
+    if (!href) continue;
+
+    const name =
+      node.getAttribute("data-name")?.trim() ||
+      node.querySelector(".bn-page-link__name")?.textContent?.trim() ||
+      node.textContent?.trim() ||
+      href;
+
+    const anchor = doc.createElement("a");
+    anchor.setAttribute("href", normalizePageHref(href));
+    anchor.textContent = name;
+    node.replaceWith(anchor);
+  }
+
+  return doc.body.innerHTML;
+}

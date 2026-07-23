@@ -27,6 +27,7 @@ import {
   type WorkspacePage,
   type WorkspacePageDetail,
 } from "../../types/page";
+import { slugFromPageLink } from "../../lib/pageLinks";
 import {
   registerDatabaseFetcher,
   registerDatabaseRowCreator,
@@ -232,8 +233,23 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
   );
 
   const storePageDetail = useCallback((detail: WorkspacePageDetail) => {
-    const { body: _body, ...page } = detail;
-    setPagesById((prev) => ({ ...prev, [page.id]: page }));
+    const { body: _body, referencedPages, ...page } = detail;
+    setPagesById((prev) => {
+      const next = { ...prev, [page.id]: page };
+      for (const ref of referencedPages) {
+        const existing = next[ref.id];
+        if (existing) continue;
+        next[ref.id] = {
+          id: ref.id,
+          slug: slugFromPageLink(ref.link),
+          title: ref.name,
+          icon: ref.icon,
+          path: ref.link,
+          hasChildren: false,
+        };
+      }
+      return next;
+    });
     setPageDetailsById((prev) => ({ ...prev, [detail.id]: detail }));
   }, []);
 
@@ -364,7 +380,8 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
 
   const pageFromDetail = useCallback(
     (detail: WorkspacePageDetail): WorkspacePage => {
-      const { body: _body, ...page } = detail;
+      const { body: _body, referencedPages: _referencedPages, ...page } =
+        detail;
       return page;
     },
     [],

@@ -7,8 +7,8 @@ export type SelectToken = {
 
 /** Notion-like select option palette (dark chips + contrasting text). */
 const SELECT_COLOR_STYLES: Record<string, { background: string; foreground: string }> = {
-  default: { background: "#5f5e5b", foreground: "#ffffff" },
-  gray: { background: "#5f5e5b", foreground: "#ffffff" },
+  default: { background: "#454441", foreground: "#ffffff" },
+  gray: { background: "#454441", foreground: "#ffffff" },
   brown: { background: "#64473a", foreground: "#ffffff" },
   orange: { background: "#9a5b14", foreground: "#ffffff" },
   yellow: { background: "#89632a", foreground: "#ffffff" },

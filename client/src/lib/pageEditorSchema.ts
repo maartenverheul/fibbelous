@@ -2,6 +2,7 @@ import {
   BlockNoteSchema,
   createBlockSpec,
   defaultBlockSpecs,
+  defaultInlineContentSpecs,
   type BlockNoteEditor,
 } from "@blocknote/core";
 import { commitMapsUrl, mapsRawFromUrl } from "./mapsBlock";
@@ -24,6 +25,7 @@ import {
 } from "./mdxPlaceholders";
 import { openExternalUrl } from "./tauri";
 import { bookmarkRawFromUrl } from "./bookmarkBlock";
+import { pageLink } from "./pageLinkInline";
 
 export {
   elementToMdxTag,
@@ -539,6 +541,10 @@ export const pageEditorSchema = BlockNoteSchema.create({
     unknown: createMdxPlaceholderBlockSpec("unknown")(),
     bookmark: createBookmarkBlockSpec()(),
     maps: createMapsBlockSpec()(),
+  },
+  inlineContentSpecs: {
+    ...defaultInlineContentSpecs,
+    pageLink,
   },
 });
 

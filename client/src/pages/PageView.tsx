@@ -23,6 +23,7 @@ import {
   parsePageIdFromSegment,
   slugifyPageTitle,
   type BodyPatch,
+  type ReferencedPage,
   type TrashedPageDetail,
   type WorkspacePageDetail,
 } from "../types/page";
@@ -40,6 +41,7 @@ type PageEditorProps = {
   readOnly: boolean;
   restoring: boolean;
   showTrashBanner: boolean;
+  referencedPages?: ReferencedPage[];
   onTitleChange: (value: string) => void;
   onBodyChange: (value: string) => void;
   onIconChange?: (icon: string) => void;
@@ -55,6 +57,7 @@ function PageEditor({
   readOnly,
   restoring,
   showTrashBanner,
+  referencedPages,
   onTitleChange,
   onBodyChange,
   onIconChange,
@@ -155,6 +158,7 @@ function PageEditor({
               pageId={pageId}
               body={body}
               readOnly={readOnly}
+              referencedPages={referencedPages}
               onBodyChange={onBodyChange}
             />
           )
@@ -634,6 +638,7 @@ export function PageView() {
       readOnly={isTrashed}
       restoring={restoring}
       showTrashBanner={isTrashed}
+      referencedPages={detail?.referencedPages ?? []}
       onTitleChange={(value) => setDraft(value, body)}
       onBodyChange={(value) => setDraft(title, value)}
       onIconChange={isTrashed ? undefined : (value) => void handleIconChange(value)}

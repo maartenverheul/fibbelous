@@ -205,6 +205,9 @@ impl Workspace {
             .map_err(|error| error.to_string())?;
         let body = crate::cache::page_body_from_content(&content);
         let body_hash = crate::cache::hash_body(&body);
+        let referenced_pages = cache
+            .referenced_pages_for_body(&body)
+            .map_err(|error| error.to_string())?;
 
         Ok(Some(crate::cache::PageDetail {
             id: row.id,
@@ -216,6 +219,7 @@ impl Workspace {
             database_id: Some(row.database_id),
             body,
             body_hash,
+            referenced_pages,
         }))
     }
 

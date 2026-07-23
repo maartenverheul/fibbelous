@@ -77,6 +77,17 @@ pub struct PageSummary {
     pub children: Option<Vec<PageSummary>>,
 }
 
+/// A page linked from another page's body (internal `.mdx` href).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReferencedPage {
+    pub id: String,
+    pub name: String,
+    pub icon: Option<String>,
+    /// Workspace-relative path used as the full internal link, e.g. `pages/{id}-{slug}.mdx`.
+    pub link: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PageDetail {
@@ -92,6 +103,8 @@ pub struct PageDetail {
     pub body: String,
     /// First 10 hex chars of SHA-256(`body` UTF-8 bytes).
     pub body_hash: String,
+    /// Pages referenced by internal `.mdx` links in `body`.
+    pub referenced_pages: Vec<ReferencedPage>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -536,6 +549,7 @@ impl CacheDb {
         let has_children = self.dir_has_pages(&children_dir(&path, &id))?;
         let body = strip_frontmatter(&content).to_owned();
         let body_hash = hash_body(&body);
+        let referenced_pages = self.referenced_pages_for_body(&body)?;
         Ok(Some(PageDetail {
             id,
             slug,
@@ -546,6 +560,68 @@ impl CacheDb {
             database_id: None,
             body,
             body_hash,
+            referenced_pages,
+        }))
+    }
+
+    /// Resolve internal page links in a body to display metadata for the editor.
+    pub fn referenced_pages_for_body(&self, body: &str) -> rusqlite::Result<Vec<ReferencedPage>> {
+        let mut out = Vec::new();
+        let mut seen = HashSet::new();
+
+        for href in extract_internal_mdx_hrefs(body) {
+            let Some(id) = page_id_from_mdx_href(&href) else {
+                continue;
+            };
+            if !seen.insert(id.clone()) {
+                continue;
+            }
+
+            if let Some(page) = self.get_referenced_page_meta(&id)? {
+                out.push(page);
+            }
+        }
+
+        Ok(out)
+    }
+
+    fn get_referenced_page_meta(&self, id: &str) -> rusqlite::Result<Option<ReferencedPage>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, slug, title, icon, path FROM pages WHERE id = ?1 LIMIT 1",
+        )?;
+        let page = stmt
+            .query_row(params![id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, String>(4)?,
+                ))
+            })
+            .optional()?;
+
+        if let Some((id, slug, title, icon, path)) = page {
+            return Ok(Some(referenced_page_meta(id, slug, title, icon, path)));
+        }
+
+        let mut stmt = self.conn.prepare(
+            "SELECT id, slug, title, icon, path FROM database_rows WHERE id = ?1 LIMIT 1",
+        )?;
+        let row = stmt
+            .query_row(params![id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, String>(4)?,
+                ))
+            })
+            .optional()?;
+
+        Ok(row.map(|(id, slug, title, icon, path)| {
+            referenced_page_meta(id, slug, title, icon, path)
         }))
     }
 
@@ -885,6 +961,123 @@ pub fn hash_body(body: &str) -> String {
     use sha2::{Digest, Sha256};
     let full = hex::encode(Sha256::digest(body.as_bytes()));
     full[..BODY_HASH_LEN].to_owned()
+}
+
+fn referenced_page_meta(
+    id: String,
+    slug: Option<String>,
+    title: Option<String>,
+    icon: Option<String>,
+    path: String,
+) -> ReferencedPage {
+    let name = title
+        .filter(|value| !value.is_empty())
+        .or_else(|| slug.clone().filter(|value| !value.is_empty()))
+        .unwrap_or_else(|| id.clone());
+    ReferencedPage {
+        id,
+        name,
+        icon,
+        link: path,
+    }
+}
+
+/// Collect unique `.mdx` hrefs from markdown `[…](href)` and HTML `href="…"` links.
+pub fn extract_internal_mdx_hrefs(body: &str) -> Vec<String> {
+    let mut hrefs = Vec::new();
+    let mut seen = HashSet::new();
+
+    let mut push_href = |raw: &str| {
+        let href = normalize_mdx_href(raw);
+        if href.is_empty() || !is_internal_mdx_href(&href) {
+            return;
+        }
+        if seen.insert(href.clone()) {
+            hrefs.push(href);
+        }
+    };
+
+    // Markdown links: [label](href) and [label](<href>)
+    let mut rest = body;
+    while let Some(start) = rest.find("](") {
+        rest = &rest[start + 2..];
+        let href = if let Some(stripped) = rest.strip_prefix('<') {
+            match stripped.find('>') {
+                Some(end) => {
+                    let value = &stripped[..end];
+                    rest = &stripped[end + 1..];
+                    value
+                }
+                None => continue,
+            }
+        } else {
+            match rest.find(')') {
+                Some(end) => {
+                    let value = &rest[..end];
+                    rest = &rest[end + 1..];
+                    value
+                }
+                None => break,
+            }
+        };
+        push_href(href.trim());
+    }
+
+    // HTML / MDX anchors: href="…" or href='…'
+    for quote in ['"', '\''] {
+        let needle = format!("href={quote}");
+        let mut html_rest = body;
+        while let Some(start) = html_rest.find(&needle) {
+            html_rest = &html_rest[start + needle.len()..];
+            match html_rest.find(quote) {
+                Some(end) => {
+                    push_href(html_rest[..end].trim());
+                    html_rest = &html_rest[end + 1..];
+                }
+                None => break,
+            }
+        }
+    }
+
+    hrefs
+}
+
+fn normalize_mdx_href(href: &str) -> String {
+    href.trim()
+        .trim_start_matches("./")
+        .trim_start_matches('/')
+        .to_owned()
+}
+
+fn is_internal_mdx_href(href: &str) -> bool {
+    if href.is_empty() || !href.ends_with(".mdx") {
+        return false;
+    }
+    if href.contains("://") {
+        return false;
+    }
+    // Reject scheme-like paths (e.g. javascript:…mdx).
+    let before_slash = href.split('/').next().unwrap_or(href);
+    if before_slash.contains(':') {
+        return false;
+    }
+    true
+}
+
+/// Page id from an internal `.mdx` href stem (`{id}-{slug}.mdx`).
+pub fn page_id_from_mdx_href(href: &str) -> Option<String> {
+    let normalized = normalize_mdx_href(href);
+    if !is_internal_mdx_href(&normalized) {
+        return None;
+    }
+    let stem = Path::new(&normalized)
+        .file_stem()
+        .and_then(|value| value.to_str())?;
+    let (id, _slug) = stem.split_once('-')?;
+    if id.is_empty() || !id.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    Some(id.to_ascii_lowercase())
 }
 
 fn escape_like(value: &str) -> String {
