@@ -1,0 +1,9 @@
+target/
+.data/
+.env
+**/.fibbelous/
+Dockerfile
+.dockerignore
+package.json
+.gitignore
+.env.example
