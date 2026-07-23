@@ -2,6 +2,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { useEffect, useRef, useState } from "react";
 import { PiFolder, PiX } from "react-icons/pi";
 import { EmojiIcon } from "../emoji/EmojiIcon";
+import { EmojiIconPicker } from "../emoji/EmojiIconPicker";
 import { useNavigate } from "react-router-dom";
 import useLocalStorageState from "use-local-storage-state";
 import { useSavedWorkspaces } from "../../hooks/useSavedWorkspaces";
@@ -784,17 +785,13 @@ export function WorkspaceManagerDialog({
                   {showCreateForm && (
                     <div className="grid gap-3 rounded-lg border border-[var(--app-border)] bg-[var(--app-bg)]/40 p-3">
                       <div className="grid grid-cols-[3rem_1fr] gap-2">
-                        <Field label="Icon">
-                          <input
-                            value={createIcon}
-                            onChange={(event) =>
-                              setCreateIcon(event.target.value)
-                            }
-                            className={inputClassName}
-                            placeholder="Icon"
-                            maxLength={4}
+                        <div className="grid gap-1">
+                          <span className={labelClassName}>Icon</span>
+                          <EmojiIconPicker
+                            icon={createIcon || null}
+                            onSelect={setCreateIcon}
                           />
-                        </Field>
+                        </div>
                         <Field label="Title">
                           <input
                             value={createName}
@@ -963,17 +960,13 @@ export function WorkspaceManagerDialog({
                   {settingsWorkspace && (
                     <div className="space-y-4 rounded-lg border border-[var(--app-border)] bg-[var(--app-bg)]/40 p-3">
                       <div className="grid grid-cols-[3rem_1fr] gap-2">
-                        <Field label="Icon">
-                          <input
-                            value={settingsIcon}
-                            onChange={(event) =>
-                              setSettingsIcon(event.target.value)
-                            }
-                            className={inputClassName}
-                            placeholder="Icon"
-                            maxLength={4}
+                        <div className="grid gap-1">
+                          <span className={labelClassName}>Icon</span>
+                          <EmojiIconPicker
+                            icon={settingsIcon || null}
+                            onSelect={setSettingsIcon}
                           />
-                        </Field>
+                        </div>
                         <Field label="Title">
                           <input
                             value={settingsName}

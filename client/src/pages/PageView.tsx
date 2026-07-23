@@ -334,22 +334,11 @@ export function PageView() {
       return;
     }
 
-    const knownDetail = getPageDetailById(pageId);
-    if (knownDetail) {
-      setDetail(knownDetail);
-      setTrashedDetail(null);
-      markLoadStatus("ready");
-      fetchSettledPageIdRef.current = pageId;
-      return;
-    }
-
     if (connectionStatus !== "connected") {
-      markLoadStatus("loading");
       return;
     }
 
     let cancelled = false;
-    markLoadStatus("loading");
 
     void (async () => {
       try {
@@ -380,7 +369,6 @@ export function PageView() {
       } catch (error) {
         if (cancelled) return;
         console.error(error);
-        markLoadStatus("loading");
       }
     })();
 
@@ -391,7 +379,6 @@ export function PageView() {
     pagePath,
     pageId,
     connectionStatus,
-    getPageDetailById,
     fetchPageDetail,
     fetchTrashedPageDetail,
     markLoadStatus,

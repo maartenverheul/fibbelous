@@ -11,17 +11,15 @@ import {
 import { useNavigate, useParams } from "react-router-dom";
 import { useSavedWorkspaces } from "../hooks/useSavedWorkspaces";
 import {
-  fetchWorkspaces,
   isWorkspaceNotFoundError,
-  workspaceWsUrl,
-  ApiError,
+  openLocalWorkspaceConnection,
+  openRemoteWorkspaceConnection,
 } from "../lib/api";
-import { createRpcClient, createLocalRpcClient, isIgnorableRpcError, type RpcClient } from "../lib/rpc";
+import { isIgnorableRpcError, type RpcClient } from "../lib/rpc";
 import {
   buildWorkspaceConnectionKey,
   closePooledConnection,
   getPooledConnection,
-  openPooledConnection,
 } from "../lib/workspaceConnection";
 import {
   workspaceManagerRedirectState,
@@ -32,7 +30,6 @@ import {
   type SavedWorkspace,
   type WorkspaceConnectionStatus,
 } from "../types/workspace";
-import { openLocalWorkspace } from "../lib/tauri";
 import {
   ROOT_PAGES_DIR,
   buildPageBreadcrumbs,
@@ -265,40 +262,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
     void (async () => {
       try {
-        const client = await openPooledConnection(connectionKey, async () => {
-          if (isLocalWorkspace(workspace) && workspace.localPath) {
-            const info = await openLocalWorkspace(workspace.localPath);
-            if (info.id !== workspace.workspaceId) {
-              throw new ApiError(404, "Workspace not found");
-            }
-            const rpcClient = createLocalRpcClient(workspace.workspaceId);
-            try {
-              await rpcClient.call("ping");
-              return rpcClient;
-            } catch (error) {
-              rpcClient.close();
-              throw error;
-            }
-          }
-
-          const remoteWorkspaces = await fetchWorkspaces(workspace.serverUrl);
-          if (
-            !remoteWorkspaces.some((item) => item.id === workspace.workspaceId)
-          ) {
-            throw new ApiError(404, "Workspace not found");
-          }
-
-          const rpcClient = createRpcClient(
-            workspaceWsUrl(workspace.serverUrl, workspace.workspaceId),
-          );
-          try {
-            await rpcClient.call("ping");
-            return rpcClient;
-          } catch (error) {
-            rpcClient.close();
-            throw error;
-          }
-        });
+        const client =
+          isLocalWorkspace(workspace) && workspace.localPath
+            ? await openLocalWorkspaceConnection(
+                workspace.localPath,
+                workspace.workspaceId,
+              )
+            : await openRemoteWorkspaceConnection(
+                workspace.serverUrl,
+                workspace.workspaceId,
+              );
         if (cancelled) return;
         if (connectAttempt !== connectAttemptRef.current) return;
 
@@ -308,6 +281,12 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         if (cancelled) return;
         if (connectAttempt !== connectAttemptRef.current) return;
+        if (
+          error instanceof Error &&
+          error.message === "Workspace connection superseded"
+        ) {
+          return;
+        }
         if (isWorkspaceNotFoundError(error)) {
           suppressActiveSyncRef.current = true;
           removeWorkspace(workspace.id);
@@ -664,9 +643,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   const fetchPageDetail = useCallback(
     async (id: string) => {
-      const cached = pageDetailsById[id];
-      if (cached) return cached;
-
       if (!rpc || connectionStatus !== "connected") return null;
 
       const detail = await rpc.call<WorkspacePageDetail | null>("get_page", { id });
@@ -677,7 +653,6 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       return detail;
     },
     [
-      pageDetailsById,
       rpc,
       connectionStatus,
       storePageDetail,
