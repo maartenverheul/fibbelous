@@ -296,6 +296,22 @@ impl CacheDb {
 
     pub fn upsert_pages(&mut self, pages: &[IndexedPage]) -> rusqlite::Result<()> {
         for page in pages {
+            // DB-first: never clobber an unflushed row that already owns this id.
+            let dirty_elsewhere: bool = self.conn.query_row(
+                "SELECT 1 FROM pages WHERE id = ?1 AND path != ?2 AND fs_dirty != 0 LIMIT 1",
+                params![page.id, page.path],
+                |_| Ok(true),
+            ).optional()?.unwrap_or(false);
+            if dirty_elsewhere {
+                continue;
+            }
+
+            // Same logical page may move path (slug rename / leftover files). Drop
+            // any other clean row that already owns this id so UNIQUE(id) cannot fail.
+            self.conn.execute(
+                "DELETE FROM pages WHERE id = ?1 AND path != ?2 AND fs_dirty = 0",
+                params![page.id, page.path],
+            )?;
             self.conn.execute(
                 "INSERT INTO pages (path, id, parent_id, slug, title, icon, content, modified_ns, size_bytes, fs_dirty)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0)
@@ -308,7 +324,8 @@ impl CacheDb {
                     content = excluded.content,
                     modified_ns = excluded.modified_ns,
                     size_bytes = excluded.size_bytes,
-                    fs_dirty = 0",
+                    fs_dirty = 0
+                 WHERE pages.fs_dirty = 0",
                 params![
                     page.path,
                     page.id,
@@ -356,6 +373,19 @@ impl CacheDb {
 
     pub fn upsert_database_rows(&mut self, rows: &[IndexedDatabaseRow]) -> rusqlite::Result<()> {
         for row in rows {
+            let dirty_elsewhere: bool = self.conn.query_row(
+                "SELECT 1 FROM database_rows WHERE id = ?1 AND path != ?2 AND fs_dirty != 0 LIMIT 1",
+                params![row.id, row.path],
+                |_| Ok(true),
+            ).optional()?.unwrap_or(false);
+            if dirty_elsewhere {
+                continue;
+            }
+
+            self.conn.execute(
+                "DELETE FROM database_rows WHERE id = ?1 AND path != ?2 AND fs_dirty = 0",
+                params![row.id, row.path],
+            )?;
             self.conn.execute(
                 "INSERT INTO database_rows (
                     path, database_id, id, slug, title, icon, created, edited,
@@ -374,7 +404,8 @@ impl CacheDb {
                     content = excluded.content,
                     modified_ns = excluded.modified_ns,
                     size_bytes = excluded.size_bytes,
-                    fs_dirty = 0",
+                    fs_dirty = 0
+                 WHERE database_rows.fs_dirty = 0",
                 params![
                     row.path,
                     row.database_id,

@@ -408,11 +408,18 @@ fn path_relative_to_workspace(workspace_path: &Path, file_path: &Path) -> String
         .replace('\\', "/")
 }
 
+/// Prefer `{id}` from `{id}-{slug}` stems (hex id prefix); fall back to full stem.
 fn file_stem_id(path: &Path) -> String {
-    path.file_stem()
+    let stem = path
+        .file_stem()
         .and_then(|stem| stem.to_str())
-        .unwrap_or_default()
-        .to_owned()
+        .unwrap_or_default();
+    if let Some((id, _slug)) = stem.split_once('-') {
+        if !id.is_empty() && id.chars().all(|c| c.is_ascii_hexdigit()) {
+            return id.to_ascii_lowercase();
+        }
+    }
+    stem.to_owned()
 }
 
 fn parse_frontmatter(content: &str) -> HashMap<String, String> {
