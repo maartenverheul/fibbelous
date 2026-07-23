@@ -8,16 +8,18 @@ use hyper::body::Incoming;
 use hyper::{Method, Request, Response, StatusCode};
 use jsonrpsee::core::http_helpers::{Body, Response as RpcResponse};
 use jsonrpsee::server::ws;
-use jsonrpsee::server::{Methods, Server, ServerHandle, serve_with_graceful_shutdown, stop_channel};
-use tower::Service;
+use jsonrpsee::server::{
+    serve_with_graceful_shutdown, stop_channel, Methods, Server, ServerHandle,
+};
 use tower::service_fn;
+use tower::Service;
 
-use crate::rpc::{WorkspaceRpcState, build_workspace_module};
+use crate::rpc::{build_workspace_module, WorkspaceRpcState};
 use crate::static_files::{read_response, resolve_file, should_spa_fallback, spa_index};
 use crate::workspace::{
+    create_workspace, find_by_id, find_by_id_mut, open_workspace_at_path, spawn_indexing,
     CreateWorkspaceError, CreateWorkspaceRequest, OpenWorkspaceError, OpenWorkspaceOutcome,
     OpenWorkspaceRequest, UpdateWorkspaceError, UpdateWorkspaceRequest, Workspace,
-    create_workspace, find_by_id, find_by_id_mut, open_workspace_at_path, spawn_indexing,
 };
 
 type RpcServiceBuilder = jsonrpsee::server::TowerServiceBuilder<
@@ -127,8 +129,10 @@ pub async fn run_server(
 
                             let workspace_id = workspace_id.to_string();
                             let workspace = {
-                                let workspaces =
-                                    app_state.workspaces.read().expect("workspaces lock poisoned");
+                                let workspaces = app_state
+                                    .workspaces
+                                    .read()
+                                    .expect("workspaces lock poisoned");
                                 find_by_id(&workspaces, &workspace_id).cloned()
                             };
 
@@ -138,12 +142,8 @@ pub async fn run_server(
 
                             let module = build_workspace_module(WorkspaceRpcState { workspace });
                             let methods: Methods = module.into();
-                            let mut rpc_service =
-                                svc_builder.build(methods, stop_handle.clone());
-                            let origin = req
-                                .headers()
-                                .get(hyper::header::ORIGIN)
-                                .cloned();
+                            let mut rpc_service = svc_builder.build(methods, stop_handle.clone());
+                            let origin = req.headers().get(hyper::header::ORIGIN).cloned();
 
                             return match rpc_service.call(req).await {
                                 Ok(response) => {
@@ -174,12 +174,9 @@ pub async fn run_server(
                     }
                 });
 
-                if let Err(error) = serve_with_graceful_shutdown(
-                    stream,
-                    service,
-                    stop_handle_shutdown.shutdown(),
-                )
-                .await
+                if let Err(error) =
+                    serve_with_graceful_shutdown(stream, service, stop_handle_shutdown.shutdown())
+                        .await
                 {
                     tracing::debug!(%remote_addr, %error, "connection closed");
                 }
@@ -217,7 +214,10 @@ fn handle_get_rest(req: &Request<Incoming>, state: &AppState) -> Option<RpcRespo
 
     if req.method() == Method::GET && path == "/workspaces" {
         let workspaces = state.workspaces.read().expect("workspaces lock poisoned");
-        let items: Vec<_> = workspaces.iter().map(|workspace| workspace.info()).collect();
+        let items: Vec<_> = workspaces
+            .iter()
+            .map(|workspace| workspace.info())
+            .collect();
         return Some(json_response(StatusCode::OK, items));
     }
 
@@ -231,10 +231,7 @@ fn handle_get_rest(req: &Request<Incoming>, state: &AppState) -> Option<RpcRespo
     None
 }
 
-async fn handle_create_workspace(
-    req: Request<Incoming>,
-    state: &AppState,
-) -> RpcResponse {
+async fn handle_create_workspace(req: Request<Incoming>, state: &AppState) -> RpcResponse {
     let origin = req.headers().get(hyper::header::ORIGIN).cloned();
     let body = match req.into_body().collect().await {
         Ok(collected) => collected.to_bytes(),
@@ -323,9 +320,7 @@ async fn handle_open_workspace(req: Request<Incoming>, state: &AppState) -> RpcR
     with_cors_origin(
         origin,
         match opened {
-            Ok(OpenWorkspaceOutcome::AlreadyLoaded(info)) => {
-                json_response(StatusCode::OK, info)
-            }
+            Ok(OpenWorkspaceOutcome::AlreadyLoaded(info)) => json_response(StatusCode::OK, info),
             Ok(OpenWorkspaceOutcome::Opened(workspace)) => {
                 let info = workspace.info();
                 state
@@ -386,7 +381,10 @@ async fn handle_update_workspace(
     let mut workspaces = state.workspaces.write().expect("workspaces lock poisoned");
     let snapshot = workspaces.clone();
     let Some(workspace) = find_by_id_mut(&mut workspaces, &workspace_id) else {
-        return with_cors_origin(origin, json_error(StatusCode::NOT_FOUND, "workspace not found"));
+        return with_cors_origin(
+            origin,
+            json_error(StatusCode::NOT_FOUND, "workspace not found"),
+        );
     };
 
     let updated = workspace.update_settings(&snapshot, input);
@@ -431,10 +429,11 @@ fn with_cors_origin(
     origin: Option<hyper::header::HeaderValue>,
     mut response: RpcResponse,
 ) -> RpcResponse {
-    let origin =
-        origin.unwrap_or_else(|| hyper::header::HeaderValue::from_static("*"));
+    let origin = origin.unwrap_or_else(|| hyper::header::HeaderValue::from_static("*"));
 
-    response.headers_mut().insert(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
+    response
+        .headers_mut()
+        .insert(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
     response.headers_mut().insert(
         hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
         hyper::header::HeaderValue::from_static("GET, POST, PATCH, OPTIONS"),

@@ -30,6 +30,7 @@ export type WorkspaceContextValue = {
   connectionStatus: WorkspaceConnectionStatus;
   rpc: RpcClient | null;
   rootPages: WorkspacePage[] | undefined;
+  favoritePages: WorkspacePage[];
   rootError: string | null;
   getChildren: (parentId: string | null) => WorkspacePage[] | undefined;
   ensureChildren: (parentId: string | null, depth?: number) => void;
@@ -56,7 +57,12 @@ export type WorkspaceContextValue = {
       bodyPatch?: BodyPatch;
       slug?: string;
       icon?: string | null;
+      favorite?: boolean;
     },
+  ) => Promise<WorkspacePageDetail>;
+  setPageFavorite: (
+    id: string,
+    favorite: boolean,
   ) => Promise<WorkspacePageDetail>;
   duplicatePage: (id: string) => Promise<WorkspacePageDetail>;
   trashPage: (page: WorkspacePage) => Promise<string[]>;

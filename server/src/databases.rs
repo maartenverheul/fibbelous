@@ -8,7 +8,8 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
-use crate::cache::{CacheDb, DatabaseDetail, DatabaseRowsPage, PageDetail, page_body_from_content};
+use crate::cache::{page_body_from_content, CacheDb, DatabaseDetail, DatabaseRowsPage, PageDetail};
+use crate::pages::{format_database_row_content, DatabaseRowFrontmatter};
 
 /// On-disk shape of `databases/*/database.json`.
 /// Field order here is the serialization order.
@@ -45,66 +46,26 @@ pub struct DatabaseProperty {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum DatabasePropertyConfig {
-    Title {
-        title: EmptyObject,
-    },
-    RichText {
-        rich_text: EmptyObject,
-    },
-    Number {
-        number: NumberConfig,
-    },
-    Select {
-        select: OptionsConfig,
-    },
-    MultiSelect {
-        multi_select: OptionsConfig,
-    },
-    Status {
-        status: StatusConfig,
-    },
-    Date {
-        date: EmptyObject,
-    },
-    People {
-        people: EmptyObject,
-    },
-    Files {
-        files: EmptyObject,
-    },
-    Checkbox {
-        checkbox: EmptyObject,
-    },
-    Url {
-        url: EmptyObject,
-    },
-    Email {
-        email: EmptyObject,
-    },
-    PhoneNumber {
-        phone_number: EmptyObject,
-    },
-    Formula {
-        formula: FormulaConfig,
-    },
-    Relation {
-        relation: RelationConfig,
-    },
-    Rollup {
-        rollup: EmptyObject,
-    },
-    CreatedTime {
-        created_time: EmptyObject,
-    },
-    CreatedBy {
-        created_by: EmptyObject,
-    },
-    LastEditedTime {
-        last_edited_time: EmptyObject,
-    },
-    LastEditedBy {
-        last_edited_by: EmptyObject,
-    },
+    Title { title: EmptyObject },
+    RichText { rich_text: EmptyObject },
+    Number { number: NumberConfig },
+    Select { select: OptionsConfig },
+    MultiSelect { multi_select: OptionsConfig },
+    Status { status: StatusConfig },
+    Date { date: EmptyObject },
+    People { people: EmptyObject },
+    Files { files: EmptyObject },
+    Checkbox { checkbox: EmptyObject },
+    Url { url: EmptyObject },
+    Email { email: EmptyObject },
+    PhoneNumber { phone_number: EmptyObject },
+    Formula { formula: FormulaConfig },
+    Relation { relation: RelationConfig },
+    Rollup { rollup: EmptyObject },
+    CreatedTime { created_time: EmptyObject },
+    CreatedBy { created_by: EmptyObject },
+    LastEditedTime { last_edited_time: EmptyObject },
+    LastEditedBy { last_edited_by: EmptyObject },
 }
 
 /// Empty `{}` config object used by many property types.
@@ -222,9 +183,7 @@ pub struct DatabaseViewUpdate {
     pub sort: Option<Option<DatabaseViewSort>>,
 }
 
-fn deserialize_present_option<'de, D, T>(
-    deserializer: D,
-) -> Result<Option<Option<T>>, D::Error>
+fn deserialize_present_option<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
 where
     D: Deserializer<'de>,
     T: Deserialize<'de>,
@@ -352,7 +311,9 @@ pub fn list_database_rows(
     };
 
     let (field, attribute_key) = if let Some(ref sort) = sort {
-        let contents = cache.get_database_content(database_id).map_err(|error| error.to_string())?
+        let contents = cache
+            .get_database_content(database_id)
+            .map_err(|error| error.to_string())?
             .ok_or_else(|| "database content not found".to_owned())?;
         let database: DatabaseFile =
             serde_json::from_str(&contents).map_err(|error| error.to_string())?;
@@ -425,7 +386,9 @@ fn mutate_database_view(
         return Ok(None);
     };
 
-    let contents = cache.get_database_content(database_id).map_err(|error| error.to_string())?
+    let contents = cache
+        .get_database_content(database_id)
+        .map_err(|error| error.to_string())?
         .ok_or_else(|| "database content not found".to_owned())?;
     let mut database: DatabaseFile =
         serde_json::from_str(&contents).map_err(|error| error.to_string())?;
@@ -437,9 +400,12 @@ fn mutate_database_view(
     };
     mutate(view)?;
 
-    let mut serialized = serde_json::to_string_pretty(&database).map_err(|error| error.to_string())?;
+    let mut serialized =
+        serde_json::to_string_pretty(&database).map_err(|error| error.to_string())?;
     serialized.push('\n');
-    cache.upsert_database_content(database_id, &serialized).map_err(|error| error.to_string())?;
+    cache
+        .upsert_database_content(database_id, &serialized)
+        .map_err(|error| error.to_string())?;
 
     let json = serde_json::to_value(&database).map_err(|error| error.to_string())?;
     Ok(Some(DatabaseDetail {
@@ -497,9 +463,7 @@ pub fn create_database_row(
     let database_dir = Path::new(&meta.path)
         .parent()
         .ok_or_else(|| "invalid database path".to_string())?;
-    let database_dir_rel = database_dir
-        .to_string_lossy()
-        .replace('\\', "/");
+    let database_dir_rel = database_dir.to_string_lossy().replace('\\', "/");
 
     let title = title
         .filter(|value| !value.is_empty())
@@ -513,11 +477,31 @@ pub fn create_database_row(
     let id = generate_row_id(&format!("{database_dir_rel}:{file_slug}"));
     let now = now_iso();
 
-    let content = format!(
-        "---\nid: {id}\nslug: {file_slug}\ntitle: {title}\ncreated: \"{now}\"\nedited: \"{now}\"\nattributes: {{}}\n---\n\n"
+    let content = format_database_row_content(
+        &DatabaseRowFrontmatter {
+            id: id.clone(),
+            slug: file_slug.clone(),
+            title: title.clone(),
+            icon: None,
+            favorite: false,
+            created: now.clone(),
+            edited: now,
+            attributes_block: "attributes: {}\n".to_owned(),
+        },
+        "",
     );
     let relative_path = format!("{database_dir_rel}/{id}-{file_slug}.mdx");
-    cache.upsert_database_row_mutable(&relative_path, database_id, &id, Some(&file_slug), Some(&title), &content)
+    cache
+        .upsert_database_row_mutable(
+            &relative_path,
+            database_id,
+            &id,
+            Some(&file_slug),
+            Some(&title),
+            None,
+            &content,
+            false,
+        )
         .map_err(|error| error.to_string())?;
     let body = page_body_from_content(&content);
 
@@ -533,6 +517,7 @@ pub fn create_database_row(
         icon: None,
         path: relative_path,
         has_children: false,
+        favorite: false,
         database_id: Some(database_id.to_owned()),
         body_hash: crate::cache::hash_body(&body),
         body,
@@ -560,8 +545,5 @@ fn slugify(text: &str) -> String {
 }
 
 fn now_iso() -> String {
-    Utc::now()
-        .format("%Y-%m-%dT%H:%M:00.000Z")
-        .to_string()
+    Utc::now().format("%Y-%m-%dT%H:%M:00.000Z").to_string()
 }
-

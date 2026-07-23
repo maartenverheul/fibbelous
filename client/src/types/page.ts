@@ -9,6 +9,8 @@ export type WorkspacePage = {
   hasChildren: boolean;
   /** Present when this page is a database row; id of the host database page. */
   databaseId?: string | null;
+  /** Whether the page is in the workspace favorites list. */
+  favorite?: boolean;
   /**
    * Nested descendants when `list_pages` is called with depth > 1.
    * Not kept in the local page cache; used only to hydrate child lists.

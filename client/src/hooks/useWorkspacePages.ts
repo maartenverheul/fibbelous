@@ -4,6 +4,7 @@ import { treeCacheKey } from "../types/page";
 export function useWorkspacePages() {
   const {
     rootPages,
+    favoritePages,
     rootError,
     getChildren,
     ensureChildren,
@@ -18,6 +19,7 @@ export function useWorkspacePages() {
     createPage,
     createRootPage,
     updatePage,
+    setPageFavorite,
     duplicatePage,
     trashPage,
     searchPages,
@@ -28,6 +30,7 @@ export function useWorkspacePages() {
 
   return {
     rootPages,
+    favoritePages,
     rootError,
     getChildren,
     ensureChildren,
@@ -42,6 +45,7 @@ export function useWorkspacePages() {
     createPage,
     createRootPage,
     updatePage,
+    setPageFavorite,
     duplicatePage,
     trashPage,
     searchPages,

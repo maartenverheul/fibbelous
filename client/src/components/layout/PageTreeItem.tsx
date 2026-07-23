@@ -60,6 +60,7 @@ export function PageTreeItem({
     findPageById,
     createPage,
     duplicatePage,
+    setPageFavorite,
     trashPage,
   } = useWorkspacePages();
   const segment = buildPageSegment(page, findPageById);
@@ -126,6 +127,14 @@ export function PageTreeItem({
       await trashPage(page);
     } catch (error) {
       alert(error instanceof Error ? error.message : "Failed to move page to trash");
+    }
+  };
+
+  const handleToggleFavorite = async () => {
+    try {
+      await setPageFavorite(page.id, !page.favorite);
+    } catch (error) {
+      console.error(error);
     }
   };
 
@@ -285,6 +294,7 @@ export function PageTreeItem({
               onClose={() => setMenuOpen(false)}
               onCreateSubpage={() => void handleCreateSubpage()}
               onDuplicate={() => void handleDuplicate()}
+              onToggleFavorite={() => void handleToggleFavorite()}
               onTrash={() => void handleTrash()}
             />
           </div>

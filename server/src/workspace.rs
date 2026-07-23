@@ -7,14 +7,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
-use crate::cache::{CacheDb, ensure_runtime_dir};
+use crate::cache::{ensure_runtime_dir, CacheDb};
 use crate::data::log_path;
 use crate::databases;
-use crate::flush::{DirtyKey, FlushScheduler, spawn_flush};
+use crate::flush::{spawn_flush, DirtyKey, FlushScheduler};
 use crate::index::sync_workspace;
 use crate::pages::{
-    CreatePageInput, UpdatePageInput, create_page, duplicate_page, get_trashed_page,
-    list_trashed_pages, purge_page, restore_page, trash_page, update_page,
+    create_page, duplicate_page, get_trashed_page, list_trashed_pages, purge_page, restore_page,
+    trash_page, update_page, CreatePageInput, UpdatePageInput,
 };
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
@@ -182,6 +182,16 @@ impl Workspace {
             .map_err(|error| error.to_string())
     }
 
+    pub fn list_favorite_pages(&self) -> Result<Vec<crate::cache::PageSummary>, String> {
+        let cache = self
+            .cache
+            .lock()
+            .map_err(|_| "cache mutex poisoned".to_string())?;
+        cache
+            .list_favorite_pages()
+            .map_err(|error| error.to_string())
+    }
+
     pub fn get_page(&self, id: &str) -> Result<Option<crate::cache::PageDetail>, String> {
         let cache = self
             .cache
@@ -202,7 +212,9 @@ impl Workspace {
             return Ok(None);
         };
 
-        let content = cache.get_database_row_content(id).map_err(|error| error.to_string())?
+        let content = cache
+            .get_database_row_content(id)
+            .map_err(|error| error.to_string())?
             .ok_or_else(|| "database row content not found".to_owned())?;
         let body = crate::cache::page_body_from_content(&content);
         let body_hash = crate::cache::hash_body(&body);
@@ -225,6 +237,8 @@ impl Workspace {
                 icon: host.icon,
                 path: host.path,
                 has_children: host.has_children,
+                favorite: host.favorite,
+                database_id: None,
                 children: None,
             });
         }
@@ -237,6 +251,7 @@ impl Workspace {
             icon: row.icon,
             path: row.path,
             has_children: false,
+            favorite: row.favorite,
             database_id: Some(row.database_id),
             body,
             body_hash,
@@ -245,10 +260,7 @@ impl Workspace {
         }))
     }
 
-    pub fn get_database(
-        &self,
-        id: &str,
-    ) -> Result<Option<crate::cache::DatabaseDetail>, String> {
+    pub fn get_database(&self, id: &str) -> Result<Option<crate::cache::DatabaseDetail>, String> {
         let mut cache = self
             .cache
             .lock()
@@ -289,7 +301,8 @@ impl Workspace {
             .cache
             .lock()
             .map_err(|_| "cache mutex poisoned".to_string())?;
-        let result = databases::update_database_view(&self.path, &mut cache, database_id, view_id, update);
+        let result =
+            databases::update_database_view(&self.path, &mut cache, database_id, view_id, update);
         if matches!(result, Ok(Some(_))) {
             self.flush.mark(DirtyKey::Database(database_id.to_owned()));
         }
@@ -349,7 +362,11 @@ impl Workspace {
         let result = self.with_cache_mut(|path, cache| update_page(path, cache, input));
         match result {
             Ok((page, old_path)) => {
-                self.flush.mark(DirtyKey::Page(page.id.clone()));
+                self.flush.mark(if page.database_id.is_some() {
+                    DirtyKey::Row(page.id.clone())
+                } else {
+                    DirtyKey::Page(page.id.clone())
+                });
                 if let Some(old_path) = old_path {
                     self.flush.mark_delete(old_path);
                 }
@@ -367,7 +384,10 @@ impl Workspace {
         list_trashed_pages(&self.path)
     }
 
-    pub fn get_trashed_page(&self, id: &str) -> Result<Option<crate::pages::TrashedPageDetail>, String> {
+    pub fn get_trashed_page(
+        &self,
+        id: &str,
+    ) -> Result<Option<crate::pages::TrashedPageDetail>, String> {
         match get_trashed_page(&self.path, id) {
             Ok(detail) => Ok(Some(detail)),
             Err(error) if error == "page not found in trash" => Ok(None),
@@ -475,13 +495,8 @@ pub fn find_by_id<'a>(workspaces: &'a [Workspace], id: &str) -> Option<&'a Works
     workspaces.iter().find(|workspace| workspace.id == id)
 }
 
-pub fn find_by_id_mut<'a>(
-    workspaces: &'a mut [Workspace],
-    id: &str,
-) -> Option<&'a mut Workspace> {
-    workspaces
-        .iter_mut()
-        .find(|workspace| workspace.id == id)
+pub fn find_by_id_mut<'a>(workspaces: &'a mut [Workspace], id: &str) -> Option<&'a mut Workspace> {
+    workspaces.iter_mut().find(|workspace| workspace.id == id)
 }
 
 pub fn find_by_slug<'a>(workspaces: &'a [Workspace], slug: &str) -> Option<&'a Workspace> {
@@ -532,9 +547,7 @@ fn open_workspace(id: String, path: PathBuf) -> Result<Workspace, String> {
 
     let contents = fs::read_to_string(&workspace_json).map_err(|error| error.to_string())?;
     let settings = serde_json::from_str::<WorkspaceSettings>(&contents).map_err(|error| {
-        format!(
-            "invalid workspace.json ({error}). Expected fields: title, slug, icon, createdAt"
-        )
+        format!("invalid workspace.json ({error}). Expected fields: title, slug, icon, createdAt")
     })?;
 
     let runtime_dir = ensure_runtime_dir(&path).map_err(|error| error.to_string())?;
@@ -556,9 +569,8 @@ fn seed_welcome_page(workspace: &Workspace) -> Result<(), String> {
         title: Some("Welcome".to_owned()),
         slug: Some("welcome".to_owned()),
         icon: None,
-        body: Some(
-            "# Welcome\n\nThis is your first page. Start writing here.".to_owned(),
-        ),
+        body: Some("# Welcome\n\nThis is your first page. Start writing here.".to_owned()),
+        favorite: false,
     })?;
     Ok(())
 }
@@ -775,7 +787,11 @@ pub fn discover_workspaces(dir: &Path) -> std::io::Result<Vec<Workspace>> {
 }
 
 pub fn spawn_indexing(workspace: Workspace) {
-    spawn_flush(workspace.path.clone(), workspace.cache.clone(), workspace.flush.clone());
+    spawn_flush(
+        workspace.path.clone(),
+        workspace.cache.clone(),
+        workspace.flush.clone(),
+    );
     tokio::spawn(index_workspace(workspace));
 }
 

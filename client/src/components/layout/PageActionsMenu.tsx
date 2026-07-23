@@ -14,6 +14,7 @@ type PageActionsMenuProps = {
   onClose: () => void;
   onCreateSubpage?: () => void;
   onDuplicate?: () => void;
+  onToggleFavorite?: () => void;
   onTrash?: () => void;
 };
 
@@ -24,10 +25,12 @@ export function PageActionsMenu({
   onClose,
   onCreateSubpage,
   onDuplicate,
+  onToggleFavorite,
   onTrash,
 }: PageActionsMenuProps) {
   const { openTabInNew, isTabOpen } = useTabs();
   const canOpenInNewTab = !isTabOpen(segment, target.pageId);
+  const isFavorite = Boolean(page?.favorite);
 
   return (
     <>
@@ -67,6 +70,16 @@ export function PageActionsMenu({
             }}
           >
             Duplicate
+          </button>
+          <button
+            type="button"
+            className={menuItemClassName}
+            onClick={() => {
+              onToggleFavorite?.();
+              onClose();
+            }}
+          >
+            {isFavorite ? "Remove from favorites" : "Add to favorites"}
           </button>
           <div className="my-1 h-px bg-[var(--app-border)]" role="separator" />
           <button

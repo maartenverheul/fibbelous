@@ -1,14 +1,19 @@
 import { useEffect, useRef, useState } from "react";
-import { PiGear, PiMagnifyingGlass, PiTrash, PiX } from "react-icons/pi";
+import { PiFileText, PiGear, PiMagnifyingGlass, PiTrash, PiX } from "react-icons/pi";
 import { useSidebar } from "../../context/SidebarContext";
 import { useTabs, type TabTarget } from "../../context/TabContext";
 import { useWorkspacePages } from "../../hooks/useWorkspacePages";
 import { cn } from "../../lib/utils";
-import { buildPageSegment, pageLabel } from "../../types/page";
+import {
+  buildPageSegment,
+  isPageSegmentActive,
+  pageLabel,
+} from "../../types/page";
 import { WorkspaceSelect } from "../workspace/WorkspaceSelect";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { PageActionsMenu } from "./PageActionsMenu";
 import { PageTreeItem } from "./PageTreeItem";
+import { EmojiIcon } from "../emoji/EmojiIcon";
 import type { WorkspacePage } from "../../types/page";
 
 type ContextMenuState = {
@@ -32,12 +37,14 @@ export function Sidebar() {
   const { activeSegment, navigateInTab, isTabOpen } = useTabs();
   const {
     rootPages,
+    favoritePages,
     rootError,
     rootLoaded,
     findPageById,
     createPage,
     createRootPage,
     duplicatePage,
+    setPageFavorite,
     trashPage,
     ensurePageTreeVisible,
   } = useWorkspacePages();
@@ -123,6 +130,14 @@ export function Sidebar() {
     }
   };
 
+  const handleContextToggleFavorite = async (page: WorkspacePage) => {
+    try {
+      await setPageFavorite(page.id, !page.favorite);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
   return (
     <>
       <aside
@@ -155,9 +170,54 @@ export function Sidebar() {
 
         <div className="sidebar-scroll min-h-0 flex-1 overflow-y-auto px-3 pt-3">
           <CollapsibleSection title="Favorites" defaultOpen>
-            <p className="px-2.5 py-1 text-xs text-stone-600 dark:text-stone-400">
-              Coming soon
-            </p>
+            {favoritePages.length === 0 ? (
+              <p className="px-2.5 py-1 text-xs text-stone-600 dark:text-stone-400">
+                No favorites yet
+              </p>
+            ) : (
+              favoritePages.map((page) => {
+                const segment = buildPageSegment(page, findPageById);
+                const label = pageLabel(page);
+                const active = isPageSegmentActive(activeSegment, page);
+                return (
+                  <button
+                    key={page.id}
+                    type="button"
+                    onClick={() =>
+                      navigateInTab(segment, {
+                        label,
+                        icon: page.icon,
+                        pageId: page.id,
+                      })
+                    }
+                    onContextMenu={(event) =>
+                      openContextMenu(
+                        event,
+                        segment,
+                        { label, icon: page.icon, pageId: page.id },
+                        page,
+                      )
+                    }
+                    className={cn(
+                      navButtonClassName(active),
+                      "flex w-full items-center gap-2",
+                    )}
+                  >
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+                      {page.icon ? (
+                        <EmojiIcon icon={page.icon} size={15} />
+                      ) : (
+                        <PiFileText
+                          className="h-4 w-4 text-stone-400 dark:text-stone-500"
+                          aria-hidden
+                        />
+                      )}
+                    </span>
+                    <span className="min-w-0 truncate">{label}</span>
+                  </button>
+                );
+              })
+            )}
           </CollapsibleSection>
 
           <CollapsibleSection
@@ -253,6 +313,11 @@ export function Sidebar() {
             onDuplicate={
               contextMenu.page
                 ? () => void handleContextDuplicate(contextMenu.page!)
+                : undefined
+            }
+            onToggleFavorite={
+              contextMenu.page
+                ? () => void handleContextToggleFavorite(contextMenu.page!)
                 : undefined
             }
             onTrash={

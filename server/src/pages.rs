@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
@@ -8,7 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
-use crate::cache::{CacheDb, PageDetail, children_dir, hash_body};
+use crate::cache::{children_dir, hash_body, CacheDb, PageDetail};
 use crate::index::sync_workspace;
 
 const TRASH_ROOT: &str = ".fibbelous/trash";
@@ -95,6 +95,7 @@ pub struct CreatePageInput {
     pub slug: Option<String>,
     pub icon: Option<String>,
     pub body: Option<String>,
+    pub favorite: bool,
 }
 
 #[derive(Debug)]
@@ -105,6 +106,7 @@ pub struct UpdatePageInput {
     pub icon: Option<String>,
     pub body: Option<String>,
     pub body_patch: Option<BodyPatch>,
+    pub favorite: Option<bool>,
 }
 
 /// Apply UTF-8 byte-indexed insert/delete ops sequentially.
@@ -209,6 +211,7 @@ struct PageFrontmatter {
     slug: String,
     title: String,
     icon: Option<String>,
+    favorite: bool,
     created: String,
     edited: String,
 }
@@ -222,6 +225,9 @@ impl PageFrontmatter {
         if let Some(icon) = self.icon.as_deref().filter(|value| !value.is_empty()) {
             yaml.push_str(&format!("icon: {icon}\n"));
         }
+        if self.favorite {
+            yaml.push_str("favorite: true\n");
+        }
         yaml.push_str(&format!(
             "created: \"{}\"\nedited: \"{}\"\n---\n",
             self.created, self.edited
@@ -230,11 +236,49 @@ impl PageFrontmatter {
     }
 }
 
+/// Canonical database-row frontmatter order:
+/// `id`, `slug`, `title`, `icon?`, `favorite?`, `created`, `edited`, `attributes`.
+#[derive(Debug, Clone)]
+pub(crate) struct DatabaseRowFrontmatter {
+    pub id: String,
+    pub slug: String,
+    pub title: String,
+    pub icon: Option<String>,
+    pub favorite: bool,
+    pub created: String,
+    pub edited: String,
+    /// Raw `attributes:` block including continuation lines; ends with `\n`.
+    pub attributes_block: String,
+}
+
+impl DatabaseRowFrontmatter {
+    fn to_yaml(&self) -> String {
+        let mut yaml = format!(
+            "---\nid: {}\nslug: {}\ntitle: {}\n",
+            self.id, self.slug, self.title
+        );
+        if let Some(icon) = self.icon.as_deref().filter(|value| !value.is_empty()) {
+            yaml.push_str(&format!("icon: {icon}\n"));
+        }
+        if self.favorite {
+            yaml.push_str("favorite: true\n");
+        }
+        yaml.push_str(&format!(
+            "created: \"{}\"\nedited: \"{}\"\n",
+            self.created, self.edited
+        ));
+        yaml.push_str(&self.attributes_block);
+        if !self.attributes_block.ends_with('\n') {
+            yaml.push('\n');
+        }
+        yaml.push_str("---\n");
+        yaml
+    }
+}
+
 fn now_iso() -> String {
     // Floor to the current minute (:00.000Z).
-    Utc::now()
-        .format("%Y-%m-%dT%H:%M:00.000Z")
-        .to_string()
+    Utc::now().format("%Y-%m-%dT%H:%M:00.000Z").to_string()
 }
 
 fn unquote_yaml(value: &str) -> String {
@@ -286,7 +330,9 @@ pub fn create_page(
     let file_slug = file_stem_slug(&slug);
 
     let parent_path = match input.parent_id.as_deref() {
-        Some(parent_id) => cache.get_page_by_id(parent_id).map_err(|error| error.to_string())?
+        Some(parent_id) => cache
+            .get_page_by_id(parent_id)
+            .map_err(|error| error.to_string())?
             .ok_or_else(|| "parent page not found".to_owned())
             .map(|page| children_dir(&page.path, parent_id))?,
         None => "pages".to_owned(),
@@ -299,12 +345,23 @@ pub fn create_page(
             slug: file_slug.clone(),
             title: title.clone(),
             icon: icon.clone(),
+            favorite: input.favorite,
             created: now.clone(),
             edited: now,
         },
         &body,
     );
-    cache.upsert_page_mutable(&path, &id, input.parent_id.as_deref(), Some(&file_slug), Some(&title), icon.as_deref(), &content)
+    cache
+        .upsert_page_mutable(
+            &path,
+            &id,
+            input.parent_id.as_deref(),
+            Some(&file_slug),
+            Some(&title),
+            icon.as_deref(),
+            &content,
+            input.favorite,
+        )
         .map_err(|error| error.to_string())?;
     get_page_or_err(cache, &id)
 }
@@ -314,7 +371,12 @@ pub fn update_page(
     cache: &mut CacheDb,
     input: UpdatePageInput,
 ) -> Result<(PageDetail, Option<String>), String> {
-    let existing = get_page_or_err(cache, &input.id)?;
+    let Some(existing) = cache
+        .get_page_by_id(&input.id)
+        .map_err(|error| error.to_string())?
+    else {
+        return update_database_row(cache, input);
+    };
     let title_updated = input.title.is_some();
 
     let title = input
@@ -342,6 +404,7 @@ pub fn update_page(
     };
     let icon = input.icon.or(existing.icon);
     let body = resolve_update_body(existing.body.clone(), input.body, input.body_patch)?;
+    let favorite = input.favorite.unwrap_or(existing.favorite);
 
     let file_slug = file_stem_slug(&slug);
 
@@ -370,6 +433,7 @@ pub fn update_page(
             slug: file_slug.clone(),
             title: title.clone(),
             icon: icon.clone(),
+            favorite,
             created,
             edited,
         },
@@ -384,10 +448,173 @@ pub fn update_page(
             Some(&title),
             icon.as_deref(),
             &content,
+            favorite,
         )
         .map_err(|error| error.to_string())?;
     let detail = get_page_or_err(cache, &input.id)?;
     Ok((detail, old_path))
+}
+
+fn update_database_row(
+    cache: &mut CacheDb,
+    input: UpdatePageInput,
+) -> Result<(PageDetail, Option<String>), String> {
+    let existing = cache
+        .get_database_row_by_id(&input.id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "page not found".to_owned())?;
+    let existing_content = cache
+        .get_database_row_content(&input.id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "database row content not found".to_owned())?;
+    let existing_body = strip_frontmatter(&existing_content).to_owned();
+    let body = resolve_update_body(existing_body, input.body, input.body_patch)?;
+    let title_updated = input.title.is_some();
+    let title = input
+        .title
+        .or(existing.title.clone())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "Untitled".to_owned());
+    let slug = input
+        .slug
+        .filter(|value| !value.is_empty())
+        .or_else(|| title_updated.then(|| slugify(&title)))
+        .or(existing.slug.clone())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| input.id.clone());
+    let icon = input.icon.or(existing.icon.clone());
+    let favorite = input.favorite.unwrap_or(existing.favorite);
+
+    let existing_frontmatter = extract_frontmatter_inner(&existing_content).unwrap_or("");
+    let existing_fields = parse_frontmatter(&existing_content);
+    let created = existing_fields
+        .get("created")
+        .map(|value| unquote_yaml(value))
+        .filter(|value| !value.is_empty())
+        .or(existing.created.clone())
+        .unwrap_or_else(now_iso);
+    let attributes_block = extract_attributes_block(existing_frontmatter);
+    let content = format_database_row_content(
+        &DatabaseRowFrontmatter {
+            id: input.id.clone(),
+            slug: slug.clone(),
+            title: title.clone(),
+            icon: icon.clone(),
+            favorite,
+            created,
+            edited: now_iso(),
+            attributes_block,
+        },
+        &body,
+    );
+
+    cache
+        .upsert_database_row_mutable(
+            &existing.path,
+            &existing.database_id,
+            &input.id,
+            Some(&slug),
+            Some(&title),
+            icon.as_deref(),
+            &content,
+            favorite,
+        )
+        .map_err(|error| error.to_string())?;
+
+    let referenced_pages = cache
+        .referenced_pages_for_body(&body)
+        .map_err(|error| error.to_string())?;
+    let mut ancestors = Vec::new();
+    if let Some(host) = cache
+        .get_page_by_id(&existing.database_id)
+        .map_err(|error| error.to_string())?
+    {
+        ancestors = host.ancestors;
+        ancestors.push(crate::cache::PageSummary {
+            id: host.id,
+            parent_id: host.parent_id,
+            slug: host.slug,
+            title: host.title,
+            icon: host.icon,
+            path: host.path,
+            has_children: host.has_children,
+            favorite: host.favorite,
+            database_id: None,
+            children: None,
+        });
+    }
+    Ok((
+        PageDetail {
+            id: input.id,
+            parent_id: None,
+            slug: Some(slug),
+            title: Some(title),
+            icon,
+            path: existing.path,
+            has_children: false,
+            favorite,
+            database_id: Some(existing.database_id),
+            body_hash: hash_body(&body),
+            body,
+            referenced_pages,
+            ancestors,
+        },
+        None,
+    ))
+}
+
+fn extract_frontmatter_inner(content: &str) -> Option<&str> {
+    let content = content.trim_start();
+    let rest = content.strip_prefix("---")?;
+    let end = rest.find("\n---")?;
+    Some(&rest[..end])
+}
+
+/// Preserves the raw `attributes:` block (including indented continuation lines).
+fn extract_attributes_block(frontmatter_inner: &str) -> String {
+    let lines = frontmatter_inner.lines().collect::<Vec<_>>();
+    let mut index = 0usize;
+    while index < lines.len() {
+        let line = lines[index];
+        let is_attributes = !line.chars().next().is_some_and(char::is_whitespace)
+            && line
+                .split_once(':')
+                .is_some_and(|(key, _)| key.trim() == "attributes");
+        if !is_attributes {
+            index += 1;
+            continue;
+        }
+
+        let mut block = format!("{line}\n");
+        index += 1;
+        while index < lines.len() {
+            let continuation = lines[index];
+            if continuation.is_empty()
+                || continuation.chars().next().is_some_and(char::is_whitespace)
+            {
+                block.push_str(continuation);
+                block.push('\n');
+                index += 1;
+            } else {
+                break;
+            }
+        }
+        return block;
+    }
+    "attributes: {}\n".to_owned()
+}
+
+pub(crate) fn format_database_row_content(
+    frontmatter: &DatabaseRowFrontmatter,
+    body: &str,
+) -> String {
+    let mut content = frontmatter.to_yaml();
+    content.push('\n');
+    content.push_str(body);
+    if !body.is_empty() && !body.ends_with('\n') {
+        content.push('\n');
+    }
+    content
 }
 
 pub fn trash_page(
@@ -699,6 +926,7 @@ pub fn duplicate_page(
             slug: Some(format!("{base_slug}-copy")),
             icon: source.icon,
             body: Some(source.body),
+            favorite: source.favorite,
         },
     )
 }

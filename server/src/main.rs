@@ -19,11 +19,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "workspaces discovered"
     );
 
-    start_indexing(
-        &workspaces
-            .read()
-            .expect("workspaces lock poisoned"),
-    );
+    start_indexing(&workspaces.read().expect("workspaces lock poisoned"));
 
     let config = Config::from_env();
     let server_addr = config.server_addr().parse()?;

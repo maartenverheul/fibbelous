@@ -54,10 +54,8 @@ pub fn spawn_flush(workspace_path: PathBuf, cache: Arc<Mutex<CacheDb>>, schedule
                 };
                 std::mem::take(&mut *pending)
             };
-            let _ = tokio::task::spawn_blocking(move || {
-                flush_pending(&path, &cache, &deletes)
-            })
-            .await;
+            let _ =
+                tokio::task::spawn_blocking(move || flush_pending(&path, &cache, &deletes)).await;
         }
     });
 }
@@ -74,7 +72,9 @@ pub fn flush_pending(
         }
     }
 
-    let mut cache = cache.lock().map_err(|_| "cache mutex poisoned".to_owned())?;
+    let mut cache = cache
+        .lock()
+        .map_err(|_| "cache mutex poisoned".to_owned())?;
     for (id, path, content) in cache.dirty_pages().map_err(|e| e.to_string())? {
         write(workspace_path, &path, &content)?;
         cache.clear_page_dirty(&id).map_err(|e| e.to_string())?;
@@ -85,7 +85,9 @@ pub fn flush_pending(
     }
     for (id, path, content) in cache.dirty_database_rows().map_err(|e| e.to_string())? {
         write(workspace_path, &path, &content)?;
-        cache.clear_database_row_dirty(&id).map_err(|e| e.to_string())?;
+        cache
+            .clear_database_row_dirty(&id)
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }

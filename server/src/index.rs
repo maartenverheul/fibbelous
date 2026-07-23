@@ -4,9 +4,11 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use crate::cache::{CacheDb, IndexedDatabase, IndexedDatabaseRow, IndexedPage, parent_id_from_page_path};
-use crate::databases::DatabaseFile;
+use crate::cache::{
+    parent_id_from_page_path, CacheDb, IndexedDatabase, IndexedDatabaseRow, IndexedPage,
+};
 use crate::data::log_path;
+use crate::databases::DatabaseFile;
 
 const BATCH_SIZE: usize = 128;
 
@@ -66,6 +68,9 @@ fn sync_pages(workspace_path: &Path, cache: &mut CacheDb, stats: &mut SyncStats)
                 slug: frontmatter.get("slug").cloned(),
                 title: frontmatter.get("title").cloned(),
                 icon: frontmatter.get("icon").cloned(),
+                favorite: frontmatter
+                    .get("favorite")
+                    .is_some_and(|value| is_truthy(value)),
                 content,
                 modified_ns,
                 size_bytes,
@@ -232,6 +237,7 @@ fn sync_database_rows(
             created: row.created,
             edited: row.edited,
             attributes_json: row.attributes_json,
+            favorite: row.favorite,
             content,
             modified_ns,
             size_bytes,
@@ -253,6 +259,7 @@ struct ParsedDatabaseRow {
     created: Option<String>,
     edited: Option<String>,
     attributes_json: String,
+    favorite: bool,
 }
 
 fn parse_database_row(
@@ -277,8 +284,8 @@ fn parse_database_row(
         .and_then(|map| map.get(serde_yaml::Value::String("attributes".into())))
         .cloned()
         .unwrap_or(serde_yaml::Value::Mapping(serde_yaml::Mapping::new()));
-    let attributes_json = serde_json::to_string(&yaml_to_json(attributes))
-        .map_err(|error| error.to_string())?;
+    let attributes_json =
+        serde_json::to_string(&yaml_to_json(attributes)).map_err(|error| error.to_string())?;
 
     Ok(ParsedDatabaseRow {
         id,
@@ -298,6 +305,9 @@ fn parse_database_row(
             .and_then(|map| map.get(serde_yaml::Value::String("edited".into())))
             .and_then(yaml_value_to_string),
         attributes_json,
+        favorite: mapping
+            .and_then(|map| map.get(serde_yaml::Value::String("favorite".into())))
+            .is_some_and(yaml_value_is_truthy),
     })
 }
 
@@ -324,11 +334,31 @@ fn yaml_value_to_string(value: &serde_yaml::Value) -> Option<String> {
     .filter(|text| !text.is_empty())
 }
 
+fn yaml_value_is_truthy(value: &serde_yaml::Value) -> bool {
+    match value {
+        serde_yaml::Value::Bool(value) => *value,
+        serde_yaml::Value::Number(value) => value.as_i64() == Some(1),
+        serde_yaml::Value::String(value) => is_truthy(value),
+        _ => false,
+    }
+}
+
+fn is_truthy(value: &str) -> bool {
+    matches!(
+        value.trim().trim_matches('"').to_ascii_lowercase().as_str(),
+        "true" | "1"
+    )
+}
+
 fn yaml_to_json(value: serde_yaml::Value) -> serde_json::Value {
     serde_json::to_value(value).unwrap_or(serde_json::Value::Null)
 }
 
-fn flush_pages(cache: &mut CacheDb, batch: &mut Vec<IndexedPage>, stats: &mut SyncStats) -> io::Result<()> {
+fn flush_pages(
+    cache: &mut CacheDb,
+    batch: &mut Vec<IndexedPage>,
+    stats: &mut SyncStats,
+) -> io::Result<()> {
     if batch.is_empty() {
         return Ok(());
     }

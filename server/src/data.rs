@@ -20,7 +20,10 @@ pub fn ensure_workspaces_dir() -> std::io::Result<PathBuf> {
 pub fn log_path(path: &Path) -> String {
     match path.strip_prefix(data_dir()) {
         Ok(relative) if relative.as_os_str().is_empty() => DATA_DIR.into(),
-        Ok(relative) => format!("{DATA_DIR}/{}", relative.to_string_lossy().replace('\\', "/")),
+        Ok(relative) => format!(
+            "{DATA_DIR}/{}",
+            relative.to_string_lossy().replace('\\', "/")
+        ),
         Err(_) => path.to_string_lossy().replace('\\', "/"),
     }
 }

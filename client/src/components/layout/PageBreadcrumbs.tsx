@@ -12,7 +12,13 @@ import {
   parsePageIdFromSegment,
   type WorkspacePage,
 } from "../../types/page";
-import { PiCheck, PiCircleNotch, PiWarningCircle } from "react-icons/pi";
+import {
+  PiCheck,
+  PiCircleNotch,
+  PiStar,
+  PiStarFill,
+  PiWarningCircle,
+} from "react-icons/pi";
 import { EmojiIcon } from "../emoji/EmojiIcon";
 
 import type { PageSaveStatus } from "../../context/PageSaveContext";
@@ -54,6 +60,36 @@ function PageSaveIndicator({ status }: { status: PageSaveStatus }) {
         <PiWarningCircle className="h-4 w-4" aria-hidden />
       )}
     </span>
+  );
+}
+
+function FavoriteStar({
+  favorited,
+  onToggle,
+}: {
+  favorited: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-label={favorited ? "Remove from favorites" : "Add to favorites"}
+      title={favorited ? "Remove from favorites" : "Add to favorites"}
+      aria-pressed={favorited}
+      className={cn(
+        "flex h-6 w-6 shrink-0 items-center justify-center rounded",
+        favorited
+          ? "text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300"
+          : "text-stone-500 hover:text-stone-800 dark:text-stone-500 dark:hover:text-stone-200",
+      )}
+    >
+      {favorited ? (
+        <PiStarFill className="h-4 w-4" aria-hidden />
+      ) : (
+        <PiStar className="h-4 w-4" aria-hidden />
+      )}
+    </button>
   );
 }
 
@@ -112,7 +148,12 @@ function CrumbList({
 export function PageBreadcrumbs() {
   const { activeSegment, navigateInTab } = useTabs();
   const { status } = usePageSave();
-  const { findPageByKey, findPageById, getPageDetailById } = useWorkspacePages();
+  const {
+    findPageByKey,
+    findPageById,
+    getPageDetailById,
+    setPageFavorite,
+  } = useWorkspacePages();
   const crumbsByPageIdRef = useRef(new Map<string, WorkspacePage[]>());
 
   if (!isPagePathSegment(activeSegment)) {
@@ -121,10 +162,11 @@ export function PageBreadcrumbs() {
 
   const pageId = parsePageIdFromSegment(activeSegment);
   let crumbs = pageId ? crumbsByPageIdRef.current.get(pageId) ?? [] : [];
+  let page: WorkspacePage | undefined;
 
   if (pageId) {
     const detail = getPageDetailById(pageId);
-    const page = findPageByKey(activeSegment) ?? findPageById(pageId) ?? detail;
+    page = findPageByKey(activeSegment) ?? findPageById(pageId) ?? detail;
 
     if (page) {
       const built = detail
@@ -137,6 +179,9 @@ export function PageBreadcrumbs() {
     }
   }
 
+  const favorited = Boolean(page?.favorite);
+  const canFavorite = Boolean(pageId && page);
+
   return (
     <nav aria-label="Breadcrumb" className={navClassName}>
       <div className="flex min-w-0 items-center gap-1">
@@ -146,7 +191,20 @@ export function PageBreadcrumbs() {
           navigateInTab={navigateInTab}
         />
       </div>
-      <PageSaveIndicator status={status} />
+      <div className="flex shrink-0 items-center gap-0.5">
+        {canFavorite && (
+          <FavoriteStar
+            favorited={favorited}
+            onToggle={() => {
+              if (!pageId) return;
+              void setPageFavorite(pageId, !favorited).catch((error) => {
+                console.error(error);
+              });
+            }}
+          />
+        )}
+        <PageSaveIndicator status={status} />
+      </div>
     </nav>
   );
 }

@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use tracing::Level;
-use tracing_subscriber::{EnvFilter, fmt, prelude::*};
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
 /// Initialize tracing with the same defaults as the HTTP server binary.
 ///

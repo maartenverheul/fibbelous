@@ -38,6 +38,7 @@ import { useWorkspaceSession } from "./WorkspaceSessionProvider";
 
 export type WorkspacePagesValue = {
   rootPages: WorkspacePage[] | undefined;
+  favoritePages: WorkspacePage[];
   rootError: string | null;
   getChildren: (parentId: string | null) => WorkspacePage[] | undefined;
   ensureChildren: (parentId: string | null, depth?: number) => void;
@@ -64,8 +65,10 @@ export type WorkspacePagesValue = {
       bodyPatch?: BodyPatch;
       slug?: string;
       icon?: string | null;
+      favorite?: boolean;
     },
   ) => Promise<WorkspacePageDetail>;
+  setPageFavorite: (id: string, favorite: boolean) => Promise<WorkspacePageDetail>;
   duplicatePage: (id: string) => Promise<WorkspacePageDetail>;
   trashPage: (page: WorkspacePage) => Promise<string[]>;
   searchPages: (query: string) => Promise<SearchPageHit[]>;
@@ -91,6 +94,7 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
   const [pageDetailsById, setPageDetailsById] = useState<
     Record<string, WorkspacePageDetail>
   >({});
+  const [favoritePages, setFavoritePages] = useState<WorkspacePage[]>([]);
   const [rootError, setRootError] = useState<string | null>(null);
   /** Max `list_pages` depth successfully stored per parent. */
   const loadedDepthByParentRef = useRef(new Map<string, number>());
@@ -115,8 +119,37 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
       inflightDepthByParentRef,
       childrenByParentStableRef,
     );
+    setFavoritePages([]);
     lastTreeWorkspaceIdRef.current = workspaceId;
   }, [activeWorkspace?.workspaceId]);
+
+  const refreshFavoritePages = useCallback(async () => {
+    if (!rpc || connectionStatus !== "connected") {
+      setFavoritePages([]);
+      return;
+    }
+    try {
+      const pages = await rpc.call<WorkspacePage[]>("list_favorite_pages");
+      setFavoritePages(pages);
+      setPagesById((prev) => {
+        const next = { ...prev };
+        for (const page of pages) {
+          next[page.id] = { ...next[page.id], ...page, favorite: true };
+        }
+        return next;
+      });
+    } catch (error) {
+      console.error(error);
+    }
+  }, [rpc, connectionStatus]);
+
+  useEffect(() => {
+    if (!rpc || connectionStatus !== "connected") {
+      setFavoritePages([]);
+      return;
+    }
+    void refreshFavoritePages();
+  }, [rpc, connectionStatus, refreshFavoritePages]);
 
   const storePages = useCallback(
     (parentId: string | null, pages: WorkspacePage[], depth: number) => {
@@ -538,6 +571,7 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
         bodyPatch?: BodyPatch;
         slug?: string;
         icon?: string | null;
+        favorite?: boolean;
       },
     ) => {
       if (!rpc || connectionStatus !== "connected") {
@@ -561,9 +595,26 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
         await invalidateAndRefreshChildren(parentKeyOfPage(detail));
       }
 
+      if (patch.favorite !== undefined) {
+        await refreshFavoritePages();
+      }
+
       return detail;
     },
-    [rpc, connectionStatus, invalidateAndRefreshChildren, storePageDetail],
+    [
+      rpc,
+      connectionStatus,
+      invalidateAndRefreshChildren,
+      storePageDetail,
+      refreshFavoritePages,
+    ],
+  );
+
+  const setPageFavorite = useCallback(
+    async (id: string, favorite: boolean) => {
+      return updatePage(id, { favorite });
+    },
+    [updatePage],
   );
 
   const duplicatePage = useCallback(
@@ -594,6 +645,9 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
       for (const id of result.trashedIds) {
         removePageIdFromCache(id);
       }
+      setFavoritePages((prev) =>
+        prev.filter((page) => !result.trashedIds.includes(page.id)),
+      );
       await invalidateAndRefreshChildren(parentKeyOfPage(page));
       return result.trashedIds;
     },
@@ -656,15 +710,18 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
       inflightDepthByParentRef,
       childrenByParentStableRef,
     );
+    setFavoritePages([]);
     if (!rpc || connectionStatus !== "connected") return;
     await refreshChildren(null);
-  }, [rpc, connectionStatus, refreshChildren]);
+    await refreshFavoritePages();
+  }, [rpc, connectionStatus, refreshChildren, refreshFavoritePages]);
 
   const rootPages = getChildren(null);
 
   const value = useMemo(
     () => ({
       rootPages,
+      favoritePages,
       rootError,
       getChildren,
       ensureChildren,
@@ -678,6 +735,7 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
       createPage,
       createRootPage,
       updatePage,
+      setPageFavorite,
       duplicatePage,
       trashPage,
       searchPages,
@@ -688,6 +746,7 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
     }),
     [
       rootPages,
+      favoritePages,
       rootError,
       getChildren,
       ensureChildren,
@@ -701,6 +760,7 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
       createPage,
       createRootPage,
       updatePage,
+      setPageFavorite,
       duplicatePage,
       trashPage,
       searchPages,

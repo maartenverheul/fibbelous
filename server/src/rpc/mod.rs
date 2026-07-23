@@ -1,4 +1,4 @@
-use jsonrpsee::{RpcModule, types::ErrorObjectOwned};
+use jsonrpsee::{types::ErrorObjectOwned, RpcModule};
 use serde::Deserialize;
 
 use crate::pages::{CreatePageInput, UpdatePageInput};
@@ -95,6 +95,8 @@ struct UpdatePageParams {
     body: Option<String>,
     #[serde(default)]
     body_patch: Option<crate::pages::BodyPatch>,
+    #[serde(default)]
+    favorite: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -158,6 +160,17 @@ pub fn build_workspace_module(state: WorkspaceRpcState) -> RpcModule<WorkspaceRp
             Ok::<serde_json::Value, ErrorObjectOwned>(serde_json::to_value(pages).unwrap())
         })
         .expect("list_pages method registration");
+
+    module
+        .register_async_method("list_favorite_pages", |_, ctx, _| async move {
+            let workspace = ctx.workspace.clone();
+            let pages = tokio::task::spawn_blocking(move || workspace.list_favorite_pages())
+                .await
+                .map_err(|error| ErrorObjectOwned::owned(1, error.to_string(), None::<()>))?
+                .map_err(|error| ErrorObjectOwned::owned(2, error, None::<()>))?;
+            Ok::<serde_json::Value, ErrorObjectOwned>(serde_json::to_value(pages).unwrap())
+        })
+        .expect("list_favorite_pages method registration");
 
     module
         .register_async_method("get_page", |params, ctx, _| async move {
@@ -243,12 +256,10 @@ pub fn build_workspace_module(state: WorkspaceRpcState) -> RpcModule<WorkspaceRp
             let workspace = ctx.workspace.clone();
             let query = request.query;
             let limit = request.limit;
-            let pages = tokio::task::spawn_blocking(move || {
-                workspace.search_pages(&query, limit)
-            })
-            .await
-            .map_err(|error| ErrorObjectOwned::owned(1, error.to_string(), None::<()>))?
-            .map_err(|error| ErrorObjectOwned::owned(2, error, None::<()>))?;
+            let pages = tokio::task::spawn_blocking(move || workspace.search_pages(&query, limit))
+                .await
+                .map_err(|error| ErrorObjectOwned::owned(1, error.to_string(), None::<()>))?
+                .map_err(|error| ErrorObjectOwned::owned(2, error, None::<()>))?;
             Ok::<serde_json::Value, ErrorObjectOwned>(serde_json::to_value(pages).unwrap())
         })
         .expect("search_pages method registration");
@@ -264,6 +275,7 @@ pub fn build_workspace_module(state: WorkspaceRpcState) -> RpcModule<WorkspaceRp
                     slug: request.slug,
                     icon: request.icon,
                     body: request.body,
+                    favorite: false,
                 })
             })
             .await
@@ -285,6 +297,7 @@ pub fn build_workspace_module(state: WorkspaceRpcState) -> RpcModule<WorkspaceRp
                     icon: request.icon,
                     body: request.body,
                     body_patch: request.body_patch,
+                    favorite: request.favorite,
                 })
             })
             .await
@@ -303,7 +316,9 @@ pub fn build_workspace_module(state: WorkspaceRpcState) -> RpcModule<WorkspaceRp
                 .await
                 .map_err(|error| ErrorObjectOwned::owned(1, error.to_string(), None::<()>))?
                 .map_err(|error| ErrorObjectOwned::owned(2, error, None::<()>))?;
-            Ok::<serde_json::Value, ErrorObjectOwned>(serde_json::json!({ "trashedIds": trashed_ids }))
+            Ok::<serde_json::Value, ErrorObjectOwned>(
+                serde_json::json!({ "trashedIds": trashed_ids }),
+            )
         })
         .expect("trash_page method registration");
 
@@ -404,10 +419,12 @@ pub async fn call_workspace_rpc(
     match method {
         "ping" => Ok(serde_json::Value::String("pong".to_owned())),
         "health" => Ok(serde_json::Value::String("ok".to_owned())),
-        "workspace_info" => serde_json::to_value(workspace.info()).map_err(|error| error.to_string()),
+        "workspace_info" => {
+            serde_json::to_value(workspace.info()).map_err(|error| error.to_string())
+        }
         "list_pages" => {
-            let request: ListPagesParams =
-                serde_json::from_value(params_or_null(params)).map_err(|error| error.to_string())?;
+            let request: ListPagesParams = serde_json::from_value(params_or_null(params))
+                .map_err(|error| error.to_string())?;
             let workspace = workspace.clone();
             let parent_id = request.parent_id;
             let depth = request.depth;
@@ -419,9 +436,17 @@ pub async fn call_workspace_rpc(
             .map_err(|error| error)?;
             serde_json::to_value(pages).map_err(|error| error.to_string())
         }
+        "list_favorite_pages" => {
+            let workspace = workspace.clone();
+            let pages = tokio::task::spawn_blocking(move || workspace.list_favorite_pages())
+                .await
+                .map_err(|error| error.to_string())?
+                .map_err(|error| error)?;
+            serde_json::to_value(pages).map_err(|error| error.to_string())
+        }
         "get_page" => {
-            let request: GetPageParams =
-                serde_json::from_value(params_or_null(params)).map_err(|error| error.to_string())?;
+            let request: GetPageParams = serde_json::from_value(params_or_null(params))
+                .map_err(|error| error.to_string())?;
             let workspace = workspace.clone();
             let page_id = request.id;
             let page = tokio::task::spawn_blocking(move || workspace.get_page(&page_id))
@@ -431,8 +456,8 @@ pub async fn call_workspace_rpc(
             serde_json::to_value(page).map_err(|error| error.to_string())
         }
         "get_database" => {
-            let request: GetDatabaseParams =
-                serde_json::from_value(params_or_null(params)).map_err(|error| error.to_string())?;
+            let request: GetDatabaseParams = serde_json::from_value(params_or_null(params))
+                .map_err(|error| error.to_string())?;
             let workspace = workspace.clone();
             let database_id = request.id;
             let database =
@@ -443,8 +468,8 @@ pub async fn call_workspace_rpc(
             serde_json::to_value(database).map_err(|error| error.to_string())
         }
         "list_database_rows" => {
-            let request: ListDatabaseRowsParams =
-                serde_json::from_value(params_or_null(params)).map_err(|error| error.to_string())?;
+            let request: ListDatabaseRowsParams = serde_json::from_value(params_or_null(params))
+                .map_err(|error| error.to_string())?;
             let workspace = workspace.clone();
             let database_id = request.id;
             let limit = request.limit;
@@ -459,8 +484,8 @@ pub async fn call_workspace_rpc(
             serde_json::to_value(rows).map_err(|error| error.to_string())
         }
         "update_database_view" => {
-            let request: UpdateDatabaseViewParams =
-                serde_json::from_value(params_or_null(params)).map_err(|error| error.to_string())?;
+            let request: UpdateDatabaseViewParams = serde_json::from_value(params_or_null(params))
+                .map_err(|error| error.to_string())?;
             let workspace = workspace.clone();
             let database_id = request.id;
             let view_id = request.view_id;
@@ -474,8 +499,8 @@ pub async fn call_workspace_rpc(
             serde_json::to_value(database).map_err(|error| error.to_string())
         }
         "create_database_row" => {
-            let request: CreateDatabaseRowParams =
-                serde_json::from_value(params_or_null(params)).map_err(|error| error.to_string())?;
+            let request: CreateDatabaseRowParams = serde_json::from_value(params_or_null(params))
+                .map_err(|error| error.to_string())?;
             let workspace = workspace.clone();
             let database_id = request.id;
             let title = request.title;
@@ -488,8 +513,8 @@ pub async fn call_workspace_rpc(
             serde_json::to_value(page).map_err(|error| error.to_string())
         }
         "search_pages" => {
-            let request: SearchPagesParams =
-                serde_json::from_value(params_or_null(params)).map_err(|error| error.to_string())?;
+            let request: SearchPagesParams = serde_json::from_value(params_or_null(params))
+                .map_err(|error| error.to_string())?;
             let workspace = workspace.clone();
             let query = request.query;
             let limit = request.limit;
@@ -500,8 +525,8 @@ pub async fn call_workspace_rpc(
             serde_json::to_value(pages).map_err(|error| error.to_string())
         }
         "create_page" => {
-            let request: CreatePageParams =
-                serde_json::from_value(params_or_null(params)).map_err(|error| error.to_string())?;
+            let request: CreatePageParams = serde_json::from_value(params_or_null(params))
+                .map_err(|error| error.to_string())?;
             let workspace = workspace.clone();
             let page = tokio::task::spawn_blocking(move || {
                 workspace.create_page(CreatePageInput {
@@ -510,6 +535,7 @@ pub async fn call_workspace_rpc(
                     slug: request.slug,
                     icon: request.icon,
                     body: request.body,
+                    favorite: false,
                 })
             })
             .await
@@ -518,8 +544,8 @@ pub async fn call_workspace_rpc(
             serde_json::to_value(page).map_err(|error| error.to_string())
         }
         "update_page" => {
-            let request: UpdatePageParams =
-                serde_json::from_value(params_or_null(params)).map_err(|error| error.to_string())?;
+            let request: UpdatePageParams = serde_json::from_value(params_or_null(params))
+                .map_err(|error| error.to_string())?;
             let workspace = workspace.clone();
             let page = tokio::task::spawn_blocking(move || {
                 workspace.update_page(UpdatePageInput {
@@ -529,6 +555,7 @@ pub async fn call_workspace_rpc(
                     icon: request.icon,
                     body: request.body,
                     body_patch: request.body_patch,
+                    favorite: request.favorite,
                 })
             })
             .await
@@ -537,8 +564,8 @@ pub async fn call_workspace_rpc(
             serde_json::to_value(page).map_err(|error| error.to_string())
         }
         "trash_page" => {
-            let request: TrashPageParams =
-                serde_json::from_value(params_or_null(params)).map_err(|error| error.to_string())?;
+            let request: TrashPageParams = serde_json::from_value(params_or_null(params))
+                .map_err(|error| error.to_string())?;
             let workspace = workspace.clone();
             let page_id = request.id;
             let trashed_ids = tokio::task::spawn_blocking(move || workspace.trash_page(&page_id))
@@ -556,8 +583,8 @@ pub async fn call_workspace_rpc(
             serde_json::to_value(pages).map_err(|error| error.to_string())
         }
         "get_trashed_page" => {
-            let request: GetPageParams =
-                serde_json::from_value(params_or_null(params)).map_err(|error| error.to_string())?;
+            let request: GetPageParams = serde_json::from_value(params_or_null(params))
+                .map_err(|error| error.to_string())?;
             let workspace = workspace.clone();
             let page_id = request.id;
             let page = tokio::task::spawn_blocking(move || workspace.get_trashed_page(&page_id))
@@ -567,8 +594,8 @@ pub async fn call_workspace_rpc(
             serde_json::to_value(page).map_err(|error| error.to_string())
         }
         "restore_page" => {
-            let request: RestorePageParams =
-                serde_json::from_value(params_or_null(params)).map_err(|error| error.to_string())?;
+            let request: RestorePageParams = serde_json::from_value(params_or_null(params))
+                .map_err(|error| error.to_string())?;
             let workspace = workspace.clone();
             let page_id = request.id;
             let page = tokio::task::spawn_blocking(move || workspace.restore_page(&page_id))
@@ -578,8 +605,8 @@ pub async fn call_workspace_rpc(
             serde_json::to_value(page).map_err(|error| error.to_string())
         }
         "purge_page" => {
-            let request: PurgePageParams =
-                serde_json::from_value(params_or_null(params)).map_err(|error| error.to_string())?;
+            let request: PurgePageParams = serde_json::from_value(params_or_null(params))
+                .map_err(|error| error.to_string())?;
             let workspace = workspace.clone();
             let page_id = request.id;
             tokio::task::spawn_blocking(move || workspace.purge_page(&page_id))
@@ -589,8 +616,8 @@ pub async fn call_workspace_rpc(
             Ok(serde_json::json!({ "ok": true }))
         }
         "duplicate_page" => {
-            let request: DuplicatePageParams =
-                serde_json::from_value(params_or_null(params)).map_err(|error| error.to_string())?;
+            let request: DuplicatePageParams = serde_json::from_value(params_or_null(params))
+                .map_err(|error| error.to_string())?;
             let workspace = workspace.clone();
             let page_id = request.id;
             let page = tokio::task::spawn_blocking(move || workspace.duplicate_page(&page_id))
