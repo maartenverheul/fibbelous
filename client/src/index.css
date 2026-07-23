@@ -42,6 +42,9 @@
     min-height: 100vh;
     background-color: var(--app-bg);
     color: var(--app-fg);
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
   }
 
   #root {
