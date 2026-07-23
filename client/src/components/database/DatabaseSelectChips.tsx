@@ -2,8 +2,8 @@ import {
   dbSelectChip,
   dbSelectChipGroup,
   resolveSelectTokens,
-  selectOptionStyles,
 } from "../../lib/databaseSelect";
+import { cn } from "../../lib/utils";
 import type { DatabasePropertyColumn } from "../../types/database";
 
 export function DatabaseSelectChips({
@@ -21,8 +21,7 @@ export function DatabaseSelectChips({
       {tokens.map((token) => (
         <span
           key={`${token.name}:${token.color}`}
-          className={dbSelectChip}
-          style={selectOptionStyles(token.color)}
+          className={cn(dbSelectChip, `bg-select-${token.color}`)}
           title={token.name}
         >
           {token.name}

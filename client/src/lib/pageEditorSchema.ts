@@ -26,6 +26,7 @@ import {
 import { openExternalUrl } from "./tauri";
 import { bookmarkRawFromUrl } from "./bookmarkBlock";
 import { pageLink } from "./pageLinkInline";
+import { renderTocDom, tocDefaultRaw } from "./tocBlock";
 
 export {
   elementToMdxTag,
@@ -246,6 +247,39 @@ function createMapsBlockSpec() {
           urlAttrFromMdxRaw(String(block.props.raw));
         const raw = mapsRawFromUrl(url, String(block.props.raw));
         return { dom: mdxExportMarker("maps", raw) };
+      },
+    },
+  );
+}
+
+function createTocBlockSpec() {
+  return createBlockSpec(
+    {
+      type: "toc",
+      propSchema: {
+        raw: {
+          default: tocDefaultRaw(),
+        },
+      },
+      content: "none",
+    },
+    {
+      meta: {
+        selectable: true,
+      },
+      parse(element) {
+        const parsed = parseMdxBlockProps("toc", element);
+        if (!parsed) return undefined;
+        return { raw: parsed.raw };
+      },
+      render(_block, editor) {
+        const { dom, destroy, stopEvent, ignoreMutation } = renderTocDom(editor);
+        dom.dataset.mdxTag = "toc";
+        return { dom, destroy, stopEvent, ignoreMutation };
+      },
+      toExternalHTML(block) {
+        const raw = String(block.props.raw) || tocDefaultRaw();
+        return { dom: mdxExportMarker("toc", raw) };
       },
     },
   );
@@ -541,6 +575,7 @@ export const pageEditorSchema = BlockNoteSchema.create({
     unknown: createMdxPlaceholderBlockSpec("unknown")(),
     bookmark: createBookmarkBlockSpec()(),
     maps: createMapsBlockSpec()(),
+    toc: createTocBlockSpec()(),
   },
   inlineContentSpecs: {
     ...defaultInlineContentSpecs,

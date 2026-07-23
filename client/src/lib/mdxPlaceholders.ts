@@ -4,6 +4,7 @@ export const MDX_PLACEHOLDER_TAGS = [
   "unknown",
   "bookmark",
   "maps",
+  "toc",
 ] as const;
 
 export type MdxPlaceholderTag = (typeof MDX_PLACEHOLDER_TAGS)[number];
@@ -54,10 +55,11 @@ function unescapeHtmlAttr(value: string): string {
     .replace(/&gt;/g, ">");
 }
 
-/** Written form for new custom MDX tags: `maps` → `Maps`. */
+/** Written form for new custom MDX tags: `maps` → `Maps`, `toc` → `TOC`. */
 export function mdxTagWriteName(tag: string): string {
   const lower = tag.toLowerCase();
   if (!lower) return tag;
+  if (lower === "toc") return "TOC";
   return lower.charAt(0).toUpperCase() + lower.slice(1);
 }
 

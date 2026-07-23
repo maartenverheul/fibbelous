@@ -19,6 +19,7 @@ import { insertMapsBlock } from "../../lib/mapsBlock";
 import { insertMapsSlashMenuItem } from "../../lib/mapsSlashMenu";
 import type { PageEditor } from "../../lib/pageEditorSchema";
 import { pageEditorSchema } from "../../lib/pageEditorSchema";
+import { insertTocSlashMenuItem } from "../../lib/tocSlashMenu";
 import {
   internalPageLinksToMarkers,
   isExternalLink,
@@ -100,6 +101,7 @@ function getSlashMenuItems(editor: PageEditor) {
   return [
     ...getDefaultReactSlashMenuItems(editor),
     insertMapsSlashMenuItem(editor),
+    insertTocSlashMenuItem(editor),
   ];
 }
 

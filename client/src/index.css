@@ -1,5 +1,21 @@
 @import "tailwindcss";
 
+@theme {
+  --color-select-default: #454441;
+  --color-select-gray: #454441;
+  --color-select-brown: #64473a;
+  --color-select-orange: #9a5b14;
+  --color-select-yellow: #89632a;
+  --color-select-green: #2b593f;
+  --color-select-blue: #284b63;
+  --color-select-purple: #492f64;
+  --color-select-pink: #69314c;
+  --color-select-red: #6e3630;
+  --color-select-fg: #ffffff;
+}
+
+@source inline("bg-select-{default,gray,brown,orange,yellow,green,blue,purple,pink,red}");
+
 :root {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
   font-synthesis: none;
@@ -336,6 +352,48 @@
 .page-body-editor .bn-mdx-maps--empty .bn-mdx-maps__open {
   position: static;
   box-shadow: none;
+}
+
+/* <TOC /> — live outline of page headings as text links */
+.page-body-editor .bn-mdx-toc {
+  margin-block: 0.5rem;
+  width: 100%;
+  user-select: none;
+}
+
+.page-body-editor .bn-mdx-toc__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.page-body-editor .bn-mdx-toc__empty {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--app-fg-muted);
+}
+
+.page-body-editor .bn-mdx-toc__row {
+  padding-inline-start: calc(var(--toc-indent, 0) * 1rem);
+  line-height: 1.5;
+}
+
+.page-body-editor .bn-mdx-toc__link {
+  color: var(--app-fg-muted);
+  font-size: 0.9375rem;
+  line-height: inherit;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--app-fg-muted) 45%, transparent);
+  text-underline-offset: 0.15em;
+  word-break: break-word;
+}
+
+.page-body-editor .bn-mdx-toc__link:hover,
+.page-body-editor .bn-mdx-toc__link:focus-visible {
+  color: var(--app-fg);
+  text-decoration-color: color-mix(in srgb, var(--app-fg-muted) 70%, transparent);
+  outline: none;
 }
 
 /* Internal page links: alone on a row = chip; among text = icon + link */

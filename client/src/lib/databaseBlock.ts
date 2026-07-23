@@ -7,7 +7,6 @@ import {
   dbSelectChip,
   dbSelectChipGroup,
   resolveSelectTokens,
-  selectOptionStyles,
 } from "./databaseSelect";
 import { fetchDatabaseRows, createDatabaseRow } from "./databaseFetch";
 import {
@@ -736,10 +735,9 @@ function renderSelectChips(
   group.className = dbSelectChipGroup;
   for (const token of tokens) {
     const chip = document.createElement("span");
-    chip.className = dbSelectChip;
+    chip.className = cn(dbSelectChip, `bg-select-${token.color}`);
     chip.textContent = token.name;
     chip.title = token.name;
-    Object.assign(chip.style, selectOptionStyles(token.color));
     group.appendChild(chip);
   }
   return group;
