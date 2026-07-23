@@ -9,6 +9,14 @@ use crate::workspace::Workspace;
 struct ListPagesParams {
     #[serde(default)]
     parent_path: Option<String>,
+    /// How many levels of descendants to include. `1` = direct children only
+    /// (default). `2` nests each child's children under `children`, etc.
+    #[serde(default = "default_list_pages_depth")]
+    depth: u8,
+}
+
+fn default_list_pages_depth() -> u8 {
+    1
 }
 
 #[derive(Debug, Deserialize)]
@@ -84,6 +92,8 @@ struct UpdatePageParams {
     icon: Option<String>,
     #[serde(default)]
     body: Option<String>,
+    #[serde(default)]
+    body_patch: Option<crate::pages::BodyPatch>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -137,8 +147,9 @@ pub fn build_workspace_module(state: WorkspaceRpcState) -> RpcModule<WorkspaceRp
             let request: ListPagesParams = params.parse()?;
             let workspace = ctx.workspace.clone();
             let parent_path = request.parent_path;
+            let depth = request.depth;
             let pages = tokio::task::spawn_blocking(move || {
-                workspace.list_pages(parent_path.as_deref())
+                workspace.list_pages(parent_path.as_deref(), depth)
             })
             .await
             .map_err(|error| ErrorObjectOwned::owned(1, error.to_string(), None::<()>))?
@@ -272,6 +283,7 @@ pub fn build_workspace_module(state: WorkspaceRpcState) -> RpcModule<WorkspaceRp
                     slug: request.slug,
                     icon: request.icon,
                     body: request.body,
+                    body_patch: request.body_patch,
                 })
             })
             .await
@@ -397,8 +409,9 @@ pub async fn call_workspace_rpc(
                 serde_json::from_value(params_or_null(params)).map_err(|error| error.to_string())?;
             let workspace = workspace.clone();
             let parent_path = request.parent_path;
+            let depth = request.depth;
             let pages = tokio::task::spawn_blocking(move || {
-                workspace.list_pages(parent_path.as_deref())
+                workspace.list_pages(parent_path.as_deref(), depth)
             })
             .await
             .map_err(|error| error.to_string())?
@@ -514,6 +527,7 @@ pub async fn call_workspace_rpc(
                     slug: request.slug,
                     icon: request.icon,
                     body: request.body,
+                    body_patch: request.body_patch,
                 })
             })
             .await

@@ -6,12 +6,62 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::Utc;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-use crate::cache::{CacheDb, PageDetail, children_dir};
+use crate::cache::{CacheDb, PageDetail, children_dir, hash_body};
 use crate::index::sync_workspace;
 
 const TRASH_ROOT: &str = ".fibbelous/trash";
+
+/// Compact wire op: `[0, index, length]` delete or `[1, index, text]` insert.
+#[derive(Debug, Clone)]
+pub enum BodyPatchOp {
+    Delete { index: usize, length: usize },
+    Insert { index: usize, text: String },
+}
+
+impl<'de> Deserialize<'de> for BodyPatchOp {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        use serde::de::Error;
+        let values = Vec::<serde_json::Value>::deserialize(deserializer)?;
+        if values.len() != 3 {
+            return Err(D::Error::custom("op must be [kind, index, arg]"));
+        }
+        let kind = values[0]
+            .as_u64()
+            .ok_or_else(|| D::Error::custom("op kind must be 0 or 1"))?;
+        let index = values[1]
+            .as_u64()
+            .ok_or_else(|| D::Error::custom("op index must be a number"))?
+            as usize;
+        match kind {
+            0 => {
+                let length = values[2]
+                    .as_u64()
+                    .ok_or_else(|| D::Error::custom("delete length must be a number"))?
+                    as usize;
+                Ok(BodyPatchOp::Delete { index, length })
+            }
+            1 => {
+                let text = values[2]
+                    .as_str()
+                    .ok_or_else(|| D::Error::custom("insert text must be a string"))?
+                    .to_owned();
+                Ok(BodyPatchOp::Insert { index, text })
+            }
+            _ => Err(D::Error::custom("op kind must be 0 (delete) or 1 (insert)")),
+        }
+    }
+}
+
+/// Compact patch with 10-char hashes and tuple ops.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BodyPatch {
+    pub base_hash: String,
+    pub result_hash: String,
+    pub ops: Vec<BodyPatchOp>,
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -54,6 +104,76 @@ pub struct UpdatePageInput {
     pub slug: Option<String>,
     pub icon: Option<String>,
     pub body: Option<String>,
+    pub body_patch: Option<BodyPatch>,
+}
+
+/// Apply UTF-8 byte-indexed insert/delete ops sequentially.
+pub fn apply_body_patch(base: &str, ops: &[BodyPatchOp]) -> Result<String, String> {
+    let mut bytes = base.as_bytes().to_vec();
+
+    for op in ops {
+        match op {
+            BodyPatchOp::Delete { index, length } => {
+                let end = index
+                    .checked_add(*length)
+                    .ok_or_else(|| "body patch delete out of range".to_owned())?;
+                if end > bytes.len() {
+                    return Err("body patch delete out of range".to_owned());
+                }
+                if !utf8_char_boundary(&bytes, *index) || !utf8_char_boundary(&bytes, end) {
+                    return Err("body patch delete not on UTF-8 boundary".to_owned());
+                }
+                bytes.drain(*index..end);
+            }
+            BodyPatchOp::Insert { index, text } => {
+                if *index > bytes.len() {
+                    return Err("body patch insert out of range".to_owned());
+                }
+                if !utf8_char_boundary(&bytes, *index) {
+                    return Err("body patch insert not on UTF-8 boundary".to_owned());
+                }
+                let insert_bytes = text.as_bytes();
+                bytes.splice(*index..*index, insert_bytes.iter().copied());
+            }
+        }
+    }
+
+    String::from_utf8(bytes).map_err(|_| "body patch produced invalid UTF-8".to_owned())
+}
+
+fn utf8_char_boundary(bytes: &[u8], index: usize) -> bool {
+    if index == 0 || index == bytes.len() {
+        return true;
+    }
+    if index > bytes.len() {
+        return false;
+    }
+    // Continuation bytes start with 0b10xxxxxx.
+    bytes[index] & 0b1100_0000 != 0b1000_0000
+}
+
+fn resolve_update_body(
+    existing_body: String,
+    body: Option<String>,
+    body_patch: Option<BodyPatch>,
+) -> Result<String, String> {
+    match (body, body_patch) {
+        (Some(_), Some(_)) => Err("body and bodyPatch are mutually exclusive".to_owned()),
+        (Some(full), None) => Ok(full),
+        (None, Some(patch)) => {
+            let current_hash = hash_body(&existing_body);
+            if current_hash != patch.base_hash {
+                return Err("body hash mismatch".to_owned());
+            }
+            let next = apply_body_patch(&existing_body, &patch.ops)?;
+            let next_hash = hash_body(&next);
+            if next_hash != patch.result_hash {
+                return Err("body patch result hash mismatch".to_owned());
+            }
+            Ok(next)
+        }
+        (None, None) => Ok(existing_body),
+    }
 }
 
 fn generate_page_id(salt: &str) -> String {
@@ -224,7 +344,7 @@ pub fn update_page(
             .unwrap_or_else(|| existing.id.clone())
     };
     let icon = input.icon.or(existing.icon);
-    let body = input.body.unwrap_or(existing.body);
+    let body = resolve_update_body(existing.body, input.body, input.body_patch)?;
 
     let file_slug = file_stem_slug(&slug);
 

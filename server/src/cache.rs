@@ -72,6 +72,9 @@ pub struct PageSummary {
     pub icon: Option<String>,
     pub path: String,
     pub has_children: bool,
+    /// Nested children when `list_pages` is called with depth > 1.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub children: Option<Vec<PageSummary>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -87,6 +90,8 @@ pub struct PageDetail {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub database_id: Option<String>,
     pub body: String,
+    /// First 10 hex chars of SHA-256(`body` UTF-8 bytes).
+    pub body_hash: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -459,7 +464,14 @@ impl CacheDb {
         })
     }
 
-    pub fn list_pages_in_dir(&self, parent_dir: &str) -> rusqlite::Result<Vec<PageSummary>> {
+    /// Lists direct children of `parent_dir`. When `depth > 1`, each page with
+    /// children includes nested `children` recursively up to `depth` levels.
+    pub fn list_pages_in_dir(
+        &self,
+        parent_dir: &str,
+        depth: u8,
+    ) -> rusqlite::Result<Vec<PageSummary>> {
+        let depth = depth.max(1);
         let mut stmt = self.conn.prepare(
             "SELECT id, slug, title, icon, path FROM pages
              WHERE path LIKE ?1 || '/%' AND path NOT LIKE ?1 || '/%/%'
@@ -479,7 +491,13 @@ impl CacheDb {
 
         let mut pages = Vec::with_capacity(rows.len());
         for (id, slug, title, icon, path) in rows {
-            let has_children = self.dir_has_pages(&children_dir(&path, &id))?;
+            let child_dir = children_dir(&path, &id);
+            let has_children = self.dir_has_pages(&child_dir)?;
+            let children = if depth > 1 && has_children {
+                Some(self.list_pages_in_dir(&child_dir, depth - 1)?)
+            } else {
+                None
+            };
             pages.push(PageSummary {
                 id,
                 slug,
@@ -487,6 +505,7 @@ impl CacheDb {
                 icon,
                 path,
                 has_children,
+                children,
             });
         }
 
@@ -515,6 +534,8 @@ impl CacheDb {
         };
 
         let has_children = self.dir_has_pages(&children_dir(&path, &id))?;
+        let body = strip_frontmatter(&content).to_owned();
+        let body_hash = hash_body(&body);
         Ok(Some(PageDetail {
             id,
             slug,
@@ -523,7 +544,8 @@ impl CacheDb {
             path,
             has_children,
             database_id: None,
-            body: strip_frontmatter(&content).to_owned(),
+            body,
+            body_hash,
         }))
     }
 
@@ -853,6 +875,16 @@ fn strip_frontmatter(content: &str) -> &str {
 /** Body text of an `.mdx` page/row file (frontmatter stripped). */
 pub fn page_body_from_content(content: &str) -> String {
     strip_frontmatter(content).to_owned()
+}
+
+/// SHA-256 hex prefix of the page body UTF-8 bytes (10 chars).
+pub const BODY_HASH_LEN: usize = 10;
+
+/// Truncated SHA-256 hex digest of the page body UTF-8 bytes.
+pub fn hash_body(body: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let full = hex::encode(Sha256::digest(body.as_bytes()));
+    full[..BODY_HASH_LEN].to_owned()
 }
 
 fn escape_like(value: &str) -> String {

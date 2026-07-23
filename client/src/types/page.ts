@@ -7,7 +7,15 @@ export type WorkspacePage = {
   hasChildren: boolean;
   /** Present when this page is a database row; id of the host database page. */
   databaseId?: string | null;
+  /**
+   * Nested descendants when `list_pages` is called with depth > 1.
+   * Not kept in the local page cache; used only to hydrate child dirs.
+   */
+  children?: WorkspacePage[];
 };
+
+/** Default depth for sidebar `list_pages` (self + children of children). */
+export const DEFAULT_LIST_PAGES_DEPTH = 2;
 
 export type SearchPageHit = WorkspacePage & {
   matchIn: "title" | "slug" | "body";
@@ -16,6 +24,19 @@ export type SearchPageHit = WorkspacePage & {
 
 export type WorkspacePageDetail = WorkspacePage & {
   body: string;
+  /** First 10 hex chars of SHA-256(body UTF-8). */
+  bodyHash: string;
+};
+
+/** Compact op: `[0, index, length]` delete or `[1, index, text]` insert. */
+export type BodyPatchOp =
+  | [0, index: number, length: number]
+  | [1, index: number, text: string];
+
+export type BodyPatch = {
+  baseHash: string;
+  resultHash: string;
+  ops: BodyPatchOp[];
 };
 
 export type TrashedPage = {

@@ -127,10 +127,12 @@ export function PageTreeItem({
   };
 
   useEffect(() => {
-    if (page.hasChildren) {
-      ensureChildren(childParentPath);
+    // Only the expanded node fetches (depth 2). That response also fills each
+    // child's dir, so mounted collapsed children must not prefetch or we get N calls.
+    if (page.hasChildren && open) {
+      ensureChildren(childParentPath, 2);
     }
-  }, [page.hasChildren, childParentPath, ensureChildren]);
+  }, [page.hasChildren, childParentPath, ensureChildren, open]);
 
   useEffect(() => {
     if (!isAncestorOfActive) {

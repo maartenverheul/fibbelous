@@ -522,6 +522,7 @@ pub fn create_database_row(
 
     let relative_path = path_relative_to_workspace(workspace_path, &file_path);
     let content = fs::read_to_string(&file_path).map_err(|error| error.to_string())?;
+    let body = page_body_from_content(&content);
 
     Ok(PageDetail {
         id,
@@ -531,7 +532,8 @@ pub fn create_database_row(
         path: relative_path,
         has_children: false,
         database_id: Some(database_id.to_owned()),
-        body: page_body_from_content(&content),
+        body_hash: crate::cache::hash_body(&body),
+        body,
     })
 }
 

@@ -3323,6 +3323,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "dotenvy",
+ "hex",
  "http-body-util",
  "hyper",
  "indexmap 2.14.0",
@@ -3331,6 +3332,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
+ "sha2",
  "tokio",
  "tower 0.5.3",
  "tracing",

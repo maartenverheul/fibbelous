@@ -166,14 +166,18 @@ impl Workspace {
         }
     }
 
-    pub fn list_pages(&self, parent_path: Option<&str>) -> Result<Vec<crate::cache::PageSummary>, String> {
+    pub fn list_pages(
+        &self,
+        parent_path: Option<&str>,
+        depth: u8,
+    ) -> Result<Vec<crate::cache::PageSummary>, String> {
         let parent_dir = parent_path.unwrap_or("pages");
         let cache = self
             .cache
             .lock()
             .map_err(|_| "cache mutex poisoned".to_string())?;
         cache
-            .list_pages_in_dir(parent_dir)
+            .list_pages_in_dir(parent_dir, depth)
             .map_err(|error| error.to_string())
     }
 
@@ -200,6 +204,7 @@ impl Workspace {
         let content = std::fs::read_to_string(self.path.join(&row.path))
             .map_err(|error| error.to_string())?;
         let body = crate::cache::page_body_from_content(&content);
+        let body_hash = crate::cache::hash_body(&body);
 
         Ok(Some(crate::cache::PageDetail {
             id: row.id,
@@ -210,6 +215,7 @@ impl Workspace {
             has_children: false,
             database_id: Some(row.database_id),
             body,
+            body_hash,
         }))
     }
 

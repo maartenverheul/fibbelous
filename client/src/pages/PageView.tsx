@@ -11,18 +11,25 @@ import { isDatabaseOnlyBody } from "../lib/databaseBlock";
 import { cn } from "../lib/utils";
 import { bodyMatchesStored } from "../lib/pageBodyTitle";
 import {
+  buildBodyPatch,
+  isBodyHashMismatchError,
+  shouldSendBodyPatch,
+} from "../lib/pageBodySync";
+import {
   ROOT_PAGES_DIR,
   buildPageSegment,
   pageLabel,
   parentDirOfPage,
   parsePageIdFromSegment,
   slugifyPageTitle,
+  type BodyPatch,
   type TrashedPageDetail,
   type WorkspacePageDetail,
 } from "../types/page";
 
 type PageLoadStatus = "idle" | "loading" | "ready" | "missing";
 type PageDraft = { title: string; body: string };
+type SyncedBody = { body: string; hash: string };
 
 type PageEditorProps = {
   pageId: string;
@@ -208,6 +215,7 @@ export function PageView() {
   const cachedDetail = pageId ? getPageDetailById(pageId) : undefined;
   const draftsRef = useRef(new Map<string, PageDraft>());
   const dirtyPageIdsRef = useRef(new Set<string>());
+  const syncedBodyByPageIdRef = useRef(new Map<string, SyncedBody>());
   const [editorPageId, setEditorPageId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -222,6 +230,10 @@ export function PageView() {
   const [restoring, setRestoring] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fetchSettledPageIdRef = useRef<string | null>(null);
+  const fetchPageDetailRef = useRef(fetchPageDetail);
+  const fetchTrashedPageDetailRef = useRef(fetchTrashedPageDetail);
+  fetchPageDetailRef.current = fetchPageDetail;
+  fetchTrashedPageDetailRef.current = fetchTrashedPageDetail;
 
   const loadStatus =
     loadState.pageId === pageId ? loadState.status : "loading";
@@ -244,6 +256,10 @@ export function PageView() {
     if (knownDetail) {
       setDetail(knownDetail);
       setTrashedDetail(null);
+      syncedBodyByPageIdRef.current.set(pageId, {
+        body: knownDetail.body,
+        hash: knownDetail.bodyHash,
+      });
       markLoadStatus("ready", pageId);
       return;
     }
@@ -291,6 +307,10 @@ export function PageView() {
     (nextDetail: WorkspacePageDetail, forPageId: string = pageId ?? "") => {
       const nextDraft = draftFromDetail(nextDetail);
       draftsRef.current.set(forPageId, nextDraft);
+      syncedBodyByPageIdRef.current.set(forPageId, {
+        body: nextDetail.body,
+        hash: nextDetail.bodyHash,
+      });
       if (!dirtyPageIdsRef.current.has(forPageId)) {
         if (forPageId === pageId) {
           setTitle(nextDraft.title);
@@ -342,7 +362,9 @@ export function PageView() {
 
     void (async () => {
       try {
-        const result = await fetchPageDetail(pageId);
+        // Use refs so storing the fetched detail (which recreates provider
+        // callbacks) does not re-trigger this effect into a get_page loop.
+        const result = await fetchPageDetailRef.current(pageId);
         if (cancelled) return;
 
         if (result) {
@@ -352,7 +374,7 @@ export function PageView() {
           return;
         }
 
-        const trashed = await fetchTrashedPageDetail(pageId);
+        const trashed = await fetchTrashedPageDetailRef.current(pageId);
         if (cancelled) return;
 
         if (trashed) {
@@ -375,16 +397,7 @@ export function PageView() {
     return () => {
       cancelled = true;
     };
-  }, [
-    pagePath,
-    pageId,
-    connectionStatus,
-    fetchPageDetail,
-    fetchTrashedPageDetail,
-    markLoadStatus,
-    applyDetail,
-    applyTrashed,
-  ]);
+  }, [pagePath, pageId, connectionStatus, markLoadStatus, applyDetail, applyTrashed]);
 
   useLayoutEffect(() => {
     if (!pageId) return;
@@ -399,6 +412,17 @@ export function PageView() {
     ensureChildren(ROOT_PAGES_DIR);
     ensureChildren(parentDirOfPage(livePage));
   }, [activeDetail, cachedPage, isTrashed, ensureChildren]);
+
+  // Keep a sync base for diff saves even if the layout-effect path was skipped.
+  useEffect(() => {
+    if (!activeDetail?.id || activeDetail.bodyHash == null) return;
+    const existing = syncedBodyByPageIdRef.current.get(activeDetail.id);
+    if (existing) return;
+    syncedBodyByPageIdRef.current.set(activeDetail.id, {
+      body: activeDetail.body,
+      hash: activeDetail.bodyHash,
+    });
+  }, [activeDetail]);
 
   useEffect(() => {
     if (isTrashed || !page || !activeDetail || pageId !== editorPageId) {
@@ -424,16 +448,54 @@ export function PageView() {
 
     saveTimerRef.current = setTimeout(() => {
       saveTimerRef.current = null;
-      updatePage(page.id, {
-        title,
-        body,
-        slug: slugifyPageTitle(title),
-      })
-        .then((updated) => {
-          dirtyPageIdsRef.current.delete(page.id);
-          applyDetail(updated, page.id);
+      const titleChanged = title !== savedTitle;
+      const bodyChanged = !bodyMatchesStored(body, savedBody);
+      const pageIdForSave = page.id;
+      const activeDetailForSave = activeDetail;
+
+      void (async () => {
+        const meta = titleChanged
+          ? { title, slug: slugifyPageTitle(title) }
+          : {};
+
+        let bodyFields: { body?: string; bodyPatch?: BodyPatch } = {};
+
+        if (bodyChanged) {
+          const synced =
+            syncedBodyByPageIdRef.current.get(pageIdForSave) ??
+            (activeDetailForSave.bodyHash
+              ? {
+                  body: activeDetailForSave.body,
+                  hash: activeDetailForSave.bodyHash,
+                }
+              : undefined);
+
+          if (synced) {
+            const patch = await buildBodyPatch(synced.body, body);
+            if (shouldSendBodyPatch(patch, body)) {
+              bodyFields = { bodyPatch: patch };
+            } else {
+              bodyFields = { body };
+            }
+          } else {
+            bodyFields = { body };
+          }
+        }
+
+        const finishSave = (updated: WorkspacePageDetail) => {
+          dirtyPageIdsRef.current.delete(pageIdForSave);
+          applyDetail(updated, pageIdForSave);
+          // Anchor the next diff on the body we actually sent (editor truth),
+          // using the server-verified hash from the response.
+          syncedBodyByPageIdRef.current.set(pageIdForSave, {
+            body: bodyChanged ? body : updated.body,
+            hash: updated.bodyHash,
+          });
           setStatus("saved");
-          const previousSegment = buildPageSegment(activeDetail, findPageById);
+          const previousSegment = buildPageSegment(
+            activeDetailForSave,
+            findPageById,
+          );
           const newSegment = buildPageSegment(updated, findPageById);
           if (newSegment !== previousSegment) {
             navigateInTab(newSegment, {
@@ -442,11 +504,44 @@ export function PageView() {
               pageId: updated.id,
             });
           }
-        })
-        .catch((error) => {
+        };
+
+        try {
+          const updated = await updatePage(pageIdForSave, {
+            ...meta,
+            ...bodyFields,
+          });
+          finishSave(updated);
+        } catch (error) {
+          if (
+            bodyChanged &&
+            bodyFields.bodyPatch &&
+            isBodyHashMismatchError(error)
+          ) {
+            try {
+              const fresh = await fetchPageDetailRef.current(pageIdForSave);
+              if (fresh) {
+                syncedBodyByPageIdRef.current.set(pageIdForSave, {
+                  body: fresh.body,
+                  hash: fresh.bodyHash,
+                });
+              }
+              const updated = await updatePage(pageIdForSave, {
+                ...meta,
+                body,
+              });
+              finishSave(updated);
+              return;
+            } catch (retryError) {
+              console.error(retryError);
+              setStatus("error");
+              return;
+            }
+          }
           console.error(error);
           setStatus("error");
-        });
+        }
+      })();
     }, 500);
 
     return () => {
