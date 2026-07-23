@@ -31,8 +31,8 @@ export type WorkspaceContextValue = {
   rpc: RpcClient | null;
   rootPages: WorkspacePage[] | undefined;
   rootError: string | null;
-  getChildren: (parentPath: string) => WorkspacePage[] | undefined;
-  ensureChildren: (parentPath: string, depth?: number) => void;
+  getChildren: (parentId: string | null) => WorkspacePage[] | undefined;
+  ensureChildren: (parentId: string | null, depth?: number) => void;
   ensurePageTreeVisible: (segment: string) => void;
   findPageByKey: (key: string) => WorkspacePage | undefined;
   findPageById: (id: string) => WorkspacePage | undefined;

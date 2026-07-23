@@ -10,7 +10,7 @@ use crate::data::log_path;
 pub const FIBBELOUS_DIR: &str = ".fibbelous";
 const CACHE_DB_FILE: &str = "cache.db";
 const FORMAT_VERSION_KEY: &str = "format_version";
-pub const CACHE_DB_VERSION: i64 = 5;
+pub const CACHE_DB_VERSION: i64 = 6;
 
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS metadata (
@@ -21,15 +21,18 @@ CREATE TABLE IF NOT EXISTS metadata (
 CREATE TABLE IF NOT EXISTS pages (
     path TEXT PRIMARY KEY NOT NULL,
     id TEXT NOT NULL,
+    parent_id TEXT,
     slug TEXT,
     title TEXT,
     icon TEXT,
     content TEXT NOT NULL,
     modified_ns INTEGER NOT NULL,
-    size_bytes INTEGER NOT NULL
+    size_bytes INTEGER NOT NULL,
+    fs_dirty INTEGER NOT NULL DEFAULT 0
 );
 
-CREATE INDEX IF NOT EXISTS idx_pages_id ON pages(id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pages_id ON pages(id);
+CREATE INDEX IF NOT EXISTS idx_pages_parent_id ON pages(parent_id);
 CREATE INDEX IF NOT EXISTS idx_pages_slug ON pages(slug);
 
 CREATE TABLE IF NOT EXISTS databases (
@@ -37,8 +40,10 @@ CREATE TABLE IF NOT EXISTS databases (
     id TEXT NOT NULL,
     slug TEXT,
     name TEXT,
+    content TEXT NOT NULL DEFAULT '',
     modified_ns INTEGER NOT NULL,
-    size_bytes INTEGER NOT NULL
+    size_bytes INTEGER NOT NULL,
+    fs_dirty INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_databases_id ON databases(id);
@@ -56,17 +61,19 @@ CREATE TABLE IF NOT EXISTS database_rows (
     attributes_json TEXT NOT NULL,
     content TEXT NOT NULL,
     modified_ns INTEGER NOT NULL,
-    size_bytes INTEGER NOT NULL
+    size_bytes INTEGER NOT NULL,
+    fs_dirty INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_database_rows_database_id ON database_rows(database_id);
-CREATE INDEX IF NOT EXISTS idx_database_rows_id ON database_rows(id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_database_rows_id ON database_rows(id);
 ";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PageSummary {
     pub id: String,
+    pub parent_id: Option<String>,
     pub slug: Option<String>,
     pub title: Option<String>,
     pub icon: Option<String>,
@@ -92,6 +99,7 @@ pub struct ReferencedPage {
 #[serde(rename_all = "camelCase")]
 pub struct PageDetail {
     pub id: String,
+    pub parent_id: Option<String>,
     pub slug: Option<String>,
     pub title: Option<String>,
     pub icon: Option<String>,
@@ -105,12 +113,14 @@ pub struct PageDetail {
     pub body_hash: String,
     /// Pages referenced by internal `.mdx` links in `body`.
     pub referenced_pages: Vec<ReferencedPage>,
+    pub ancestors: Vec<PageSummary>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchPageHit {
     pub id: String,
+    pub parent_id: Option<String>,
     pub slug: Option<String>,
     pub title: Option<String>,
     pub icon: Option<String>,
@@ -143,6 +153,7 @@ pub struct DatabaseMeta {
 pub struct IndexedPage {
     pub path: String,
     pub id: String,
+    pub parent_id: Option<String>,
     pub slug: Option<String>,
     pub title: Option<String>,
     pub icon: Option<String>,
@@ -157,6 +168,7 @@ pub struct IndexedDatabase {
     pub id: String,
     pub slug: Option<String>,
     pub name: Option<String>,
+    pub content: String,
     pub modified_ns: i64,
     pub size_bytes: u64,
 }
@@ -232,12 +244,12 @@ impl CacheDb {
         size_bytes: u64,
     ) -> rusqlite::Result<bool> {
         match self.conn.query_row(
-            "SELECT modified_ns, size_bytes FROM pages WHERE path = ?1",
+            "SELECT modified_ns, size_bytes, fs_dirty FROM pages WHERE path = ?1",
             params![path],
-            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, u64>(1)?)),
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, u64>(1)?, row.get::<_, i64>(2)?)),
         ) {
-            Ok((cached_modified, cached_size)) => {
-                Ok(cached_modified != modified_ns || cached_size != size_bytes)
+            Ok((cached_modified, cached_size, fs_dirty)) => {
+                Ok(fs_dirty == 0 && (cached_modified != modified_ns || cached_size != size_bytes))
             }
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(true),
             Err(error) => Err(error),
@@ -251,12 +263,12 @@ impl CacheDb {
         size_bytes: u64,
     ) -> rusqlite::Result<bool> {
         match self.conn.query_row(
-            "SELECT modified_ns, size_bytes FROM databases WHERE path = ?1",
+            "SELECT modified_ns, size_bytes, fs_dirty FROM databases WHERE path = ?1",
             params![path],
-            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, u64>(1)?)),
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, u64>(1)?, row.get::<_, i64>(2)?)),
         ) {
-            Ok((cached_modified, cached_size)) => {
-                Ok(cached_modified != modified_ns || cached_size != size_bytes)
+            Ok((cached_modified, cached_size, fs_dirty)) => {
+                Ok(fs_dirty == 0 && (cached_modified != modified_ns || cached_size != size_bytes))
             }
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(true),
             Err(error) => Err(error),
@@ -270,12 +282,12 @@ impl CacheDb {
         size_bytes: u64,
     ) -> rusqlite::Result<bool> {
         match self.conn.query_row(
-            "SELECT modified_ns, size_bytes FROM database_rows WHERE path = ?1",
+            "SELECT modified_ns, size_bytes, fs_dirty FROM database_rows WHERE path = ?1",
             params![path],
-            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, u64>(1)?)),
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, u64>(1)?, row.get::<_, i64>(2)?)),
         ) {
-            Ok((cached_modified, cached_size)) => {
-                Ok(cached_modified != modified_ns || cached_size != size_bytes)
+            Ok((cached_modified, cached_size, fs_dirty)) => {
+                Ok(fs_dirty == 0 && (cached_modified != modified_ns || cached_size != size_bytes))
             }
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(true),
             Err(error) => Err(error),
@@ -285,19 +297,22 @@ impl CacheDb {
     pub fn upsert_pages(&mut self, pages: &[IndexedPage]) -> rusqlite::Result<()> {
         for page in pages {
             self.conn.execute(
-                "INSERT INTO pages (path, id, slug, title, icon, content, modified_ns, size_bytes)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                "INSERT INTO pages (path, id, parent_id, slug, title, icon, content, modified_ns, size_bytes, fs_dirty)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0)
                  ON CONFLICT(path) DO UPDATE SET
                     id = excluded.id,
+                    parent_id = excluded.parent_id,
                     slug = excluded.slug,
                     title = excluded.title,
                     icon = excluded.icon,
                     content = excluded.content,
                     modified_ns = excluded.modified_ns,
-                    size_bytes = excluded.size_bytes",
+                    size_bytes = excluded.size_bytes,
+                    fs_dirty = 0",
                 params![
                     page.path,
                     page.id,
+                    page.parent_id,
                     page.slug,
                     page.title,
                     page.icon,
@@ -314,19 +329,22 @@ impl CacheDb {
     pub fn upsert_databases(&mut self, databases: &[IndexedDatabase]) -> rusqlite::Result<()> {
         for database in databases {
             self.conn.execute(
-                "INSERT INTO databases (path, id, slug, name, modified_ns, size_bytes)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                "INSERT INTO databases (path, id, slug, name, content, modified_ns, size_bytes, fs_dirty)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0)
                  ON CONFLICT(path) DO UPDATE SET
                     id = excluded.id,
                     slug = excluded.slug,
                     name = excluded.name,
+                    content = excluded.content,
                     modified_ns = excluded.modified_ns,
-                    size_bytes = excluded.size_bytes",
+                    size_bytes = excluded.size_bytes,
+                    fs_dirty = 0",
                 params![
                     database.path,
                     database.id,
                     database.slug,
                     database.name,
+                    database.content,
                     database.modified_ns,
                     database.size_bytes,
                 ],
@@ -341,9 +359,9 @@ impl CacheDb {
             self.conn.execute(
                 "INSERT INTO database_rows (
                     path, database_id, id, slug, title, icon, created, edited,
-                    attributes_json, content, modified_ns, size_bytes
+                    attributes_json, content, modified_ns, size_bytes, fs_dirty
                  )
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 0)
                  ON CONFLICT(path) DO UPDATE SET
                     database_id = excluded.database_id,
                     id = excluded.id,
@@ -355,7 +373,8 @@ impl CacheDb {
                     attributes_json = excluded.attributes_json,
                     content = excluded.content,
                     modified_ns = excluded.modified_ns,
-                    size_bytes = excluded.size_bytes",
+                    size_bytes = excluded.size_bytes,
+                    fs_dirty = 0",
                 params![
                     row.path,
                     row.database_id,
@@ -477,42 +496,43 @@ impl CacheDb {
         })
     }
 
-    /// Lists direct children of `parent_dir`. When `depth > 1`, each page with
+    /// Lists direct children of `parent_id`. When `depth > 1`, each page with
     /// children includes nested `children` recursively up to `depth` levels.
-    pub fn list_pages_in_dir(
+    pub fn list_pages_by_parent(
         &self,
-        parent_dir: &str,
+        parent_id: Option<&str>,
         depth: u8,
     ) -> rusqlite::Result<Vec<PageSummary>> {
         let depth = depth.max(1);
         let mut stmt = self.conn.prepare(
-            "SELECT id, slug, title, icon, path FROM pages
-             WHERE path LIKE ?1 || '/%' AND path NOT LIKE ?1 || '/%/%'
+            "SELECT id, parent_id, slug, title, icon, path FROM pages
+             WHERE parent_id IS ?1
              ORDER BY COALESCE(title, id) COLLATE NOCASE",
         )?;
         let rows = stmt
-            .query_map(params![parent_dir], |row| {
+            .query_map(params![parent_id], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, Option<String>>(1)?,
                     row.get::<_, Option<String>>(2)?,
                     row.get::<_, Option<String>>(3)?,
-                    row.get::<_, String>(4)?,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, String>(5)?,
                 ))
             })?
             .collect::<Result<Vec<_>, _>>()?;
 
         let mut pages = Vec::with_capacity(rows.len());
-        for (id, slug, title, icon, path) in rows {
-            let child_dir = children_dir(&path, &id);
-            let has_children = self.dir_has_pages(&child_dir)?;
+        for (id, parent_id, slug, title, icon, path) in rows {
+            let has_children = self.page_has_children(&id)?;
             let children = if depth > 1 && has_children {
-                Some(self.list_pages_in_dir(&child_dir, depth - 1)?)
+                Some(self.list_pages_by_parent(Some(&id), depth - 1)?)
             } else {
                 None
             };
             pages.push(PageSummary {
                 id,
+                parent_id,
                 slug,
                 title,
                 icon,
@@ -527,7 +547,7 @@ impl CacheDb {
 
     pub fn get_page_by_id(&self, id: &str) -> rusqlite::Result<Option<PageDetail>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, slug, title, icon, path, content FROM pages WHERE id = ?1 LIMIT 1",
+            "SELECT id, parent_id, slug, title, icon, path, content FROM pages WHERE id = ?1 LIMIT 1",
         )?;
         let row = stmt
             .query_row(params![id], |row| {
@@ -536,22 +556,24 @@ impl CacheDb {
                     row.get::<_, Option<String>>(1)?,
                     row.get::<_, Option<String>>(2)?,
                     row.get::<_, Option<String>>(3)?,
-                    row.get::<_, String>(4)?,
+                    row.get::<_, Option<String>>(4)?,
                     row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
                 ))
             })
             .optional()?;
 
-        let Some((id, slug, title, icon, path, content)) = row else {
+        let Some((id, parent_id, slug, title, icon, path, content)) = row else {
             return Ok(None);
         };
 
-        let has_children = self.dir_has_pages(&children_dir(&path, &id))?;
+        let has_children = self.page_has_children(&id)?;
         let body = strip_frontmatter(&content).to_owned();
         let body_hash = hash_body(&body);
         let referenced_pages = self.referenced_pages_for_body(&body)?;
         Ok(Some(PageDetail {
             id,
+            parent_id: parent_id.clone(),
             slug,
             title,
             icon,
@@ -561,6 +583,7 @@ impl CacheDb {
             body,
             body_hash,
             referenced_pages,
+            ancestors: self.page_ancestors(parent_id.as_deref())?,
         }))
     }
 
@@ -689,6 +712,127 @@ impl CacheDb {
         Ok(row)
     }
 
+    pub fn get_database_content(&self, id: &str) -> rusqlite::Result<Option<String>> {
+        self.conn.query_row(
+            "SELECT content FROM databases WHERE id = ?1 LIMIT 1",
+            params![id],
+            |row| row.get(0),
+        ).optional()
+    }
+
+    pub fn get_page_content(&self, id: &str) -> rusqlite::Result<Option<String>> {
+        self.conn
+            .query_row(
+                "SELECT content FROM pages WHERE id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .optional()
+    }
+
+    /// Upserts a mutable page. Returns the previous path when it changed (caller
+    /// should schedule deletion of the old backup file).
+    pub fn upsert_page_mutable(
+        &mut self, path: &str, id: &str, parent_id: Option<&str>, slug: Option<&str>,
+        title: Option<&str>, icon: Option<&str>, content: &str,
+    ) -> rusqlite::Result<Option<String>> {
+        let old_path: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT path FROM pages WHERE id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        self.conn.execute(
+            "INSERT INTO pages (path, id, parent_id, slug, title, icon, content, modified_ns, size_bytes, fs_dirty)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, 0, 1)
+             ON CONFLICT(id) DO UPDATE SET path=excluded.path, parent_id=excluded.parent_id,
+             slug=excluded.slug, title=excluded.title, icon=excluded.icon, content=excluded.content, fs_dirty=1",
+            params![path, id, parent_id, slug, title, icon, content],
+        )?;
+
+        Ok(old_path.filter(|previous| previous != path))
+    }
+
+    /// All descendant page ids under `id` (not including `id`), depth-first.
+    pub fn descendant_page_ids(&self, id: &str) -> rusqlite::Result<Vec<String>> {
+        let mut out = Vec::new();
+        let mut stack = vec![id.to_owned()];
+        while let Some(current) = stack.pop() {
+            let children = self.list_pages_by_parent(Some(&current), 1)?;
+            for child in children {
+                stack.push(child.id.clone());
+                out.push(child.id);
+            }
+        }
+        Ok(out)
+    }
+
+    pub fn upsert_database_content(&mut self, id: &str, content: &str) -> rusqlite::Result<()> {
+        self.conn.execute("UPDATE databases SET content = ?1, fs_dirty = 1 WHERE id = ?2", params![content, id])?;
+        Ok(())
+    }
+
+    pub fn upsert_database_row_mutable(
+        &mut self, path: &str, database_id: &str, id: &str, slug: Option<&str>,
+        title: Option<&str>, content: &str,
+    ) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "INSERT INTO database_rows (path, database_id, id, slug, title, icon, created, edited, attributes_json, content, modified_ns, size_bytes, fs_dirty)
+             VALUES (?1, ?2, ?3, ?4, ?5, NULL, NULL, NULL, '{}', ?6, 0, 0, 1)
+             ON CONFLICT(id) DO UPDATE SET path=excluded.path, database_id=excluded.database_id,
+             slug=excluded.slug, title=excluded.title, content=excluded.content, fs_dirty=1",
+            params![path, database_id, id, slug, title, content],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_database_row_content(&self, id: &str) -> rusqlite::Result<Option<String>> {
+        self.conn.query_row("SELECT content FROM database_rows WHERE id=?1", params![id], |row| row.get(0)).optional()
+    }
+
+    pub fn delete_page_by_id(&mut self, id: &str) -> rusqlite::Result<usize> {
+        self.conn.execute("DELETE FROM pages WHERE id = ?1", params![id])
+    }
+
+    pub fn dirty_pages(&self) -> rusqlite::Result<Vec<(String, String, String)>> {
+        let mut stmt = self.conn.prepare("SELECT id, path, content FROM pages WHERE fs_dirty != 0")?;
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+            .collect();
+        rows
+    }
+
+    pub fn dirty_databases(&self) -> rusqlite::Result<Vec<(String, String, String)>> {
+        let mut stmt = self.conn.prepare("SELECT id, path, content FROM databases WHERE fs_dirty != 0")?;
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+            .collect();
+        rows
+    }
+
+    pub fn dirty_database_rows(&self) -> rusqlite::Result<Vec<(String, String, String)>> {
+        let mut stmt = self.conn.prepare("SELECT id, path, content FROM database_rows WHERE fs_dirty != 0")?;
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+            .collect();
+        rows
+    }
+
+    pub fn clear_page_dirty(&mut self, id: &str) -> rusqlite::Result<()> {
+        self.conn.execute("UPDATE pages SET fs_dirty = 0 WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    pub fn clear_database_dirty(&mut self, id: &str) -> rusqlite::Result<()> {
+        self.conn.execute("UPDATE databases SET fs_dirty = 0 WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    pub fn clear_database_row_dirty(&mut self, id: &str) -> rusqlite::Result<()> {
+        self.conn.execute("UPDATE database_rows SET fs_dirty = 0 WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
     pub fn search_pages(&self, query: &str, limit: usize) -> rusqlite::Result<Vec<SearchPageHit>> {
         let query = query.trim();
         if query.is_empty() {
@@ -699,7 +843,7 @@ impl CacheDb {
         let pattern = format!("%{}%", escape_like(query));
 
         let mut page_stmt = self.conn.prepare(
-            "SELECT id, slug, title, icon, path, content FROM pages
+            "SELECT id, parent_id, slug, title, icon, path, content FROM pages
              WHERE title LIKE ?1 ESCAPE '\\' COLLATE NOCASE
                 OR slug LIKE ?1 ESCAPE '\\' COLLATE NOCASE
                 OR content LIKE ?1 ESCAPE '\\' COLLATE NOCASE
@@ -720,19 +864,21 @@ impl CacheDb {
                     row.get::<_, Option<String>>(1)?,
                     row.get::<_, Option<String>>(2)?,
                     row.get::<_, Option<String>>(3)?,
-                    row.get::<_, String>(4)?,
+                    row.get::<_, Option<String>>(4)?,
                     row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
                 ))
             })?
             .collect::<Result<Vec<_>, _>>()?;
 
         let mut hits = Vec::with_capacity(page_rows.len() + limit);
-        for (id, slug, title, icon, path, content) in page_rows {
+        for (id, parent_id, slug, title, icon, path, content) in page_rows {
             let (match_in, snippet) =
                 classify_match(query, title.as_deref(), slug.as_deref(), &content);
-            let has_children = self.dir_has_pages(&children_dir(&path, &id))?;
+            let has_children = self.page_has_children(&id)?;
             hits.push(SearchPageHit {
                 id,
+                parent_id,
                 slug,
                 title,
                 icon,
@@ -783,6 +929,7 @@ impl CacheDb {
             );
             hits.push(SearchPageHit {
                 id,
+                parent_id: None,
                 slug,
                 title,
                 icon,
@@ -807,15 +954,41 @@ impl CacheDb {
         Ok(hits)
     }
 
-    fn dir_has_pages(&self, dir: &str) -> rusqlite::Result<bool> {
+    fn page_has_children(&self, id: &str) -> rusqlite::Result<bool> {
         self.conn.query_row(
             "SELECT EXISTS(
                 SELECT 1 FROM pages
-                WHERE path LIKE ?1 || '/%' AND path NOT LIKE ?1 || '/%/%'
+                WHERE parent_id = ?1
              )",
-            params![dir],
+            params![id],
             |row| row.get(0),
         )
+    }
+
+    fn page_ancestors(&self, parent_id: Option<&str>) -> rusqlite::Result<Vec<PageSummary>> {
+        let mut ancestors = Vec::new();
+        let mut current = parent_id.map(str::to_owned);
+        while let Some(id) = current {
+            let row = self.conn.query_row(
+                "SELECT id, parent_id, slug, title, icon, path FROM pages WHERE id = ?1",
+                params![id],
+                |row| Ok(PageSummary {
+                    id: row.get(0)?,
+                    parent_id: row.get(1)?,
+                    slug: row.get(2)?,
+                    title: row.get(3)?,
+                    icon: row.get(4)?,
+                    path: row.get(5)?,
+                    has_children: true,
+                    children: None,
+                }),
+            ).optional()?;
+            let Some(page) = row else { break };
+            current = page.parent_id.clone();
+            ancestors.push(page);
+        }
+        ancestors.reverse();
+        Ok(ancestors)
     }
 
     pub fn delete_pages_not_in(&mut self, paths: &HashSet<String>) -> rusqlite::Result<usize> {
@@ -840,11 +1013,11 @@ fn delete_rows_not_in(
     paths: &HashSet<String>,
 ) -> rusqlite::Result<usize> {
     if paths.is_empty() {
-        return conn.execute(&format!("DELETE FROM {table}"), []).map(|count| count as usize);
+        return conn.execute(&format!("DELETE FROM {table} WHERE fs_dirty = 0"), []).map(|count| count as usize);
     }
 
     let mut removed = 0usize;
-    let mut stmt = conn.prepare(&format!("SELECT path FROM {table}"))?;
+    let mut stmt = conn.prepare(&format!("SELECT path FROM {table} WHERE fs_dirty = 0"))?;
     let existing = stmt
         .query_map([], |row| row.get::<_, String>(0))?
         .collect::<Result<Vec<_>, _>>()?;
@@ -855,7 +1028,7 @@ fn delete_rows_not_in(
         }
 
         removed += conn.execute(
-            &format!("DELETE FROM {table} WHERE path = ?1"),
+            &format!("DELETE FROM {table} WHERE path = ?1 AND fs_dirty = 0"),
             params![path],
         )? as usize;
     }
@@ -864,13 +1037,13 @@ fn delete_rows_not_in(
 }
 
 fn schema_is_current(conn: &Connection) -> bool {
-    conn.prepare("SELECT modified_ns, size_bytes FROM pages LIMIT 0")
+    conn.prepare("SELECT modified_ns, size_bytes, parent_id, fs_dirty FROM pages LIMIT 0")
         .is_ok()
         && conn
-            .prepare("SELECT modified_ns, size_bytes FROM databases LIMIT 0")
+            .prepare("SELECT modified_ns, size_bytes, content, fs_dirty FROM databases LIMIT 0")
             .is_ok()
         && conn
-            .prepare("SELECT content FROM database_rows LIMIT 0")
+            .prepare("SELECT content, fs_dirty FROM database_rows LIMIT 0")
             .is_ok()
 }
 
@@ -929,6 +1102,15 @@ pub fn children_dir(page_path: &str, page_id: &str) -> String {
         .map(|path| path.to_string_lossy().replace('\\', "/"))
         .unwrap_or_else(|| "pages".to_owned());
     format!("{parent}/{page_id}")
+}
+
+pub fn parent_id_from_page_path(path: &str) -> Option<String> {
+    let parent = Path::new(path).parent()?.to_string_lossy().replace('\\', "/");
+    if parent == "pages" {
+        None
+    } else {
+        parent.rsplit('/').next().filter(|id| !id.is_empty()).map(str::to_owned)
+    }
 }
 
 fn strip_frontmatter(content: &str) -> &str {

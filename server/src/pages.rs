@@ -90,7 +90,7 @@ pub struct TrashedPageSummary {
 
 #[derive(Debug)]
 pub struct CreatePageInput {
-    pub parent_path: String,
+    pub parent_id: Option<String>,
     pub title: Option<String>,
     pub slug: Option<String>,
     pub icon: Option<String>,
@@ -256,11 +256,6 @@ fn format_page_content(frontmatter: &PageFrontmatter, body: &str) -> String {
     content
 }
 
-fn sync(workspace_path: &Path, cache: &mut CacheDb) -> Result<(), String> {
-    sync_workspace(workspace_path, cache).map_err(|error| error.to_string())?;
-    Ok(())
-}
-
 fn get_page_or_err(cache: &CacheDb, id: &str) -> Result<PageDetail, String> {
     cache
         .get_page_by_id(id)
@@ -269,7 +264,7 @@ fn get_page_or_err(cache: &CacheDb, id: &str) -> Result<PageDetail, String> {
 }
 
 pub fn create_page(
-    workspace_path: &Path,
+    _workspace_path: &Path,
     cache: &mut CacheDb,
     input: CreatePageInput,
 ) -> Result<PageDetail, String> {
@@ -287,36 +282,38 @@ pub fn create_page(
     let body = input.body.unwrap_or_default();
     let icon = input.icon;
 
-    let id = generate_page_id(&format!("{}:{slug}", input.parent_path));
+    let id = generate_page_id(&format!("{:?}:{slug}", input.parent_id));
     let file_slug = file_stem_slug(&slug);
 
-    let parent_dir = workspace_path.join(&input.parent_path);
-    fs::create_dir_all(&parent_dir).map_err(|error| error.to_string())?;
-
-    let file_path = parent_dir.join(format!("{id}-{file_slug}.mdx"));
+    let parent_path = match input.parent_id.as_deref() {
+        Some(parent_id) => cache.get_page_by_id(parent_id).map_err(|error| error.to_string())?
+            .ok_or_else(|| "parent page not found".to_owned())
+            .map(|page| children_dir(&page.path, parent_id))?,
+        None => "pages".to_owned(),
+    };
+    let path = format!("{parent_path}/{id}-{file_slug}.mdx");
     let now = now_iso();
     let content = format_page_content(
         &PageFrontmatter {
             id: id.clone(),
-            slug: file_slug,
-            title,
-            icon,
+            slug: file_slug.clone(),
+            title: title.clone(),
+            icon: icon.clone(),
             created: now.clone(),
             edited: now,
         },
         &body,
     );
-    fs::write(&file_path, content).map_err(|error| error.to_string())?;
-
-    sync(workspace_path, cache)?;
+    cache.upsert_page_mutable(&path, &id, input.parent_id.as_deref(), Some(&file_slug), Some(&title), icon.as_deref(), &content)
+        .map_err(|error| error.to_string())?;
     get_page_or_err(cache, &id)
 }
 
 pub fn update_page(
-    workspace_path: &Path,
+    _workspace_path: &Path,
     cache: &mut CacheDb,
     input: UpdatePageInput,
-) -> Result<PageDetail, String> {
+) -> Result<(PageDetail, Option<String>), String> {
     let existing = get_page_or_err(cache, &input.id)?;
     let title_updated = input.title.is_some();
 
@@ -344,18 +341,22 @@ pub fn update_page(
             .unwrap_or_else(|| existing.id.clone())
     };
     let icon = input.icon.or(existing.icon);
-    let body = resolve_update_body(existing.body, input.body, input.body_patch)?;
+    let body = resolve_update_body(existing.body.clone(), input.body, input.body_patch)?;
 
     let file_slug = file_stem_slug(&slug);
 
-    let old_path = workspace_path.join(&existing.path);
-    let parent_dir = old_path
+    let parent_path = Path::new(&existing.path)
         .parent()
-        .ok_or_else(|| "invalid page path".to_string())?;
-    let new_path = parent_dir.join(format!("{}-{}.mdx", input.id, file_slug));
+        .map(|path| path.to_string_lossy().replace('\\', "/"))
+        .ok_or_else(|| "invalid page path".to_owned())?;
+    let new_path = format!("{parent_path}/{}-{}.mdx", input.id, file_slug);
 
-    let existing_content = fs::read_to_string(&old_path).unwrap_or_default();
-    let existing_frontmatter = parse_frontmatter(&existing_content);
+    // Preserve created from stored content when possible.
+    let existing_full = cache
+        .get_page_content(&input.id)
+        .map_err(|error| error.to_string())?
+        .unwrap_or_default();
+    let existing_frontmatter = parse_frontmatter(&existing_full);
     let created = existing_frontmatter
         .get("created")
         .map(|value| unquote_yaml(value))
@@ -366,22 +367,27 @@ pub fn update_page(
     let content = format_page_content(
         &PageFrontmatter {
             id: input.id.clone(),
-            slug: file_slug,
-            title,
-            icon,
+            slug: file_slug.clone(),
+            title: title.clone(),
+            icon: icon.clone(),
             created,
             edited,
         },
         &body,
     );
-    fs::write(&new_path, &content).map_err(|error| error.to_string())?;
-
-    if new_path != old_path && old_path.is_file() {
-        fs::remove_file(&old_path).map_err(|error| error.to_string())?;
-    }
-
-    sync(workspace_path, cache)?;
-    get_page_or_err(cache, &input.id)
+    let old_path = cache
+        .upsert_page_mutable(
+            &new_path,
+            &input.id,
+            existing.parent_id.as_deref(),
+            Some(&file_slug),
+            Some(&title),
+            icon.as_deref(),
+            &content,
+        )
+        .map_err(|error| error.to_string())?;
+    let detail = get_page_or_err(cache, &input.id)?;
+    Ok((detail, old_path))
 }
 
 pub fn trash_page(
@@ -391,21 +397,39 @@ pub fn trash_page(
 ) -> Result<Vec<String>, String> {
     let existing = get_page_or_err(cache, id)?;
     let mut trashed_ids = vec![existing.id.clone()];
+    let descendants = cache
+        .descendant_page_ids(id)
+        .map_err(|error| error.to_string())?;
+    trashed_ids.extend(descendants);
 
-    let children_rel = children_dir(&existing.path, &existing.id);
-    let children_fs = workspace_path.join(&children_rel);
-    if children_fs.is_dir() {
-        for mdx in walk_mdx_files(&children_fs)? {
-            trashed_ids.push(page_id_from_mdx(&mdx)?);
+    // Snapshot paths before deleting DB rows (needed for FS trash move).
+    let mut paths_to_trash = Vec::new();
+    for page_id in &trashed_ids {
+        if let Some(page) = cache
+            .get_page_by_id(page_id)
+            .map_err(|error| error.to_string())?
+        {
+            paths_to_trash.push(page.path);
         }
     }
 
-    move_to_trash(workspace_path, &existing.path)?;
+    for page_id in trashed_ids.iter().rev() {
+        cache
+            .delete_page_by_id(page_id)
+            .map_err(|error| error.to_string())?;
+    }
+
+    for path in &paths_to_trash {
+        move_to_trash(workspace_path, path)?;
+    }
+
+    // Also move children directories if present on disk.
+    let children_rel = children_dir(&existing.path, &existing.id);
+    let children_fs = workspace_path.join(&children_rel);
     if children_fs.is_dir() {
         move_to_trash(workspace_path, &children_rel)?;
     }
 
-    sync(workspace_path, cache)?;
     Ok(trashed_ids)
 }
 
@@ -501,7 +525,7 @@ pub fn restore_page(
         restore_from_trash(workspace_path, &children_rel)?;
     }
 
-    sync(workspace_path, cache)?;
+    sync_workspace(workspace_path, cache).map_err(|error| error.to_string())?;
     get_page_or_err(cache, id)
 }
 
@@ -592,15 +616,6 @@ fn walk_mdx_files_rec(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String
     Ok(())
 }
 
-fn page_id_from_mdx(path: &Path) -> Result<String, String> {
-    let content = fs::read_to_string(path).map_err(|error| error.to_string())?;
-    let frontmatter = parse_frontmatter(&content);
-    Ok(frontmatter
-        .get("id")
-        .cloned()
-        .unwrap_or_else(|| file_stem_id(path)))
-}
-
 fn path_relative_to_workspace(workspace_path: &Path, file_path: &Path) -> String {
     file_path
         .strip_prefix(workspace_path)
@@ -671,10 +686,6 @@ pub fn duplicate_page(
     id: &str,
 ) -> Result<PageDetail, String> {
     let source = get_page_or_err(cache, id)?;
-    let parent_path = Path::new(&source.path)
-        .parent()
-        .map(|path| path.to_string_lossy().replace('\\', "/"))
-        .unwrap_or_else(|| "pages".to_owned());
 
     let source_title = source.title.as_deref().unwrap_or("Untitled");
     let base_slug = source.slug.as_deref().unwrap_or(&source.id);
@@ -683,7 +694,7 @@ pub fn duplicate_page(
         workspace_path,
         cache,
         CreatePageInput {
-            parent_path,
+            parent_id: source.parent_id,
             title: Some(format!("Copy of {source_title}")),
             slug: Some(format!("{base_slug}-copy")),
             icon: source.icon,

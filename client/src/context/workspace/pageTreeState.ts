@@ -1,40 +1,42 @@
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import { isIgnorableRpcError } from "../../lib/rpc";
 import {
-  ROOT_PAGES_DIR,
+  treeCacheKey,
   type WorkspacePage,
   type WorkspacePageDetail,
 } from "../../types/page";
 
 export function resetPageTree(
-  setChildrenByDir: Dispatch<SetStateAction<Record<string, WorkspacePage[]>>>,
+  setChildrenByParent: Dispatch<
+    SetStateAction<Record<string, WorkspacePage[]>>
+  >,
   setPagesById: Dispatch<SetStateAction<Record<string, WorkspacePage>>>,
   setPageDetailsById: Dispatch<
     SetStateAction<Record<string, WorkspacePageDetail>>
   >,
   setRootError: Dispatch<SetStateAction<string | null>>,
-  loadedDepthByDirRef: RefObject<Map<string, number>>,
-  inflightDepthByDirRef: RefObject<Map<string, number>>,
-  childrenByDirStableRef: RefObject<Record<string, WorkspacePage[]>>,
+  loadedDepthByParentRef: RefObject<Map<string, number>>,
+  inflightDepthByParentRef: RefObject<Map<string, number>>,
+  childrenByParentStableRef: RefObject<Record<string, WorkspacePage[]>>,
 ) {
-  setChildrenByDir({});
+  setChildrenByParent({});
   setPagesById({});
   setPageDetailsById({});
   setRootError(null);
-  loadedDepthByDirRef.current.clear();
-  inflightDepthByDirRef.current.clear();
-  childrenByDirStableRef.current = {};
+  loadedDepthByParentRef.current.clear();
+  inflightDepthByParentRef.current.clear();
+  childrenByParentStableRef.current = {};
 }
 
 export function maybeSetRootError(
   setRootError: Dispatch<SetStateAction<string | null>>,
-  parentPath: string,
-  childrenByDirStableRef: RefObject<Record<string, WorkspacePage[]>>,
+  parentId: string | null,
+  childrenByParentStableRef: RefObject<Record<string, WorkspacePage[]>>,
   error: unknown,
 ) {
   if (isIgnorableRpcError(error)) return;
-  if (parentPath !== ROOT_PAGES_DIR) return;
-  if (childrenByDirStableRef.current[parentPath]?.length) return;
+  if (parentId !== null) return;
+  if (childrenByParentStableRef.current[treeCacheKey(parentId)]?.length) return;
   setRootError(
     error instanceof Error ? error.message : "Failed to load pages",
   );

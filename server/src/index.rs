@@ -4,7 +4,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use crate::cache::{CacheDb, IndexedDatabase, IndexedDatabaseRow, IndexedPage};
+use crate::cache::{CacheDb, IndexedDatabase, IndexedDatabaseRow, IndexedPage, parent_id_from_page_path};
 use crate::databases::DatabaseFile;
 use crate::data::log_path;
 
@@ -60,6 +60,7 @@ fn sync_pages(workspace_path: &Path, cache: &mut CacheDb, stats: &mut SyncStats)
                 .unwrap_or_else(|| file_stem_id(&file));
 
             batch.push(IndexedPage {
+                parent_id: parent_id_from_page_path(&relative_path),
                 path: relative_path,
                 id,
                 slug: frontmatter.get("slug").cloned(),
@@ -142,6 +143,7 @@ fn sync_databases(
                     id: database_id.clone(),
                     slug: database.slug,
                     name: database.name.or(database.title),
+                    content: contents,
                     modified_ns,
                     size_bytes,
                 });

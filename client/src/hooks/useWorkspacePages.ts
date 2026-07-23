@@ -1,5 +1,5 @@
 import { useWorkspace } from "../context/WorkspaceContext";
-import { ROOT_PAGES_DIR } from "../types/page";
+import { treeCacheKey } from "../types/page";
 
 export function useWorkspacePages() {
   const {
@@ -53,4 +53,4 @@ export function useWorkspacePages() {
   };
 }
 
-export { ROOT_PAGES_DIR };
+export { treeCacheKey };

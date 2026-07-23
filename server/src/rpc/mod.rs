@@ -8,7 +8,7 @@ use crate::workspace::Workspace;
 #[serde(rename_all = "camelCase")]
 struct ListPagesParams {
     #[serde(default)]
-    parent_path: Option<String>,
+    parent_id: Option<String>,
     /// How many levels of descendants to include. `1` = direct children only
     /// (default). `2` nests each child's children under `children`, etc.
     #[serde(default = "default_list_pages_depth")]
@@ -69,7 +69,8 @@ struct SearchPagesParams {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CreatePageParams {
-    parent_path: String,
+    #[serde(default)]
+    parent_id: Option<String>,
     #[serde(default)]
     title: Option<String>,
     #[serde(default)]
@@ -146,10 +147,10 @@ pub fn build_workspace_module(state: WorkspaceRpcState) -> RpcModule<WorkspaceRp
         .register_async_method("list_pages", |params, ctx, _| async move {
             let request: ListPagesParams = params.parse()?;
             let workspace = ctx.workspace.clone();
-            let parent_path = request.parent_path;
+            let parent_id = request.parent_id;
             let depth = request.depth;
             let pages = tokio::task::spawn_blocking(move || {
-                workspace.list_pages(parent_path.as_deref(), depth)
+                workspace.list_pages(parent_id.as_deref(), depth)
             })
             .await
             .map_err(|error| ErrorObjectOwned::owned(1, error.to_string(), None::<()>))?
@@ -258,7 +259,7 @@ pub fn build_workspace_module(state: WorkspaceRpcState) -> RpcModule<WorkspaceRp
             let workspace = ctx.workspace.clone();
             let page = tokio::task::spawn_blocking(move || {
                 workspace.create_page(CreatePageInput {
-                    parent_path: request.parent_path,
+                    parent_id: request.parent_id,
                     title: request.title,
                     slug: request.slug,
                     icon: request.icon,
@@ -408,10 +409,10 @@ pub async fn call_workspace_rpc(
             let request: ListPagesParams =
                 serde_json::from_value(params_or_null(params)).map_err(|error| error.to_string())?;
             let workspace = workspace.clone();
-            let parent_path = request.parent_path;
+            let parent_id = request.parent_id;
             let depth = request.depth;
             let pages = tokio::task::spawn_blocking(move || {
-                workspace.list_pages(parent_path.as_deref(), depth)
+                workspace.list_pages(parent_id.as_deref(), depth)
             })
             .await
             .map_err(|error| error.to_string())?
@@ -504,7 +505,7 @@ pub async fn call_workspace_rpc(
             let workspace = workspace.clone();
             let page = tokio::task::spawn_blocking(move || {
                 workspace.create_page(CreatePageInput {
-                    parent_path: request.parent_path,
+                    parent_id: request.parent_id,
                     title: request.title,
                     slug: request.slug,
                     icon: request.icon,

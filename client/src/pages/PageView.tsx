@@ -16,10 +16,8 @@ import {
   shouldSendBodyPatch,
 } from "../lib/pageBodySync";
 import {
-  ROOT_PAGES_DIR,
   buildPageSegment,
   pageLabel,
-  parentDirOfPage,
   parsePageIdFromSegment,
   slugifyPageTitle,
   type BodyPatch,
@@ -209,7 +207,6 @@ export function PageView() {
     fetchTrashedPageDetail,
     updatePage,
     restorePage,
-    ensureChildren,
     connectionStatus,
   } = useWorkspacePages();
   const { navigateInTab } = useTabs();
@@ -409,13 +406,6 @@ export function PageView() {
       setStatus("saved");
     }
   }, [pageId, setStatus]);
-
-  useEffect(() => {
-    const livePage = activeDetail ?? cachedPage;
-    if (isTrashed || !livePage) return;
-    ensureChildren(ROOT_PAGES_DIR);
-    ensureChildren(parentDirOfPage(livePage));
-  }, [activeDetail, cachedPage, isTrashed, ensureChildren]);
 
   // Keep a sync base for diff saves even if the layout-effect path was skipped.
   useEffect(() => {

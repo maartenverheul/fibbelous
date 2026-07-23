@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::cache::{CacheDb, ensure_runtime_dir};
 use crate::data::log_path;
 use crate::databases;
+use crate::flush::{DirtyKey, FlushScheduler, spawn_flush};
 use crate::index::sync_workspace;
 use crate::pages::{
     CreatePageInput, UpdatePageInput, create_page, duplicate_page, get_trashed_page,
@@ -40,6 +41,7 @@ pub struct Workspace {
     pub path: PathBuf,
     pub settings: WorkspaceSettings,
     cache: Arc<Mutex<CacheDb>>,
+    flush: FlushScheduler,
     index_status: Arc<Mutex<IndexStatus>>,
 }
 
@@ -168,16 +170,15 @@ impl Workspace {
 
     pub fn list_pages(
         &self,
-        parent_path: Option<&str>,
+        parent_id: Option<&str>,
         depth: u8,
     ) -> Result<Vec<crate::cache::PageSummary>, String> {
-        let parent_dir = parent_path.unwrap_or("pages");
         let cache = self
             .cache
             .lock()
             .map_err(|_| "cache mutex poisoned".to_string())?;
         cache
-            .list_pages_in_dir(parent_dir, depth)
+            .list_pages_by_parent(parent_id, depth)
             .map_err(|error| error.to_string())
     }
 
@@ -201,16 +202,36 @@ impl Workspace {
             return Ok(None);
         };
 
-        let content = std::fs::read_to_string(self.path.join(&row.path))
-            .map_err(|error| error.to_string())?;
+        let content = cache.get_database_row_content(id).map_err(|error| error.to_string())?
+            .ok_or_else(|| "database row content not found".to_owned())?;
         let body = crate::cache::page_body_from_content(&content);
         let body_hash = crate::cache::hash_body(&body);
         let referenced_pages = cache
             .referenced_pages_for_body(&body)
             .map_err(|error| error.to_string())?;
 
+        let mut ancestors = Vec::new();
+        if let Some(host) = cache
+            .get_page_by_id(&row.database_id)
+            .map_err(|error| error.to_string())?
+        {
+            ancestors = host.ancestors;
+            // Host page itself as the last ancestor (without its body).
+            ancestors.push(crate::cache::PageSummary {
+                id: host.id,
+                parent_id: host.parent_id,
+                slug: host.slug,
+                title: host.title,
+                icon: host.icon,
+                path: host.path,
+                has_children: host.has_children,
+                children: None,
+            });
+        }
+
         Ok(Some(crate::cache::PageDetail {
             id: row.id,
+            parent_id: None,
             slug: row.slug,
             title: row.title,
             icon: row.icon,
@@ -220,6 +241,7 @@ impl Workspace {
             body,
             body_hash,
             referenced_pages,
+            ancestors,
         }))
     }
 
@@ -227,11 +249,20 @@ impl Workspace {
         &self,
         id: &str,
     ) -> Result<Option<crate::cache::DatabaseDetail>, String> {
-        let cache = self
+        let mut cache = self
             .cache
             .lock()
             .map_err(|_| "cache mutex poisoned".to_string())?;
-        databases::get_database(&self.path, &cache, id)
+        match databases::get_database(&self.path, &mut cache, id) {
+            Ok(Some((detail, dirty))) => {
+                if dirty {
+                    self.flush.mark(DirtyKey::Database(id.to_owned()));
+                }
+                Ok(Some(detail))
+            }
+            Ok(None) => Ok(None),
+            Err(error) => Err(error),
+        }
     }
 
     pub fn list_database_rows(
@@ -254,11 +285,15 @@ impl Workspace {
         view_id: &str,
         update: crate::databases::DatabaseViewUpdate,
     ) -> Result<Option<crate::cache::DatabaseDetail>, String> {
-        let cache = self
+        let mut cache = self
             .cache
             .lock()
             .map_err(|_| "cache mutex poisoned".to_string())?;
-        databases::update_database_view(&self.path, &cache, database_id, view_id, update)
+        let result = databases::update_database_view(&self.path, &mut cache, database_id, view_id, update);
+        if matches!(result, Ok(Some(_))) {
+            self.flush.mark(DirtyKey::Database(database_id.to_owned()));
+        }
+        result
     }
 
     pub fn create_database_row(
@@ -270,7 +305,11 @@ impl Workspace {
             .cache
             .lock()
             .map_err(|_| "cache mutex poisoned".to_string())?;
-        databases::create_database_row(&self.path, &mut cache, database_id, title)
+        let result = databases::create_database_row(&self.path, &mut cache, database_id, title);
+        if let Ok(page) = &result {
+            self.flush.mark(DirtyKey::Row(page.id.clone()));
+        }
+        result
     }
 
     pub fn search_pages(
@@ -299,11 +338,25 @@ impl Workspace {
     }
 
     pub fn create_page(&self, input: CreatePageInput) -> Result<crate::cache::PageDetail, String> {
-        self.with_cache_mut(|path, cache| create_page(path, cache, input))
+        let result = self.with_cache_mut(|path, cache| create_page(path, cache, input));
+        if let Ok(page) = &result {
+            self.flush.mark(DirtyKey::Page(page.id.clone()));
+        }
+        result
     }
 
     pub fn update_page(&self, input: UpdatePageInput) -> Result<crate::cache::PageDetail, String> {
-        self.with_cache_mut(|path, cache| update_page(path, cache, input))
+        let result = self.with_cache_mut(|path, cache| update_page(path, cache, input));
+        match result {
+            Ok((page, old_path)) => {
+                self.flush.mark(DirtyKey::Page(page.id.clone()));
+                if let Some(old_path) = old_path {
+                    self.flush.mark_delete(old_path);
+                }
+                Ok(page)
+            }
+            Err(error) => Err(error),
+        }
     }
 
     pub fn trash_page(&self, id: &str) -> Result<Vec<String>, String> {
@@ -331,7 +384,11 @@ impl Workspace {
     }
 
     pub fn duplicate_page(&self, id: &str) -> Result<crate::cache::PageDetail, String> {
-        self.with_cache_mut(|path, cache| duplicate_page(path, cache, id))
+        let result = self.with_cache_mut(|path, cache| duplicate_page(path, cache, id));
+        if let Ok(page) = &result {
+            self.flush.mark(DirtyKey::Page(page.id.clone()));
+        }
+        result
     }
 
     /// Rescan workspace files and update the cache for pages that changed on disk
@@ -488,13 +545,14 @@ fn open_workspace(id: String, path: PathBuf) -> Result<Workspace, String> {
         path,
         settings,
         cache: Arc::new(Mutex::new(cache)),
+        flush: FlushScheduler::new(),
         index_status: Arc::new(Mutex::new(IndexStatus::Pending)),
     })
 }
 
 fn seed_welcome_page(workspace: &Workspace) -> Result<(), String> {
     workspace.create_page(CreatePageInput {
-        parent_path: "pages".to_owned(),
+        parent_id: None,
         title: Some("Welcome".to_owned()),
         slug: Some("welcome".to_owned()),
         icon: None,
@@ -717,6 +775,7 @@ pub fn discover_workspaces(dir: &Path) -> std::io::Result<Vec<Workspace>> {
 }
 
 pub fn spawn_indexing(workspace: Workspace) {
+    spawn_flush(workspace.path.clone(), workspace.cache.clone(), workspace.flush.clone());
     tokio::spawn(index_workspace(workspace));
 }
 

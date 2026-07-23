@@ -6,6 +6,7 @@ import { cn } from "../../lib/utils";
 import {
   buildPageBreadcrumbs,
   buildPageSegment,
+  breadcrumbsFromDetail,
   isPagePathSegment,
   pageLabel,
   parsePageIdFromSegment,
@@ -122,14 +123,14 @@ export function PageBreadcrumbs() {
   let crumbs = pageId ? crumbsByPageIdRef.current.get(pageId) ?? [] : [];
 
   if (pageId) {
-    const page =
-      findPageByKey(activeSegment) ??
-      findPageById(pageId) ??
-      getPageDetailById(pageId);
+    const detail = getPageDetailById(pageId);
+    const page = findPageByKey(activeSegment) ?? findPageById(pageId) ?? detail;
 
     if (page) {
-      const built = buildPageBreadcrumbs(page, findPageById);
-      if (built.length >= crumbs.length) {
+      const built = detail
+        ? breadcrumbsFromDetail(detail, findPageById)
+        : buildPageBreadcrumbs(page, findPageById);
+      if (detail || built.length >= crumbs.length) {
         crumbsByPageIdRef.current.set(pageId, built);
         crumbs = built;
       }

@@ -14,12 +14,10 @@ import type {
 } from "../../types/database";
 import {
   DEFAULT_LIST_PAGES_DEPTH,
-  ROOT_PAGES_DIR,
-  buildPageBreadcrumbs,
-  childrenDir,
   isPagePathSegment,
-  parentDirOfPage,
+  parentKeyOfPage,
   parsePageIdFromSegment,
+  treeCacheKey,
   type BodyPatch,
   type SearchPageHit,
   type TrashedPage,
@@ -41,8 +39,8 @@ import { useWorkspaceSession } from "./WorkspaceSessionProvider";
 export type WorkspacePagesValue = {
   rootPages: WorkspacePage[] | undefined;
   rootError: string | null;
-  getChildren: (parentPath: string) => WorkspacePage[] | undefined;
-  ensureChildren: (parentPath: string, depth?: number) => void;
+  getChildren: (parentId: string | null) => WorkspacePage[] | undefined;
+  ensureChildren: (parentId: string | null, depth?: number) => void;
   ensurePageTreeVisible: (segment: string) => void;
   findPageByKey: (key: string) => WorkspacePage | undefined;
   findPageById: (id: string) => WorkspacePage | undefined;
@@ -84,7 +82,7 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
   const { rpc, connectionStatus, connectionGenerationRef } =
     useWorkspaceConnection();
 
-  const [childrenByDir, setChildrenByDir] = useState<
+  const [childrenByParent, setChildrenByParent] = useState<
     Record<string, WorkspacePage[]>
   >({});
   const [pagesById, setPagesById] = useState<Record<string, WorkspacePage>>(
@@ -94,11 +92,11 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
     Record<string, WorkspacePageDetail>
   >({});
   const [rootError, setRootError] = useState<string | null>(null);
-  /** Max `list_pages` depth successfully stored per dir. */
-  const loadedDepthByDirRef = useRef(new Map<string, number>());
-  /** In-flight request depth per dir (skip duplicate / shallower fetches). */
-  const inflightDepthByDirRef = useRef(new Map<string, number>());
-  const childrenByDirStableRef = useRef<Record<string, WorkspacePage[]>>({});
+  /** Max `list_pages` depth successfully stored per parent. */
+  const loadedDepthByParentRef = useRef(new Map<string, number>());
+  /** In-flight request depth per parent (skip duplicate / shallower fetches). */
+  const inflightDepthByParentRef = useRef(new Map<string, number>());
+  const childrenByParentStableRef = useRef<Record<string, WorkspacePage[]>>({});
   const lastTreeWorkspaceIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -109,25 +107,25 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
     }
 
     resetPageTree(
-      setChildrenByDir,
+      setChildrenByParent,
       setPagesById,
       setPageDetailsById,
       setRootError,
-      loadedDepthByDirRef,
-      inflightDepthByDirRef,
-      childrenByDirStableRef,
+      loadedDepthByParentRef,
+      inflightDepthByParentRef,
+      childrenByParentStableRef,
     );
     lastTreeWorkspaceIdRef.current = workspaceId;
   }, [activeWorkspace?.workspaceId]);
 
   const storePages = useCallback(
-    (parentPath: string, pages: WorkspacePage[], depth: number) => {
-      const dirs: Record<string, WorkspacePage[]> = {};
+    (parentId: string | null, pages: WorkspacePage[], depth: number) => {
+      const childrenByParent = {} as Record<string, WorkspacePage[]>;
       const byId: Record<string, WorkspacePage> = {};
       const depths = new Map<string, number>();
 
       const visit = (
-        dir: string,
+        currentParentId: string | null,
         list: WorkspacePage[],
         remainingDepth: number,
       ) => {
@@ -137,49 +135,50 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
           flat.push(rest);
           byId[rest.id] = rest;
           if (nested !== undefined) {
-            visit(childrenDir(rest), nested, remainingDepth - 1);
+            visit(rest.id, nested, remainingDepth - 1);
           }
         }
-        dirs[dir] = flat;
+        const key = treeCacheKey(currentParentId);
+        childrenByParent[key] = flat;
         depths.set(
-          dir,
-          Math.max(depths.get(dir) ?? 0, remainingDepth),
+          key,
+          Math.max(depths.get(key) ?? 0, remainingDepth),
         );
       };
-      visit(parentPath, pages, depth);
+      visit(parentId, pages, depth);
 
-      setChildrenByDir((prev) => {
-        const next = { ...prev, ...dirs };
-        for (const [dir, list] of Object.entries(dirs)) {
-          childrenByDirStableRef.current[dir] = list;
+      setChildrenByParent((prev) => {
+        const next = { ...prev, ...childrenByParent };
+        for (const [key, list] of Object.entries(childrenByParent)) {
+          childrenByParentStableRef.current[key] = list;
         }
         return next;
       });
       setPagesById((prev) => ({ ...prev, ...byId }));
 
-      for (const [dir, loadedDepth] of depths) {
-        const prev = loadedDepthByDirRef.current.get(dir) ?? 0;
+      for (const [key, loadedDepth] of depths) {
+        const prev = loadedDepthByParentRef.current.get(key) ?? 0;
         if (loadedDepth > prev) {
-          loadedDepthByDirRef.current.set(dir, loadedDepth);
+          loadedDepthByParentRef.current.set(key, loadedDepth);
         }
       }
     },
     [],
   );
 
-  const listDir = useCallback(
-    async (parentPath: string, depth = DEFAULT_LIST_PAGES_DEPTH) => {
+  const listChildren = useCallback(
+    async (parentId: string | null, depth = DEFAULT_LIST_PAGES_DEPTH) => {
       if (!rpc || connectionStatus !== "connected") return null;
 
       const generation = connectionGenerationRef.current;
       const result = await rpc.call<WorkspacePage[]>("list_pages", {
-        parentPath,
+        parentId,
         depth,
       });
       if (generation !== connectionGenerationRef.current) return null;
 
-      storePages(parentPath, result, depth);
-      if (parentPath === ROOT_PAGES_DIR) {
+      storePages(parentId, result, depth);
+      if (parentId === null) {
         setRootError(null);
       }
       return result;
@@ -187,55 +186,65 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
     [rpc, connectionStatus, connectionGenerationRef, storePages],
   );
 
-  const refreshDir = useCallback(
-    async (parentPath: string, depth = DEFAULT_LIST_PAGES_DEPTH) => {
+  const refreshChildren = useCallback(
+    async (parentId: string | null, depth = DEFAULT_LIST_PAGES_DEPTH) => {
       if (!rpc || connectionStatus !== "connected") return [];
+      const key = treeCacheKey(parentId);
 
-      loadedDepthByDirRef.current.delete(parentPath);
+      loadedDepthByParentRef.current.delete(key);
 
-      const inflight = inflightDepthByDirRef.current.get(parentPath) ?? 0;
+      const inflight = inflightDepthByParentRef.current.get(key) ?? 0;
       if (inflight >= depth) {
-        return childrenByDirStableRef.current[parentPath] ?? [];
+        return childrenByParentStableRef.current[key] ?? [];
       }
 
-      inflightDepthByDirRef.current.set(parentPath, depth);
+      inflightDepthByParentRef.current.set(key, depth);
       try {
-        return (await listDir(parentPath, depth)) ?? [];
+        return (await listChildren(parentId, depth)) ?? [];
       } catch (err) {
         maybeSetRootError(
           setRootError,
-          parentPath,
-          childrenByDirStableRef,
+          parentId,
+          childrenByParentStableRef,
           err,
         );
-        return childrenByDirStableRef.current[parentPath] ?? [];
+        return childrenByParentStableRef.current[key] ?? [];
       } finally {
-        if (inflightDepthByDirRef.current.get(parentPath) === depth) {
-          inflightDepthByDirRef.current.delete(parentPath);
+        if (inflightDepthByParentRef.current.get(key) === depth) {
+          inflightDepthByParentRef.current.delete(key);
         }
       }
     },
-    [rpc, connectionStatus, listDir],
+    [rpc, connectionStatus, listChildren],
   );
 
-  const invalidateAndRefreshDirs = useCallback(
-    async (...parentPaths: string[]) => {
-      const unique = [...new Set(parentPaths)];
-      for (const parentPath of unique) {
-        loadedDepthByDirRef.current.delete(parentPath);
-        inflightDepthByDirRef.current.delete(parentPath);
+  const invalidateAndRefreshChildren = useCallback(
+    async (...parentIds: Array<string | null>) => {
+      const unique = [...new Set(parentIds)];
+      for (const parentId of unique) {
+        const key = treeCacheKey(parentId);
+        loadedDepthByParentRef.current.delete(key);
+        inflightDepthByParentRef.current.delete(key);
       }
-      for (const parentPath of unique) {
-        await refreshDir(parentPath);
+      for (const parentId of unique) {
+        await refreshChildren(parentId);
       }
     },
-    [refreshDir],
+    [refreshChildren],
   );
 
   const storePageDetail = useCallback((detail: WorkspacePageDetail) => {
-    const { body: _body, referencedPages, ...page } = detail;
+    const {
+      ancestors = [],
+      body: _body,
+      referencedPages,
+      ...page
+    } = detail;
     setPagesById((prev) => {
       const next = { ...prev, [page.id]: page };
+      for (const ancestor of ancestors) {
+        next[ancestor.id] = { ...next[ancestor.id], ...ancestor };
+      }
       for (const ref of referencedPages) {
         const existing = next[ref.id];
         if (existing) continue;
@@ -317,13 +326,13 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
       delete next[id];
       return next;
     });
-    setChildrenByDir((prev) => {
+    setChildrenByParent((prev) => {
       let changed = false;
       const next = { ...prev };
-      for (const dir of Object.keys(next)) {
-        const filtered = next[dir].filter((item) => item.id !== id);
-        if (filtered.length !== next[dir].length) {
-          next[dir] = filtered;
+      for (const key of Object.keys(next)) {
+        const filtered = next[key].filter((item) => item.id !== id);
+        if (filtered.length !== next[key].length) {
+          next[key] = filtered;
           changed = true;
         }
       }
@@ -332,56 +341,62 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const ensureChildren = useCallback(
-    (parentPath: string, depth = DEFAULT_LIST_PAGES_DEPTH) => {
+    (parentId: string | null, depth = DEFAULT_LIST_PAGES_DEPTH) => {
       if (!rpc || connectionStatus !== "connected") return;
+      const key = treeCacheKey(parentId);
 
-      const loaded = loadedDepthByDirRef.current.get(parentPath) ?? 0;
+      const loaded = loadedDepthByParentRef.current.get(key) ?? 0;
       if (loaded >= depth) return;
 
-      const inflight = inflightDepthByDirRef.current.get(parentPath) ?? 0;
+      const inflight = inflightDepthByParentRef.current.get(key) ?? 0;
       if (inflight >= depth) return;
 
-      inflightDepthByDirRef.current.set(parentPath, depth);
+      inflightDepthByParentRef.current.set(key, depth);
 
-      listDir(parentPath, depth)
+      listChildren(parentId, depth)
         .catch((err) => {
           maybeSetRootError(
             setRootError,
-            parentPath,
-            childrenByDirStableRef,
+            parentId,
+            childrenByParentStableRef,
             err,
           );
         })
         .finally(() => {
-          if (inflightDepthByDirRef.current.get(parentPath) === depth) {
-            inflightDepthByDirRef.current.delete(parentPath);
+          if (inflightDepthByParentRef.current.get(key) === depth) {
+            inflightDepthByParentRef.current.delete(key);
           }
         });
     },
-    [rpc, connectionStatus, listDir],
+    [rpc, connectionStatus, listChildren],
   );
 
   useEffect(() => {
     if (!rpc || connectionStatus !== "connected") return;
-    ensureChildren(ROOT_PAGES_DIR);
+    ensureChildren(null);
   }, [rpc, connectionStatus, ensureChildren]);
 
   const getChildren = useCallback(
-    (parentPath: string) => {
-      const current = childrenByDir[parentPath];
+    (parentId: string | null) => {
+      const key = treeCacheKey(parentId);
+      const current = childrenByParent[key];
       if (current !== undefined) {
-        childrenByDirStableRef.current[parentPath] = current;
+        childrenByParentStableRef.current[key] = current;
         return current;
       }
-      return childrenByDirStableRef.current[parentPath];
+      return childrenByParentStableRef.current[key];
     },
-    [childrenByDir],
+    [childrenByParent],
   );
 
   const pageFromDetail = useCallback(
     (detail: WorkspacePageDetail): WorkspacePage => {
-      const { body: _body, referencedPages: _referencedPages, ...page } =
-        detail;
+      const {
+        body: _body,
+        referencedPages: _referencedPages,
+        ancestors: _ancestors,
+        ...page
+      } = detail;
       return page;
     },
     [],
@@ -395,18 +410,15 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
       const detail = pageDetailsById[id];
       if (detail) return pageFromDetail(detail);
 
-      for (const pages of Object.values(childrenByDir)) {
+      for (const pages of Object.values(childrenByParent)) {
         const match = pages.find((page) => page.id === id);
         if (match) return match;
       }
 
       return undefined;
     },
-    [childrenByDir, pagesById, pageDetailsById, pageFromDetail],
+    [childrenByParent, pagesById, pageDetailsById, pageFromDetail],
   );
-  const findPageByIdRef = useRef(findPageById);
-  findPageByIdRef.current = findPageById;
-
   const pagesByIdRef = useRef(pagesById);
   pagesByIdRef.current = pagesById;
 
@@ -424,58 +436,11 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
     [findPageById],
   );
 
-  const ensurePageAncestorsVisible = useCallback(
-    async (page: WorkspacePage) => {
-      const lookup = (id: string) => findPageByIdRef.current(id);
-
-      if (page.databaseId) {
-        let host = lookup(page.databaseId);
-        if (!host && rpc && connectionStatus === "connected") {
-          const hostDetail = await rpc.call<WorkspacePageDetail | null>(
-            "get_page",
-            { id: page.databaseId },
-          );
-          if (hostDetail) {
-            storePageDetail(hostDetail);
-            host = pageFromDetail(hostDetail);
-          }
-        }
-        if (host) {
-          ensureChildren(parentDirOfPage(host));
-          const crumbs = buildPageBreadcrumbs(host, lookup);
-          for (const crumb of crumbs) {
-            if (crumb.hasChildren) {
-              ensureChildren(childrenDir(crumb));
-            }
-          }
-        }
-        return;
-      }
-
-      ensureChildren(parentDirOfPage(page));
-      const crumbs = buildPageBreadcrumbs(page, lookup);
-      for (const crumb of crumbs) {
-        if (crumb.hasChildren) {
-          ensureChildren(childrenDir(crumb));
-        }
-      }
-    },
-    [rpc, connectionStatus, storePageDetail, pageFromDetail, ensureChildren],
-  );
-
   const ensurePageTreeVisible = useCallback(
     (segment: string) => {
       if (!isPagePathSegment(segment)) return;
-
-      const pageId = parsePageIdFromSegment(segment);
-      if (!pageId) return;
-
-      const page = findPageByIdRef.current(pageId);
-      if (!page) return;
-
-      void ensurePageAncestorsVisible(page);
     },
-    [ensurePageAncestorsVisible],
+    [],
   );
 
   const fetchPageById = useCallback(
@@ -491,10 +456,9 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
 
       storePageDetail(detail);
       const { body: _body, ...page } = detail;
-      await ensurePageAncestorsVisible(page);
       return page;
     },
-    [rpc, connectionStatus, storePageDetail, ensurePageAncestorsVisible],
+    [rpc, connectionStatus, storePageDetail],
   );
 
   const fetchPageDetail = useCallback(
@@ -507,16 +471,9 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
       if (!detail) return null;
 
       storePageDetail(detail);
-      await ensurePageAncestorsVisible(pageFromDetail(detail));
       return detail;
     },
-    [
-      rpc,
-      connectionStatus,
-      storePageDetail,
-      ensurePageAncestorsVisible,
-      pageFromDetail,
-    ],
+    [rpc, connectionStatus, storePageDetail],
   );
 
   const fetchTrashedPageDetail = useCallback(
@@ -537,18 +494,20 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
         throw new Error("Workspace not connected");
       }
 
-      const parentPath = childrenDir(parentPage);
       const detail = await rpc.call<WorkspacePageDetail>("create_page", {
-        parentPath,
+        parentId: parentPage.id,
         title: init?.title ?? "Untitled",
         body: init?.body ?? "",
       });
 
       storePageDetail(detail);
-      await invalidateAndRefreshDirs(parentPath, parentDirOfPage(parentPage));
+      await invalidateAndRefreshChildren(
+        parentPage.id,
+        parentKeyOfPage(parentPage),
+      );
       return detail;
     },
-    [rpc, connectionStatus, invalidateAndRefreshDirs, storePageDetail],
+    [rpc, connectionStatus, invalidateAndRefreshChildren, storePageDetail],
   );
 
   const createRootPage = useCallback(
@@ -558,16 +517,16 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
       }
 
       const detail = await rpc.call<WorkspacePageDetail>("create_page", {
-        parentPath: ROOT_PAGES_DIR,
+        parentId: null,
         title: init?.title ?? "Untitled",
         body: init?.body ?? "",
       });
 
       storePageDetail(detail);
-      await invalidateAndRefreshDirs(ROOT_PAGES_DIR);
+      await invalidateAndRefreshChildren(null);
       return detail;
     },
-    [rpc, connectionStatus, invalidateAndRefreshDirs, storePageDetail],
+    [rpc, connectionStatus, invalidateAndRefreshChildren, storePageDetail],
   );
 
   const updatePage = useCallback(
@@ -599,12 +558,12 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
         patch.slug !== undefined ||
         patch.icon !== undefined;
       if (treeChanged) {
-        await invalidateAndRefreshDirs(parentDirOfPage(detail));
+        await invalidateAndRefreshChildren(parentKeyOfPage(detail));
       }
 
       return detail;
     },
-    [rpc, connectionStatus, invalidateAndRefreshDirs, storePageDetail],
+    [rpc, connectionStatus, invalidateAndRefreshChildren, storePageDetail],
   );
 
   const duplicatePage = useCallback(
@@ -617,10 +576,10 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
         id,
       });
       storePageDetail(detail);
-      await invalidateAndRefreshDirs(parentDirOfPage(detail));
+      await invalidateAndRefreshChildren(parentKeyOfPage(detail));
       return detail;
     },
-    [rpc, connectionStatus, invalidateAndRefreshDirs, storePageDetail],
+    [rpc, connectionStatus, invalidateAndRefreshChildren, storePageDetail],
   );
 
   const trashPage = useCallback(
@@ -635,10 +594,15 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
       for (const id of result.trashedIds) {
         removePageIdFromCache(id);
       }
-      await invalidateAndRefreshDirs(parentDirOfPage(page));
+      await invalidateAndRefreshChildren(parentKeyOfPage(page));
       return result.trashedIds;
     },
-    [rpc, connectionStatus, removePageIdFromCache, invalidateAndRefreshDirs],
+    [
+      rpc,
+      connectionStatus,
+      removePageIdFromCache,
+      invalidateAndRefreshChildren,
+    ],
   );
 
   const listTrashedPages = useCallback(async () => {
@@ -666,10 +630,10 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
 
       const detail = await rpc.call<WorkspacePageDetail>("restore_page", { id });
       storePageDetail(detail);
-      await invalidateAndRefreshDirs(parentDirOfPage(detail));
+      await invalidateAndRefreshChildren(parentKeyOfPage(detail));
       return detail;
     },
-    [rpc, connectionStatus, invalidateAndRefreshDirs, storePageDetail],
+    [rpc, connectionStatus, invalidateAndRefreshChildren, storePageDetail],
   );
 
   const purgePage = useCallback(
@@ -684,19 +648,19 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
 
   const reloadPages = useCallback(async () => {
     resetPageTree(
-      setChildrenByDir,
+      setChildrenByParent,
       setPagesById,
       setPageDetailsById,
       setRootError,
-      loadedDepthByDirRef,
-      inflightDepthByDirRef,
-      childrenByDirStableRef,
+      loadedDepthByParentRef,
+      inflightDepthByParentRef,
+      childrenByParentStableRef,
     );
     if (!rpc || connectionStatus !== "connected") return;
-    await refreshDir(ROOT_PAGES_DIR);
-  }, [rpc, connectionStatus, refreshDir]);
+    await refreshChildren(null);
+  }, [rpc, connectionStatus, refreshChildren]);
 
-  const rootPages = getChildren(ROOT_PAGES_DIR);
+  const rootPages = getChildren(null);
 
   const value = useMemo(
     () => ({

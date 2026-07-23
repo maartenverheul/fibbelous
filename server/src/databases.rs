@@ -1,5 +1,4 @@
 use std::collections::hash_map::DefaultHasher;
-use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::Path;
 use std::time::SystemTime;
@@ -10,7 +9,6 @@ use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
 use crate::cache::{CacheDb, DatabaseDetail, DatabaseRowsPage, PageDetail, page_body_from_content};
-use crate::index::sync_workspace;
 
 /// On-disk shape of `databases/*/database.json`.
 /// Field order here is the serialization order.
@@ -296,10 +294,10 @@ impl DatabaseFile {
 }
 
 pub fn get_database(
-    workspace_path: &Path,
-    cache: &CacheDb,
+    _workspace_path: &Path,
+    cache: &mut CacheDb,
     id: &str,
-) -> Result<Option<DatabaseDetail>, String> {
+) -> Result<Option<(DatabaseDetail, bool)>, String> {
     let Some(meta) = cache
         .get_database_by_id(id)
         .map_err(|error| error.to_string())?
@@ -307,42 +305,46 @@ pub fn get_database(
         return Ok(None);
     };
 
-    let file_path = workspace_path.join(&meta.path);
-    let contents = fs::read_to_string(&file_path).map_err(|error| error.to_string())?;
+    let contents = cache
+        .get_database_content(id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "database content not found".to_owned())?;
     let mut database: DatabaseFile =
         serde_json::from_str(&contents).map_err(|error| error.to_string())?;
 
-    if database.ensure_default_views() {
-        write_database_json(&file_path, &database)?;
+    let mutated = database.ensure_default_views();
+    if mutated {
+        let mut serialized =
+            serde_json::to_string_pretty(&database).map_err(|error| error.to_string())?;
+        serialized.push('\n');
+        cache
+            .upsert_database_content(id, &serialized)
+            .map_err(|error| error.to_string())?;
     }
 
     let json = serde_json::to_value(&database).map_err(|error| error.to_string())?;
 
-    Ok(Some(DatabaseDetail {
-        id: meta.id,
-        slug: meta.slug,
-        name: meta.name,
-        path: meta.path,
-        json,
-    }))
-}
-
-fn write_database_json(path: &Path, database: &DatabaseFile) -> Result<(), String> {
-    let mut serialized =
-        serde_json::to_string_pretty(database).map_err(|error| error.to_string())?;
-    serialized.push('\n');
-    fs::write(path, serialized).map_err(|error| error.to_string())
+    Ok(Some((
+        DatabaseDetail {
+            id: meta.id,
+            slug: meta.slug,
+            name: meta.name,
+            path: meta.path,
+            json,
+        },
+        mutated,
+    )))
 }
 
 pub fn list_database_rows(
-    workspace_path: &Path,
+    _workspace_path: &Path,
     cache: &CacheDb,
     database_id: &str,
     limit: Option<usize>,
     offset: Option<usize>,
     sort: Option<DatabaseViewSort>,
 ) -> Result<Option<DatabaseRowsPage>, String> {
-    let Some(meta) = cache
+    let Some(_meta) = cache
         .get_database_by_id(database_id)
         .map_err(|error| error.to_string())?
     else {
@@ -350,8 +352,8 @@ pub fn list_database_rows(
     };
 
     let (field, attribute_key) = if let Some(ref sort) = sort {
-        let contents = fs::read_to_string(workspace_path.join(&meta.path))
-            .map_err(|error| error.to_string())?;
+        let contents = cache.get_database_content(database_id).map_err(|error| error.to_string())?
+            .ok_or_else(|| "database content not found".to_owned())?;
         let database: DatabaseFile =
             serde_json::from_str(&contents).map_err(|error| error.to_string())?;
         resolve_sort_field(&database, sort)?
@@ -386,13 +388,13 @@ pub enum DatabaseSortField {
 }
 
 pub fn update_database_view(
-    workspace_path: &Path,
-    cache: &CacheDb,
+    _workspace_path: &Path,
+    cache: &mut CacheDb,
     database_id: &str,
     view_id: &str,
     update: DatabaseViewUpdate,
 ) -> Result<Option<DatabaseDetail>, String> {
-    mutate_database_view(workspace_path, cache, database_id, view_id, |view| {
+    mutate_database_view(cache, database_id, view_id, |view| {
         if let Some(name) = update.name {
             let name = name.trim().to_owned();
             if name.is_empty() {
@@ -411,8 +413,7 @@ pub fn update_database_view(
 }
 
 fn mutate_database_view(
-    workspace_path: &Path,
-    cache: &CacheDb,
+    cache: &mut CacheDb,
     database_id: &str,
     view_id: &str,
     mutate: impl FnOnce(&mut DatabaseViewDef) -> Result<(), String>,
@@ -424,8 +425,8 @@ fn mutate_database_view(
         return Ok(None);
     };
 
-    let file_path = workspace_path.join(&meta.path);
-    let contents = fs::read_to_string(&file_path).map_err(|error| error.to_string())?;
+    let contents = cache.get_database_content(database_id).map_err(|error| error.to_string())?
+        .ok_or_else(|| "database content not found".to_owned())?;
     let mut database: DatabaseFile =
         serde_json::from_str(&contents).map_err(|error| error.to_string())?;
 
@@ -436,7 +437,9 @@ fn mutate_database_view(
     };
     mutate(view)?;
 
-    write_database_json(&file_path, &database)?;
+    let mut serialized = serde_json::to_string_pretty(&database).map_err(|error| error.to_string())?;
+    serialized.push('\n');
+    cache.upsert_database_content(database_id, &serialized).map_err(|error| error.to_string())?;
 
     let json = serde_json::to_value(&database).map_err(|error| error.to_string())?;
     Ok(Some(DatabaseDetail {
@@ -481,7 +484,7 @@ fn is_safe_attribute_key(key: &str) -> bool {
 }
 
 pub fn create_database_row(
-    workspace_path: &Path,
+    _workspace_path: &Path,
     cache: &mut CacheDb,
     database_id: &str,
     title: Option<String>,
@@ -497,7 +500,6 @@ pub fn create_database_row(
     let database_dir_rel = database_dir
         .to_string_lossy()
         .replace('\\', "/");
-    let database_dir_abs = workspace_path.join(database_dir);
 
     let title = title
         .filter(|value| !value.is_empty())
@@ -514,14 +516,9 @@ pub fn create_database_row(
     let content = format!(
         "---\nid: {id}\nslug: {file_slug}\ntitle: {title}\ncreated: \"{now}\"\nedited: \"{now}\"\nattributes: {{}}\n---\n\n"
     );
-    let file_path = database_dir_abs.join(format!("{id}-{file_slug}.mdx"));
-    fs::create_dir_all(&database_dir_abs).map_err(|error| error.to_string())?;
-    fs::write(&file_path, content).map_err(|error| error.to_string())?;
-
-    sync_workspace(workspace_path, cache).map_err(|error| error.to_string())?;
-
-    let relative_path = path_relative_to_workspace(workspace_path, &file_path);
-    let content = fs::read_to_string(&file_path).map_err(|error| error.to_string())?;
+    let relative_path = format!("{database_dir_rel}/{id}-{file_slug}.mdx");
+    cache.upsert_database_row_mutable(&relative_path, database_id, &id, Some(&file_slug), Some(&title), &content)
+        .map_err(|error| error.to_string())?;
     let body = page_body_from_content(&content);
 
     let referenced_pages = cache
@@ -530,6 +527,7 @@ pub fn create_database_row(
 
     Ok(PageDetail {
         id,
+        parent_id: None,
         slug: Some(file_slug),
         title: Some(title),
         icon: None,
@@ -539,6 +537,7 @@ pub fn create_database_row(
         body_hash: crate::cache::hash_body(&body),
         body,
         referenced_pages,
+        ancestors: Vec::new(),
     })
 }
 
@@ -566,9 +565,3 @@ fn now_iso() -> String {
         .to_string()
 }
 
-fn path_relative_to_workspace(workspace_path: &Path, path: &Path) -> String {
-    path.strip_prefix(workspace_path)
-        .unwrap_or(path)
-        .to_string_lossy()
-        .replace('\\', "/")
-}

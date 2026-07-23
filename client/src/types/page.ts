@@ -1,5 +1,7 @@
 export type WorkspacePage = {
   id: string;
+  /** Null when the page is at the workspace root. */
+  parentId?: string | null;
   slug: string | null;
   title: string | null;
   icon: string | null;
@@ -9,13 +11,16 @@ export type WorkspacePage = {
   databaseId?: string | null;
   /**
    * Nested descendants when `list_pages` is called with depth > 1.
-   * Not kept in the local page cache; used only to hydrate child dirs.
+   * Not kept in the local page cache; used only to hydrate child lists.
    */
   children?: WorkspacePage[];
 };
 
 /** Default depth for sidebar `list_pages` (self + children of children). */
 export const DEFAULT_LIST_PAGES_DEPTH = 2;
+
+/** Sentinel key for root-level children in the client tree cache. */
+export const ROOT_PARENT_ID = null;
 
 export type SearchPageHit = WorkspacePage & {
   matchIn: "title" | "slug" | "body";
@@ -25,6 +30,8 @@ export type SearchPageHit = WorkspacePage & {
 /** Page linked from a body via an internal `.mdx` href (from `get_page`). */
 export type ReferencedPage = {
   id: string;
+  /** Parent id when supplied by the page-detail response. */
+  parentId?: string | null;
   name: string;
   icon: string | null;
   /** Workspace-relative path used as the full internal link. */
@@ -40,6 +47,8 @@ export type WorkspacePageDetail = WorkspacePage & {
    * Always included with page content from `get_page` / page mutations.
    */
   referencedPages: ReferencedPage[];
+  /** Ordered root → immediate parent (from `get_page`). */
+  ancestors?: WorkspacePage[];
 };
 
 /** Compact op: `[0, index, length]` delete or `[1, index, text]` insert. */
@@ -70,6 +79,7 @@ export type TrashedPageDetail = TrashedPage & {
 export function buildTrashedPageSegment(page: TrashedPage) {
   return pageKey({
     id: page.id,
+    parentId: null,
     slug: page.slug,
     title: page.title,
     icon: page.icon,
@@ -78,6 +88,7 @@ export function buildTrashedPageSegment(page: TrashedPage) {
   });
 }
 
+/** @deprecated Prefer parentId-based tree keys; kept for path display only. */
 export const ROOT_PAGES_DIR = "pages";
 
 export function pageKey(page: WorkspacePage) {
@@ -159,15 +170,19 @@ export function slugifyPageTitle(title: string) {
   return slug || "page";
 }
 
-export function childrenDir(page: WorkspacePage) {
-  const lastSlash = page.path.lastIndexOf("/");
-  const parent = lastSlash === -1 ? ROOT_PAGES_DIR : page.path.slice(0, lastSlash);
-  return `${parent}/${page.id}`;
+/** Cache / RPC key for a parent’s children list (`null` = workspace root). */
+export function childrenParentKey(page: WorkspacePage): string | null {
+  return page.id;
 }
 
-export function parentDirOfPage(page: WorkspacePage) {
-  const lastSlash = page.path.lastIndexOf("/");
-  return lastSlash === -1 ? ROOT_PAGES_DIR : page.path.slice(0, lastSlash);
+/** Parent id whose children list contains this page. */
+export function parentKeyOfPage(page: WorkspacePage): string | null {
+  return page.parentId ?? null;
+}
+
+/** Stable map key for `childrenByParent` (`"root"` when parent is null). */
+export function treeCacheKey(parentId: string | null): string {
+  return parentId ?? "root";
 }
 
 export function buildPageBreadcrumbs(
@@ -183,18 +198,29 @@ export function buildPageBreadcrumbs(
   }
 
   const crumbs: WorkspacePage[] = [page];
-  let dir = parentDirOfPage(page);
+  let parentId = page.parentId ?? null;
 
-  while (dir !== ROOT_PAGES_DIR) {
-    const parentId = dir.split("/").pop();
-    if (!parentId) break;
-
+  while (parentId) {
     const parent = findPageById(parentId);
     if (!parent) break;
 
     crumbs.unshift(parent);
-    dir = parentDirOfPage(parent);
+    parentId = parent.parentId ?? null;
   }
 
   return crumbs;
+}
+
+/**
+ * Prefer ancestors from `get_page`; fall back to walking `parentId` in the
+ * local cache.
+ */
+export function breadcrumbsFromDetail(
+  detail: WorkspacePageDetail,
+  findPageById: (id: string) => WorkspacePage | undefined,
+): WorkspacePage[] {
+  if (detail.ancestors && detail.ancestors.length > 0) {
+    return [...detail.ancestors, detail];
+  }
+  return buildPageBreadcrumbs(detail, findPageById);
 }

@@ -6,7 +6,6 @@ import { useWorkspacePages } from "../../hooks/useWorkspacePages";
 import { cn } from "../../lib/utils";
 import { PageActionsMenu } from "./PageActionsMenu";
 import {
-  childrenDir,
   buildPageSegment,
   isPagePathSegment,
   isPageSegmentActive,
@@ -65,8 +64,7 @@ export function PageTreeItem({
   } = useWorkspacePages();
   const segment = buildPageSegment(page, findPageById);
   const label = pageLabel(page);
-  const childParentPath = childrenDir(page);
-  const fetchedChildren = getChildren(childParentPath);
+  const fetchedChildren = getChildren(page.id);
   const childrenRef = useRef<WorkspacePage[] | undefined>(undefined);
   if (fetchedChildren !== undefined) {
     childrenRef.current = fetchedChildren;
@@ -79,9 +77,14 @@ export function PageTreeItem({
     isPagePathSegment(activeSegment) &&
     (() => {
       const activePage = findPageByKey(activeSegment);
-      return activePage
-        ? activePage.path.startsWith(`${childParentPath}/`)
-        : false;
+      const visited = new Set<string>();
+      let parentId = activePage?.parentId ?? null;
+      while (parentId && !visited.has(parentId)) {
+        if (parentId === page.id) return true;
+        visited.add(parentId);
+        parentId = findPageById(parentId)?.parentId ?? null;
+      }
+      return false;
     })();
 
   const [open, setOpen] = useState(isAncestorOfActive);
@@ -128,11 +131,11 @@ export function PageTreeItem({
 
   useEffect(() => {
     // Only the expanded node fetches (depth 2). That response also fills each
-    // child's dir, so mounted collapsed children must not prefetch or we get N calls.
+    // child's list, so mounted collapsed children must not prefetch or we get N calls.
     if (page.hasChildren && open) {
-      ensureChildren(childParentPath, 2);
+      ensureChildren(page.id, 2);
     }
-  }, [page.hasChildren, childParentPath, ensureChildren, open]);
+  }, [page.hasChildren, page.id, ensureChildren, open]);
 
   useEffect(() => {
     if (!isAncestorOfActive) {
