@@ -34,5 +34,5 @@ export function DatabaseSelectChips({
 export function isSelectPropertyType(
   type: DatabasePropertyColumn["type"],
 ): boolean {
-  return type === "select" || type === "multi_select";
+  return type === "select" || type === "multi_select" || type === "status";
 }

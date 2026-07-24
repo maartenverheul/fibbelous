@@ -58,6 +58,7 @@ export type WorkspaceContextValue = {
       slug?: string;
       icon?: string | null;
       favorite?: boolean;
+      attributes?: Record<string, unknown>;
     },
   ) => Promise<WorkspacePageDetail>;
   setPageFavorite: (

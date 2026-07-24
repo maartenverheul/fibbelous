@@ -13,10 +13,14 @@ export const dbSelectChipGroup = "inline-flex max-w-full flex-wrap items-center 
 
 function optionName(raw: unknown): string | null {
   if (typeof raw === "string" && raw.trim()) return raw.trim();
+  if (typeof raw === "number" && Number.isFinite(raw)) return String(raw);
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const record = raw as Record<string, unknown>;
   if (typeof record.name === "string" && record.name.trim()) {
     return record.name.trim();
+  }
+  if (typeof record.name === "number" && Number.isFinite(record.name)) {
+    return String(record.name);
   }
   return null;
 }

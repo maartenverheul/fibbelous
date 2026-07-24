@@ -66,6 +66,7 @@ export type WorkspacePagesValue = {
       slug?: string;
       icon?: string | null;
       favorite?: boolean;
+      attributes?: Record<string, unknown>;
     },
   ) => Promise<WorkspacePageDetail>;
   setPageFavorite: (id: string, favorite: boolean) => Promise<WorkspacePageDetail>;
@@ -572,6 +573,7 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
         slug?: string;
         icon?: string | null;
         favorite?: boolean;
+        attributes?: Record<string, unknown>;
       },
     ) => {
       if (!rpc || connectionStatus !== "connected") {

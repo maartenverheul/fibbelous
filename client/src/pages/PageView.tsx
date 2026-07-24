@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
+import { DatabaseRowAttributes } from "../components/database/DatabaseRowAttributes";
 import { PageBodyEditor } from "../components/page/PageBodyEditor";
 import { PageDatabaseView } from "../components/page/PageDatabaseView";
 import { PageIconPicker } from "../components/page/PageIconPicker";
@@ -27,8 +28,22 @@ import {
 } from "../types/page";
 
 type PageLoadStatus = "idle" | "loading" | "ready" | "missing";
-type PageDraft = { title: string; body: string };
+type PageDraft = {
+  title: string;
+  body: string;
+  attributes: Record<string, unknown>;
+};
 type SyncedBody = { body: string; hash: string };
+
+/** Idle time before dirty page fields are synced to the server. */
+const PAGE_SAVE_DEBOUNCE_MS = 3000;
+
+function attributesEqual(
+  a: Record<string, unknown> | null | undefined,
+  b: Record<string, unknown> | null | undefined,
+): boolean {
+  return JSON.stringify(a ?? {}) === JSON.stringify(b ?? {});
+}
 
 type PageEditorProps = {
   pageId: string;
@@ -40,8 +55,13 @@ type PageEditorProps = {
   restoring: boolean;
   showTrashBanner: boolean;
   referencedPages?: ReferencedPage[];
+  databaseId?: string | null;
+  attributes?: Record<string, unknown>;
+  created?: string | null;
+  edited?: string | null;
   onTitleChange: (value: string) => void;
   onBodyChange: (value: string) => void;
+  onAttributesChange?: (value: Record<string, unknown>) => void;
   onIconChange?: (icon: string) => void;
   onRestore: () => void;
 };
@@ -56,12 +76,18 @@ function PageEditor({
   restoring,
   showTrashBanner,
   referencedPages,
+  databaseId,
+  attributes,
+  created,
+  edited,
   onTitleChange,
   onBodyChange,
+  onAttributesChange,
   onIconChange,
   onRestore,
 }: PageEditorProps) {
   const databasePage = isDatabaseOnlyBody(body);
+  const isDatabaseRow = Boolean(databaseId) && !databasePage;
 
   return (
     <div className="flex min-h-full flex-col">
@@ -147,6 +173,17 @@ function PageEditor({
           icon ? "pt-20" : "pt-24",
         )}
       >
+        {isDatabaseRow && databaseId ? (
+          <DatabaseRowAttributes
+            pageId={pageId}
+            databaseId={databaseId}
+            attributes={attributes}
+            created={created}
+            edited={edited}
+            readOnly={readOnly}
+            onChange={onAttributesChange}
+          />
+        ) : null}
         {isBodyReady ? (
           databasePage ? (
             <PageDatabaseView key={pageId} body={body} />
@@ -176,6 +213,7 @@ function draftFromDetail(detail: WorkspacePageDetail): PageDraft {
   return {
     title: pageLabel(detail),
     body: detail.body,
+    attributes: detail.attributes ?? {},
   };
 }
 
@@ -183,6 +221,7 @@ function draftFromTrashed(trashed: TrashedPageDetail): PageDraft {
   return {
     title: pageLabel(trashed),
     body: trashed.body,
+    attributes: {},
   };
 }
 
@@ -195,7 +234,7 @@ function draftFromPage(
   if (detail) return draftFromDetail(detail);
 
   const page = findPageById(pageId);
-  return { title: page ? pageLabel(page) : "", body: "" };
+  return { title: page ? pageLabel(page) : "", body: "", attributes: {} };
 }
 
 export function PageView() {
@@ -220,7 +259,17 @@ export function PageView() {
   const [editorPageId, setEditorPageId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  const [attributes, setAttributes] = useState<Record<string, unknown>>({});
+  const titleRef = useRef(title);
+  const bodyRef = useRef(body);
+  const attributesRef = useRef(attributes);
+  const pageIdRef = useRef(pageId);
+  titleRef.current = title;
+  bodyRef.current = body;
+  attributesRef.current = attributes;
+  pageIdRef.current = pageId;
   const [detail, setDetail] = useState<WorkspacePageDetail | null>(null);
+  const detailRef = useRef<WorkspacePageDetail | null>(null);
   const [trashedDetail, setTrashedDetail] = useState<TrashedPageDetail | null>(
     null,
   );
@@ -230,6 +279,7 @@ export function PageView() {
   }>({ pageId: null, status: "idle" });
   const [restoring, setRestoring] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveChainRef = useRef(Promise.resolve());
   const fetchSettledPageIdRef = useRef<string | null>(null);
   const fetchPageDetailRef = useRef(fetchPageDetail);
   const fetchTrashedPageDetailRef = useRef(fetchTrashedPageDetail);
@@ -276,7 +326,7 @@ export function PageView() {
         ? (draftsRef.current.get(pageId) ??
           draftFromPage(pageId, getPageDetailById, findPageById))
         : draftFromPage(pageId, getPageDetailById, findPageById)
-      : { title: "", body: "" };
+      : { title: "", body: "", attributes: {} };
 
     if (pageId) {
       draftsRef.current.set(pageId, nextDraft);
@@ -285,20 +335,36 @@ export function PageView() {
     setEditorPageId(pageId);
     setTitle(nextDraft.title);
     setBody(nextDraft.body);
+    setAttributes(nextDraft.attributes ?? {});
   }
 
   const activeDetail =
     detail?.id === pageId ? detail : cachedDetail ?? undefined;
+  if (activeDetail) {
+    detailRef.current = activeDetail;
+  }
   const isTrashed = trashedDetail?.id === pageId;
   const page = isTrashed ? trashedDetail : (activeDetail ?? cachedPage);
 
   const setDraft = useCallback(
-    (nextTitle: string, nextBody: string) => {
+    (
+      nextTitle: string,
+      nextBody: string,
+      nextAttributes?: Record<string, unknown>,
+    ) => {
+      const attrs = nextAttributes ?? attributesRef.current;
       setTitle(nextTitle);
       setBody(nextBody);
+      if (nextAttributes !== undefined) {
+        setAttributes(nextAttributes);
+      }
       if (pageId) {
         dirtyPageIdsRef.current.add(pageId);
-        draftsRef.current.set(pageId, { title: nextTitle, body: nextBody });
+        draftsRef.current.set(pageId, {
+          title: nextTitle,
+          body: nextBody,
+          attributes: attrs,
+        });
       }
     },
     [pageId],
@@ -307,15 +373,16 @@ export function PageView() {
   const applyDetail = useCallback(
     (nextDetail: WorkspacePageDetail, forPageId: string = pageId ?? "") => {
       const nextDraft = draftFromDetail(nextDetail);
-      draftsRef.current.set(forPageId, nextDraft);
       syncedBodyByPageIdRef.current.set(forPageId, {
         body: nextDetail.body,
         hash: nextDetail.bodyHash,
       });
       if (!dirtyPageIdsRef.current.has(forPageId)) {
+        draftsRef.current.set(forPageId, nextDraft);
         if (forPageId === pageId) {
           setTitle(nextDraft.title);
           setBody(nextDraft.body);
+          setAttributes(nextDraft.attributes);
         }
       }
       setDetail(nextDetail);
@@ -425,7 +492,13 @@ export function PageView() {
 
     const savedTitle = pageLabel(page);
     const savedBody = activeDetail.body;
-    if (title === savedTitle && bodyMatchesStored(body, savedBody)) {
+    const savedAttributes = activeDetail.attributes ?? {};
+    const attributesChanged = !attributesEqual(attributes, savedAttributes);
+    if (
+      title === savedTitle &&
+      bodyMatchesStored(body, savedBody) &&
+      !attributesChanged
+    ) {
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current);
         saveTimerRef.current = null;
@@ -434,109 +507,158 @@ export function PageView() {
       return;
     }
 
-    setStatus("saving");
+    setStatus("unsaved");
 
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
     }
 
+    const pageIdForSave = page.id;
+
     saveTimerRef.current = setTimeout(() => {
       saveTimerRef.current = null;
-      const titleChanged = title !== savedTitle;
-      const bodyChanged = !bodyMatchesStored(body, savedBody);
-      const pageIdForSave = page.id;
-      const activeDetailForSave = activeDetail;
 
-      void (async () => {
-        const meta = titleChanged
-          ? { title, slug: slugifyPageTitle(title) }
-          : {};
+      saveChainRef.current = saveChainRef.current
+        .catch(() => {
+          // Previous save failed; continue the chain.
+        })
+        .then(async () => {
+          // Skip if the user navigated away before this queued save ran.
+          if (pageIdRef.current !== pageIdForSave) return;
 
-        let bodyFields: { body?: string; bodyPatch?: BodyPatch } = {};
+          const titleToSave = titleRef.current;
+          const bodyToSave = bodyRef.current;
+          const attributesToSave = attributesRef.current;
+          const detailForSave =
+            detailRef.current?.id === pageIdForSave
+              ? detailRef.current
+              : undefined;
+          if (!detailForSave) return;
 
-        if (bodyChanged) {
-          const synced =
-            syncedBodyByPageIdRef.current.get(pageIdForSave) ??
-            (activeDetailForSave.bodyHash
-              ? {
-                  body: activeDetailForSave.body,
-                  hash: activeDetailForSave.bodyHash,
-                }
-              : undefined);
-
-          if (synced) {
-            const patch = await buildBodyPatch(synced.body, body);
-            if (shouldSendBodyPatch(patch, body)) {
-              bodyFields = { bodyPatch: patch };
-            } else {
-              bodyFields = { body };
-            }
-          } else {
-            bodyFields = { body };
-          }
-        }
-
-        const finishSave = (updated: WorkspacePageDetail) => {
-          dirtyPageIdsRef.current.delete(pageIdForSave);
-          applyDetail(updated, pageIdForSave);
-          // Anchor the next diff on the body we actually sent (editor truth),
-          // using the server-verified hash from the response.
-          syncedBodyByPageIdRef.current.set(pageIdForSave, {
-            body: bodyChanged ? body : updated.body,
-            hash: updated.bodyHash,
-          });
-          setStatus("saved");
-          const previousSegment = buildPageSegment(
-            activeDetailForSave,
-            findPageById,
+          const baselineTitle = pageLabel(detailForSave);
+          const baselineBody = detailForSave.body;
+          const baselineAttributes = detailForSave.attributes ?? {};
+          const titleChanged = titleToSave !== baselineTitle;
+          const bodyChanged = !bodyMatchesStored(bodyToSave, baselineBody);
+          const attrsChanged = !attributesEqual(
+            attributesToSave,
+            baselineAttributes,
           );
-          const newSegment = buildPageSegment(updated, findPageById);
-          if (newSegment !== previousSegment) {
-            navigateInTab(newSegment, {
-              label: pageLabel(updated),
-              icon: updated.icon,
-              pageId: updated.id,
-            });
-          }
-        };
 
-        try {
-          const updated = await updatePage(pageIdForSave, {
-            ...meta,
-            ...bodyFields,
-          });
-          finishSave(updated);
-        } catch (error) {
-          if (
-            bodyChanged &&
-            bodyFields.bodyPatch &&
-            isBodyHashMismatchError(error)
-          ) {
-            try {
-              const fresh = await fetchPageDetailRef.current(pageIdForSave);
-              if (fresh) {
-                syncedBodyByPageIdRef.current.set(pageIdForSave, {
-                  body: fresh.body,
-                  hash: fresh.bodyHash,
-                });
+          if (!titleChanged && !bodyChanged && !attrsChanged) {
+            dirtyPageIdsRef.current.delete(pageIdForSave);
+            setStatus("saved");
+            return;
+          }
+
+          setStatus("saving");
+
+          const meta = titleChanged
+            ? { title: titleToSave, slug: slugifyPageTitle(titleToSave) }
+            : {};
+
+          let bodyFields: { body?: string; bodyPatch?: BodyPatch } = {};
+
+          if (bodyChanged) {
+            const synced =
+              syncedBodyByPageIdRef.current.get(pageIdForSave) ??
+              (detailForSave.bodyHash
+                ? {
+                  body: detailForSave.body,
+                  hash: detailForSave.bodyHash,
+                }
+                : undefined);
+
+            if (synced) {
+              const patch = await buildBodyPatch(synced.body, bodyToSave);
+              if (shouldSendBodyPatch(patch, bodyToSave)) {
+                bodyFields = { bodyPatch: patch };
+              } else {
+                bodyFields = { body: bodyToSave };
               }
-              const updated = await updatePage(pageIdForSave, {
-                ...meta,
-                body,
-              });
-              finishSave(updated);
-              return;
-            } catch (retryError) {
-              console.error(retryError);
-              setStatus("error");
-              return;
+            } else {
+              bodyFields = { body: bodyToSave };
             }
           }
-          console.error(error);
-          setStatus("error");
-        }
-      })();
-    }, 500);
+
+          const finishSave = (updated: WorkspacePageDetail) => {
+            syncedBodyByPageIdRef.current.set(pageIdForSave, {
+              body: updated.body,
+              hash: updated.bodyHash,
+            });
+            detailRef.current = updated;
+
+            const draftMatchesSave =
+              titleRef.current === titleToSave &&
+              bodyMatchesStored(bodyRef.current, bodyToSave) &&
+              attributesEqual(attributesRef.current, attributesToSave);
+
+            if (draftMatchesSave) {
+              dirtyPageIdsRef.current.delete(pageIdForSave);
+            }
+
+            applyDetail(updated, pageIdForSave);
+
+            if (draftMatchesSave) {
+              setStatus("saved");
+            } else {
+              setStatus("unsaved");
+            }
+
+            const previousSegment = buildPageSegment(
+              detailForSave,
+              findPageById,
+            );
+            const newSegment = buildPageSegment(updated, findPageById);
+            if (newSegment !== previousSegment) {
+              navigateInTab(newSegment, {
+                label: pageLabel(updated),
+                icon: updated.icon,
+                pageId: updated.id,
+              });
+            }
+          };
+
+          try {
+            const updated = await updatePage(pageIdForSave, {
+              ...meta,
+              ...bodyFields,
+              ...(attrsChanged ? { attributes: attributesToSave } : {}),
+            });
+            finishSave(updated);
+          } catch (error) {
+            if (
+              bodyChanged &&
+              bodyFields.bodyPatch &&
+              isBodyHashMismatchError(error)
+            ) {
+              try {
+                const fresh = await fetchPageDetailRef.current(pageIdForSave);
+                if (fresh) {
+                  syncedBodyByPageIdRef.current.set(pageIdForSave, {
+                    body: fresh.body,
+                    hash: fresh.bodyHash,
+                  });
+                  detailRef.current = fresh;
+                }
+                const updated = await updatePage(pageIdForSave, {
+                  ...meta,
+                  body: bodyToSave,
+                  ...(attrsChanged ? { attributes: attributesToSave } : {}),
+                });
+                finishSave(updated);
+                return;
+              } catch (retryError) {
+                console.error(retryError);
+                setStatus("error");
+                return;
+              }
+            }
+            console.error(error);
+            setStatus("error");
+          }
+        });
+    }, PAGE_SAVE_DEBOUNCE_MS);
 
     return () => {
       if (saveTimerRef.current) {
@@ -546,6 +668,7 @@ export function PageView() {
   }, [
     title,
     body,
+    attributes,
     page,
     pageId,
     editorPageId,
@@ -629,8 +752,13 @@ export function PageView() {
       restoring={restoring}
       showTrashBanner={isTrashed}
       referencedPages={detail?.referencedPages ?? []}
+      databaseId={activeDetail?.databaseId ?? cachedPage?.databaseId}
+      attributes={attributes}
+      created={activeDetail?.created}
+      edited={activeDetail?.edited}
       onTitleChange={(value) => setDraft(value, body)}
       onBodyChange={(value) => setDraft(title, value)}
+      onAttributesChange={(value) => setDraft(title, body, value)}
       onIconChange={isTrashed ? undefined : (value) => void handleIconChange(value)}
       onRestore={() => void handleRestore()}
     />

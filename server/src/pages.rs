@@ -107,6 +107,8 @@ pub struct UpdatePageInput {
     pub body: Option<String>,
     pub body_patch: Option<BodyPatch>,
     pub favorite: Option<bool>,
+    /// When set on a database row, replaces the frontmatter `attributes` map.
+    pub attributes: Option<serde_json::Value>,
 }
 
 /// Apply UTF-8 byte-indexed insert/delete ops sequentially.
@@ -493,7 +495,12 @@ fn update_database_row(
         .filter(|value| !value.is_empty())
         .or(existing.created.clone())
         .unwrap_or_else(now_iso);
-    let attributes_block = extract_attributes_block(existing_frontmatter);
+    let edited = now_iso();
+    let attributes_block = if let Some(attributes) = input.attributes.as_ref() {
+        format_attributes_block(attributes)?
+    } else {
+        extract_attributes_block(existing_frontmatter)
+    };
     let content = format_database_row_content(
         &DatabaseRowFrontmatter {
             id: input.id.clone(),
@@ -501,8 +508,8 @@ fn update_database_row(
             title: title.clone(),
             icon: icon.clone(),
             favorite,
-            created,
-            edited: now_iso(),
+            created: created.clone(),
+            edited: edited.clone(),
             attributes_block,
         },
         &body,
@@ -521,6 +528,7 @@ fn update_database_row(
         )
         .map_err(|error| error.to_string())?;
 
+    let attributes = input.attributes.unwrap_or(existing.attributes);
     let referenced_pages = cache
         .referenced_pages_for_body(&body)
         .map_err(|error| error.to_string())?;
@@ -554,6 +562,9 @@ fn update_database_row(
             has_children: false,
             favorite,
             database_id: Some(existing.database_id),
+            attributes: Some(attributes),
+            created: Some(created),
+            edited: Some(edited),
             body_hash: hash_body(&body),
             body,
             referenced_pages,
@@ -602,6 +613,122 @@ fn extract_attributes_block(frontmatter_inner: &str) -> String {
         return block;
     }
     "attributes: {}\n".to_owned()
+}
+
+/// Serialize a JSON attribute map to a YAML `attributes:` frontmatter block.
+/// Arrays of scalars use inline flow style: `Tags: [A, B]`.
+fn format_attributes_block(attributes: &serde_json::Value) -> Result<String, String> {
+    let attrs = match attributes {
+        serde_json::Value::Null => serde_json::Map::new(),
+        serde_json::Value::Object(map) => map.clone(),
+        _ => return Err("attributes must be a JSON object".to_owned()),
+    };
+
+    if attrs.is_empty() {
+        return Ok("attributes: {}\n".to_owned());
+    }
+
+    let mut block = String::from("attributes:\n");
+    for (key, value) in &attrs {
+        block.push_str("  ");
+        block.push_str(&format_yaml_plain_or_quoted(key));
+        block.push_str(": ");
+        block.push_str(&format_yaml_attr_value(value)?);
+        block.push('\n');
+    }
+    Ok(block)
+}
+
+fn format_yaml_attr_value(value: &serde_json::Value) -> Result<String, String> {
+    match value {
+        serde_json::Value::Null => Ok("null".to_owned()),
+        serde_json::Value::Bool(flag) => Ok(flag.to_string()),
+        serde_json::Value::Number(number) => Ok(number.to_string()),
+        serde_json::Value::String(text) => Ok(format_yaml_plain_or_quoted(text)),
+        serde_json::Value::Array(items) => {
+            if items.iter().all(is_yaml_flow_scalar) {
+                let mut parts = Vec::with_capacity(items.len());
+                for item in items {
+                    parts.push(format_yaml_attr_value(item)?);
+                }
+                Ok(format!("[{}]", parts.join(", ")))
+            } else {
+                // Fall back to serde_yaml block form for nested/complex arrays.
+                let mut rendered =
+                    serde_yaml::to_string(value).map_err(|error| error.to_string())?;
+                if let Some(rest) = rendered.strip_prefix("---\n") {
+                    rendered = rest.to_owned();
+                }
+                Ok(rendered.trim_end().to_owned())
+            }
+        }
+        serde_json::Value::Object(_) => {
+            let mut rendered =
+                serde_yaml::to_string(value).map_err(|error| error.to_string())?;
+            if let Some(rest) = rendered.strip_prefix("---\n") {
+                rendered = rest.to_owned();
+            }
+            Ok(rendered.trim_end().to_owned())
+        }
+    }
+}
+
+fn is_yaml_flow_scalar(value: &serde_json::Value) -> bool {
+    matches!(
+        value,
+        serde_json::Value::Null
+            | serde_json::Value::Bool(_)
+            | serde_json::Value::Number(_)
+            | serde_json::Value::String(_)
+    )
+}
+
+fn format_yaml_plain_or_quoted(text: &str) -> String {
+    if text.is_empty() {
+        return "\"\"".to_owned();
+    }
+
+    let needs_quotes = text.chars().any(|ch| {
+        matches!(
+            ch,
+            ':' | '#'
+                | ','
+                | '['
+                | ']'
+                | '{'
+                | '}'
+                | '&'
+                | '*'
+                | '!'
+                | '|'
+                | '>'
+                | '\''
+                | '"'
+                | '%'
+                | '@'
+                | '`'
+                | '?'
+                | '\n'
+                | '\r'
+                | '\t'
+        )
+    }) || text.starts_with('-')
+        || text.starts_with(' ')
+        || text.ends_with(' ')
+        || text.eq_ignore_ascii_case("true")
+        || text.eq_ignore_ascii_case("false")
+        || text.eq_ignore_ascii_case("null")
+        || text.eq_ignore_ascii_case("yes")
+        || text.eq_ignore_ascii_case("no");
+
+    if needs_quotes {
+        format!(
+            "\"{}\"",
+            text.replace('\\', "\\\\").replace('"', "\\\"")
+        )
+    } else {
+        text.to_owned()
+    }
 }
 
 pub(crate) fn format_database_row_content(

@@ -278,7 +278,9 @@ function parsePropertyOptions(
   prop: Record<string, unknown>,
   type: DatabasePropertyConfig["type"],
 ): SelectOption[] | undefined {
-  if (type !== "select" && type !== "multi_select") return undefined;
+  if (type !== "select" && type !== "multi_select" && type !== "status") {
+    return undefined;
+  }
   const config = asRecord(prop[type]);
   if (!config || !Array.isArray(config.options)) return undefined;
 

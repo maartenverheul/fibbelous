@@ -51,6 +51,12 @@ export type WorkspacePageDetail = WorkspacePage & {
   referencedPages: ReferencedPage[];
   /** Ordered root → immediate parent (from `get_page`). */
   ancestors?: WorkspacePage[];
+  /** Database-row attribute map from frontmatter. */
+  attributes?: Record<string, unknown>;
+  /** Row frontmatter `created` (ISO). */
+  created?: string | null;
+  /** Row frontmatter `edited` (ISO). */
+  edited?: string | null;
 };
 
 /** Compact op: `[0, index, length]` delete or `[1, index, text]` insert. */

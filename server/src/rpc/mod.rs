@@ -97,6 +97,8 @@ struct UpdatePageParams {
     body_patch: Option<crate::pages::BodyPatch>,
     #[serde(default)]
     favorite: Option<bool>,
+    #[serde(default)]
+    attributes: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -298,6 +300,7 @@ pub fn build_workspace_module(state: WorkspaceRpcState) -> RpcModule<WorkspaceRp
                     body: request.body,
                     body_patch: request.body_patch,
                     favorite: request.favorite,
+                    attributes: request.attributes,
                 })
             })
             .await
@@ -556,6 +559,7 @@ pub async fn call_workspace_rpc(
                     body: request.body,
                     body_patch: request.body_patch,
                     favorite: request.favorite,
+                    attributes: request.attributes,
                 })
             })
             .await

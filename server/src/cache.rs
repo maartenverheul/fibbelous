@@ -116,6 +116,15 @@ pub struct PageDetail {
     /// Set when this page is a database row; id of the parent database / host page.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub database_id: Option<String>,
+    /// Database-row attribute map from frontmatter; omitted for normal pages.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attributes: Option<serde_json::Value>,
+    /// Row frontmatter `created` (ISO); omitted for normal pages.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created: Option<String>,
+    /// Row frontmatter `edited` (ISO); omitted for normal pages.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub edited: Option<String>,
     pub body: String,
     /// First 10 hex chars of SHA-256(`body` UTF-8 bytes).
     pub body_hash: String,
@@ -656,6 +665,9 @@ impl CacheDb {
             has_children,
             favorite,
             database_id: None,
+            attributes: None,
+            created: None,
+            edited: None,
             body,
             body_hash,
             referenced_pages,
@@ -881,13 +893,28 @@ impl CacheDb {
         content: &str,
         favorite: bool,
     ) -> rusqlite::Result<()> {
+        let (created, edited, attributes_json) = parse_row_cache_fields(content);
         self.conn.execute(
             "INSERT INTO database_rows (path, database_id, id, slug, title, icon, created, edited, attributes_json, content, favorite, modified_ns, size_bytes, fs_dirty)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, '{}', ?7, ?8, 0, 0, 1)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 0, 0, 1)
              ON CONFLICT(id) DO UPDATE SET path=excluded.path, database_id=excluded.database_id,
-             slug=excluded.slug, title=excluded.title, icon=excluded.icon, content=excluded.content,
+             slug=excluded.slug, title=excluded.title, icon=excluded.icon,
+             created=excluded.created, edited=excluded.edited,
+             attributes_json=excluded.attributes_json, content=excluded.content,
              favorite=excluded.favorite, fs_dirty=1",
-            params![path, database_id, id, slug, title, icon, content, favorite],
+            params![
+                path,
+                database_id,
+                id,
+                slug,
+                title,
+                icon,
+                created,
+                edited,
+                attributes_json,
+                content,
+                favorite
+            ],
         )?;
         Ok(())
     }
@@ -1298,6 +1325,59 @@ fn strip_frontmatter(content: &str) -> &str {
     };
 
     rest[end + 4..].trim_start()
+}
+
+fn extract_frontmatter_yaml(content: &str) -> Option<&str> {
+    let content = content.trim_start();
+    let rest = content.strip_prefix("---")?;
+    let end = rest.find("\n---")?;
+    Some(&rest[..end])
+}
+
+/// Parse `created`, `edited`, and `attributes_json` from row MDX content for cache upserts.
+pub(crate) fn parse_row_cache_fields(content: &str) -> (Option<String>, Option<String>, String) {
+    let yaml = extract_frontmatter_yaml(content).unwrap_or("");
+    let value: serde_yaml::Value = if yaml.trim().is_empty() {
+        serde_yaml::Value::Mapping(serde_yaml::Mapping::new())
+    } else {
+        serde_yaml::from_str(yaml).unwrap_or(serde_yaml::Value::Mapping(serde_yaml::Mapping::new()))
+    };
+
+    let mapping = value.as_mapping();
+    let created = mapping
+        .and_then(|map| map.get(serde_yaml::Value::String("created".into())))
+        .and_then(yaml_scalar_to_string);
+    let edited = mapping
+        .and_then(|map| map.get(serde_yaml::Value::String("edited".into())))
+        .and_then(yaml_scalar_to_string);
+    let attributes = mapping
+        .and_then(|map| map.get(serde_yaml::Value::String("attributes".into())))
+        .cloned()
+        .unwrap_or(serde_yaml::Value::Mapping(serde_yaml::Mapping::new()));
+    let attributes_json = serde_json::to_string(&yaml_value_to_json(attributes))
+        .unwrap_or_else(|_| "{}".to_owned());
+
+    (created, edited, attributes_json)
+}
+
+fn yaml_scalar_to_string(value: &serde_yaml::Value) -> Option<String> {
+    match value {
+        serde_yaml::Value::String(text) => Some(text.clone()),
+        serde_yaml::Value::Bool(flag) => Some(flag.to_string()),
+        serde_yaml::Value::Number(number) => Some(number.to_string()),
+        serde_yaml::Value::Null => None,
+        other => Some(
+            serde_yaml::to_string(other)
+                .unwrap_or_default()
+                .trim()
+                .to_owned(),
+        ),
+    }
+    .filter(|text| !text.is_empty())
+}
+
+fn yaml_value_to_json(value: serde_yaml::Value) -> serde_json::Value {
+    serde_json::to_value(value).unwrap_or(serde_json::Value::Null)
 }
 
 /** Body text of an `.mdx` page/row file (frontmatter stripped). */

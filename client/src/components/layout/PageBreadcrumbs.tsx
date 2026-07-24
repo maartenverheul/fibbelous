@@ -14,6 +14,7 @@ import {
 } from "../../types/page";
 import {
   PiCheck,
+  PiCircle,
   PiCircleNotch,
   PiStar,
   PiStarFill,
@@ -37,7 +38,7 @@ const saveStatusLabel: Record<PageSaveStatus, string> = {
 
 function PageSaveIndicator({ status }: { status: PageSaveStatus }) {
   const label = saveStatusLabel[status];
-  const isSyncing = status === "unsaved" || status === "saving";
+  const isSaving = status === "saving";
 
   return (
     <span
@@ -48,12 +49,14 @@ function PageSaveIndicator({ status }: { status: PageSaveStatus }) {
       className={cn(
         "flex h-6 w-6 shrink-0 items-center justify-center",
         status === "saved" && "text-stone-500 dark:text-stone-500",
-        isSyncing && "text-stone-700 dark:text-stone-300",
+        status === "unsaved" && "text-stone-700 dark:text-stone-300",
+        isSaving && "text-stone-700 dark:text-stone-300",
         status === "error" && "text-red-700 dark:text-red-400",
       )}
     >
       {status === "saved" && <PiCheck className="h-4 w-4" aria-hidden />}
-      {isSyncing && (
+      {status === "unsaved" && <PiCircle className="h-4 w-4" aria-hidden />}
+      {isSaving && (
         <PiCircleNotch className="h-4 w-4 animate-spin" aria-hidden />
       )}
       {status === "error" && (

@@ -216,6 +216,10 @@ impl Workspace {
             .get_database_row_content(id)
             .map_err(|error| error.to_string())?
             .ok_or_else(|| "database row content not found".to_owned())?;
+        let (created, edited, attributes_json) =
+            crate::cache::parse_row_cache_fields(&content);
+        let attributes = serde_json::from_str(&attributes_json)
+            .unwrap_or_else(|_| serde_json::json!({}));
         let body = crate::cache::page_body_from_content(&content);
         let body_hash = crate::cache::hash_body(&body);
         let referenced_pages = cache
@@ -253,6 +257,9 @@ impl Workspace {
             has_children: false,
             favorite: row.favorite,
             database_id: Some(row.database_id),
+            attributes: Some(attributes),
+            created: created.or(row.created),
+            edited: edited.or(row.edited),
             body,
             body_hash,
             referenced_pages,

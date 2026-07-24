@@ -13,6 +13,15 @@
   --color-select-red: #6e3630;
   --color-select-fg: #ffffff;
 
+  /* App chrome (values resolve from :root / dark :root) */
+  --color-app-bg: var(--app-bg);
+  --color-app-panel: var(--app-panel);
+  --color-app-surface: var(--app-surface);
+  --color-app-border: var(--app-border);
+  --color-app-fg: var(--app-fg);
+  --color-app-fg-muted: var(--app-fg-muted);
+  --color-app-fg-subtle: var(--app-fg-subtle);
+
   /* Callout backgrounds (BlockNote palette) */
   --color-callout-gray: #ebeced;
   --color-callout-brown: #e9e5e3;
