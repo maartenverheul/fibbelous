@@ -22,6 +22,7 @@ import { insertMapsSlashMenuItem } from "../../lib/mapsSlashMenu";
 import type { PageEditor } from "../../lib/pageEditorSchema";
 import { pageEditorSchema } from "../../lib/pageEditorSchema";
 import { PageEditorSideMenu } from "../../lib/pageEditorSideMenu";
+import { insertNewPageSlashMenuItem } from "../../lib/pageSlashMenu";
 import { insertTocSlashMenuItem } from "../../lib/tocSlashMenu";
 import {
   internalPageLinksToMarkers,
@@ -100,9 +101,13 @@ async function serializeBody(editor: PageEditor): Promise<string> {
   return htmlToMarkdown(html);
 }
 
-function getSlashMenuItems(editor: PageEditor) {
+function getSlashMenuItems(
+  editor: PageEditor,
+  options: Parameters<typeof insertNewPageSlashMenuItem>[1],
+) {
   return [
     ...getDefaultReactSlashMenuItems(editor),
+    insertNewPageSlashMenuItem(editor, options),
     insertMapsSlashMenuItem(editor),
     insertTocSlashMenuItem(editor),
     insertCalloutSlashMenuItem(editor),
@@ -117,14 +122,16 @@ export function PageBodyEditor({
   onBodyChange,
 }: PageBodyEditorProps) {
   const { navigateInTab } = useTabs();
-  const { findPageById } = useWorkspacePages();
+  const { createPage, findPageById } = useWorkspacePages();
   const findPageByIdRef = useRef(findPageById);
+  const createPageRef = useRef(createPage);
   const navigateInTabRef = useRef(navigateInTab);
   const openPasteChoiceRef = useRef<(choice: PasteLinkChoice) => void>(
     () => {},
   );
 
   findPageByIdRef.current = findPageById;
+  createPageRef.current = createPage;
   navigateInTabRef.current = navigateInTab;
 
   const referencedLookup = useMemo(
@@ -365,7 +372,21 @@ export function PageBodyEditor({
         <SuggestionMenuController
           triggerCharacter="/"
           getItems={async (query) =>
-            filterSuggestionItems(getSlashMenuItems(editor), query)
+            filterSuggestionItems(
+              getSlashMenuItems(editor, {
+                createPage: (parent) => createPageRef.current(parent),
+                getParentPage: () => findPageByIdRef.current(pageId),
+                flushBody: (markdown) => {
+                  userEditedRef.current = true;
+                  if (serializeTimerRef.current) {
+                    clearTimeout(serializeTimerRef.current);
+                    serializeTimerRef.current = null;
+                  }
+                  onBodyChangeRef.current(markdown);
+                },
+              }),
+              query,
+            )
           }
         />
         <SideMenuController sideMenu={PageEditorSideMenu} />
