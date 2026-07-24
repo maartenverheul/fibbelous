@@ -934,6 +934,81 @@ impl CacheDb {
             .execute("DELETE FROM pages WHERE id = ?1", params![id])
     }
 
+    /// Strip inbound body links to `page_ids` from pages and database rows.
+    /// Returns `(updated_page_ids, updated_row_ids)`.
+    pub fn remove_links_to_page_ids(
+        &mut self,
+        page_ids: &HashSet<String>,
+    ) -> rusqlite::Result<(Vec<String>, Vec<String>)> {
+        if page_ids.is_empty() {
+            return Ok((Vec::new(), Vec::new()));
+        }
+
+        let mut page_candidates: HashSet<String> = HashSet::new();
+        let mut row_candidates: HashSet<String> = HashSet::new();
+
+        for target_id in page_ids {
+            let pattern = format!("%{}-%", escape_like(target_id));
+            {
+                let mut stmt = self.conn.prepare(
+                    "SELECT id FROM pages WHERE content LIKE ?1 ESCAPE '\\' COLLATE NOCASE",
+                )?;
+                let ids = stmt.query_map(params![pattern], |row| row.get::<_, String>(0))?;
+                for id in ids {
+                    page_candidates.insert(id?);
+                }
+            }
+            {
+                let mut stmt = self.conn.prepare(
+                    "SELECT id FROM database_rows WHERE content LIKE ?1 ESCAPE '\\' COLLATE NOCASE",
+                )?;
+                let ids = stmt.query_map(params![pattern], |row| row.get::<_, String>(0))?;
+                for id in ids {
+                    row_candidates.insert(id?);
+                }
+            }
+        }
+
+        let mut updated_pages = Vec::new();
+        let mut updated_rows = Vec::new();
+
+        for id in page_candidates {
+            let Some(content) = self.get_page_content(&id)? else {
+                continue;
+            };
+            let body = strip_frontmatter(&content);
+            let new_body = strip_links_to_page_ids(body, page_ids);
+            if new_body == body {
+                continue;
+            }
+            let new_content = replace_body_preserving_frontmatter(&content, &new_body);
+            self.conn.execute(
+                "UPDATE pages SET content = ?1, fs_dirty = 1 WHERE id = ?2",
+                params![new_content, id],
+            )?;
+            updated_pages.push(id);
+        }
+
+        for id in row_candidates {
+            let Some(content) = self.get_database_row_content(&id)? else {
+                continue;
+            };
+            let body = strip_frontmatter(&content);
+            let new_body = strip_links_to_page_ids(body, page_ids);
+            if new_body == body {
+                continue;
+            }
+            let new_content = replace_body_preserving_frontmatter(&content, &new_body);
+            self.conn.execute(
+                "UPDATE database_rows SET content = ?1, fs_dirty = 1 WHERE id = ?2",
+                params![new_content, id],
+            )?;
+            updated_rows.push(id);
+        }
+
+        Ok((updated_pages, updated_rows))
+    }
+
     pub fn dirty_pages(&self) -> rusqlite::Result<Vec<(String, String, String)>> {
         let mut stmt = self
             .conn
@@ -1512,6 +1587,181 @@ pub fn page_id_from_mdx_href(href: &str) -> Option<String> {
     Some(id.to_ascii_lowercase())
 }
 
+/// Replace markdown/HTML links pointing at any of `page_ids` with their link text.
+pub fn strip_links_to_page_ids(body: &str, page_ids: &HashSet<String>) -> String {
+    if page_ids.is_empty() || !body.contains(".mdx") {
+        return body.to_owned();
+    }
+    let without_markdown = strip_markdown_links_to_page_ids(body, page_ids);
+    strip_html_anchors_to_page_ids(&without_markdown, page_ids)
+}
+
+fn href_targets_page_id(href: &str, page_ids: &HashSet<String>) -> bool {
+    page_id_from_mdx_href(href).is_some_and(|id| page_ids.contains(&id))
+}
+
+fn strip_markdown_links_to_page_ids(body: &str, page_ids: &HashSet<String>) -> String {
+    let mut out = String::with_capacity(body.len());
+    let mut rest = body;
+
+    while let Some(close_rel) = rest.find("](") {
+        let before = &rest[..close_rel];
+        let Some(open_rel) = before.rfind('[') else {
+            out.push_str(&rest[..=close_rel]);
+            rest = &rest[close_rel + 1..];
+            continue;
+        };
+
+        let after_paren = &rest[close_rel + 2..];
+        let (href, consumed) = if let Some(stripped) = after_paren.strip_prefix('<') {
+            match stripped.find('>') {
+                Some(end) => {
+                    let href = &stripped[..end];
+                    let after_gt = &stripped[end + 1..];
+                    let trailing_paren = usize::from(after_gt.starts_with(')'));
+                    (href, 1 + end + 1 + trailing_paren)
+                }
+                None => {
+                    out.push_str(&rest[..=close_rel + 1]);
+                    rest = &rest[close_rel + 2..];
+                    continue;
+                }
+            }
+        } else {
+            match after_paren.find(')') {
+                Some(end) => (&after_paren[..end], end + 1),
+                None => {
+                    out.push_str(rest);
+                    return out;
+                }
+            }
+        };
+
+        let label = &before[open_rel + 1..];
+        out.push_str(&before[..open_rel]);
+        if href_targets_page_id(href.trim(), page_ids) {
+            out.push_str(label);
+        } else {
+            out.push('[');
+            out.push_str(label);
+            out.push_str("](");
+            out.push_str(&after_paren[..consumed]);
+        }
+        rest = &after_paren[consumed..];
+    }
+
+    out.push_str(rest);
+    out
+}
+
+fn strip_html_anchors_to_page_ids(body: &str, page_ids: &HashSet<String>) -> String {
+    let mut out = String::with_capacity(body.len());
+    let mut rest = body;
+
+    while let Some(start_rel) = find_anchor_open(rest) {
+        out.push_str(&rest[..start_rel]);
+        let from_tag = &rest[start_rel..];
+        let Some(tag_end) = from_tag.find('>') else {
+            out.push_str(from_tag);
+            return out;
+        };
+        let open_tag = &from_tag[..=tag_end];
+        let after_open = &from_tag[tag_end + 1..];
+
+        if open_tag.trim_end().ends_with("/>") {
+            // Self-closing <a … />
+            if anchor_open_targets_page_id(open_tag, page_ids) {
+                // Drop the empty link entirely.
+            } else {
+                out.push_str(open_tag);
+            }
+            rest = after_open;
+            continue;
+        }
+
+        let Some(close_rel) = find_ignore_case(after_open, "</a>") else {
+            out.push_str(from_tag);
+            return out;
+        };
+        let inner = &after_open[..close_rel];
+        let after_close = &after_open[close_rel + 4..];
+
+        if anchor_open_targets_page_id(open_tag, page_ids) {
+            out.push_str(inner);
+        } else {
+            out.push_str(open_tag);
+            out.push_str(inner);
+            out.push_str("</a>");
+        }
+        rest = after_close;
+    }
+
+    out.push_str(rest);
+    out
+}
+
+fn find_anchor_open(haystack: &str) -> Option<usize> {
+    let lower = haystack.to_ascii_lowercase();
+    let mut search_from = 0;
+    while let Some(rel) = lower[search_from..].find("<a") {
+        let abs = search_from + rel;
+        let after = haystack.as_bytes().get(abs + 2).copied();
+        if after.is_none_or(|byte| byte.is_ascii_whitespace() || byte == b'>') {
+            return Some(abs);
+        }
+        search_from = abs + 2;
+    }
+    None
+}
+
+fn find_ignore_case(haystack: &str, needle: &str) -> Option<usize> {
+    haystack.to_ascii_lowercase().find(&needle.to_ascii_lowercase())
+}
+
+fn anchor_open_targets_page_id(open_tag: &str, page_ids: &HashSet<String>) -> bool {
+    for quote in ['"', '\''] {
+        let needle = format!("href={quote}");
+        let lower_tag = open_tag.to_ascii_lowercase();
+        let lower_needle = needle.to_ascii_lowercase();
+        if let Some(start) = lower_tag.find(&lower_needle) {
+            let value_start = start + needle.len();
+            if let Some(end_rel) = open_tag[value_start..].find(quote) {
+                let href = open_tag[value_start..value_start + end_rel].trim();
+                if href_targets_page_id(href, page_ids) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Replace the MDX body while keeping YAML frontmatter bytes intact.
+pub fn replace_body_preserving_frontmatter(content: &str, new_body: &str) -> String {
+    let trimmed_start = content.len() - content.trim_start().len();
+    let trimmed = &content[trimmed_start..];
+    if let Some(rest) = trimmed.strip_prefix("---") {
+        if let Some(end) = rest.find("\n---") {
+            let close_end = trimmed_start + 3 + end + 4;
+            let after_close = &content[close_end..];
+            let body_trim = after_close.len() - after_close.trim_start().len();
+            let body_start = close_end + body_trim;
+            let mut out = content[..body_start].to_owned();
+            out.push_str(new_body);
+            if !new_body.is_empty() && !new_body.ends_with('\n') {
+                out.push('\n');
+            }
+            return out;
+        }
+    }
+
+    let mut out = new_body.to_owned();
+    if !new_body.is_empty() && !new_body.ends_with('\n') {
+        out.push('\n');
+    }
+    out
+}
+
 fn escape_like(value: &str) -> String {
     value
         .replace('\\', "\\\\")
@@ -1644,3 +1894,48 @@ fn ensure_workspace_gitignore(workspace_path: &Path) -> std::io::Result<()> {
 
     fs::write(gitignore_path, format!("{ENTRY}\n"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ids(values: &[&str]) -> HashSet<String> {
+        values.iter().map(|value| (*value).to_owned()).collect()
+    }
+
+    #[test]
+    fn strip_markdown_page_links_keeps_label() {
+        let body = "See [Notes](pages/abcdef12-notes.mdx) and [Keep](pages/12345678-keep.mdx).";
+        let stripped = strip_links_to_page_ids(body, &ids(&["abcdef12"]));
+        assert_eq!(stripped, "See Notes and [Keep](pages/12345678-keep.mdx).");
+    }
+
+    #[test]
+    fn strip_markdown_angle_href_page_links() {
+        let body = "Go [Home](<./abcdef12-home.mdx>) please.";
+        let stripped = strip_links_to_page_ids(body, &ids(&["abcdef12"]));
+        assert_eq!(stripped, "Go Home please.");
+    }
+
+    #[test]
+    fn strip_html_page_anchors_keeps_inner_text() {
+        let body = r#"Hello <a href="pages/abcdef12-notes.mdx">Notes</a> world."#;
+        let stripped = strip_links_to_page_ids(body, &ids(&["abcdef12"]));
+        assert_eq!(stripped, "Hello Notes world.");
+    }
+
+    #[test]
+    fn strip_leaves_unrelated_links_alone() {
+        let body = r#"[Ext](https://example.com) and <a href="pages/12345678-keep.mdx">Keep</a>"#;
+        let stripped = strip_links_to_page_ids(body, &ids(&["abcdef12"]));
+        assert_eq!(stripped, body);
+    }
+
+    #[test]
+    fn replace_body_preserves_frontmatter() {
+        let content = "---\nid: abc\ntitle: Test\n---\n\nOld body\n";
+        let replaced = replace_body_preserving_frontmatter(content, "New body");
+        assert_eq!(replaced, "---\nid: abc\ntitle: Test\n---\n\nNew body\n");
+    }
+}
+

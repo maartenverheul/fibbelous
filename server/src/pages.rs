@@ -1,5 +1,6 @@
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
@@ -8,7 +9,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
-use crate::cache::{children_dir, hash_body, CacheDb, PageDetail};
+use crate::cache::{
+    children_dir, hash_body, page_id_from_mdx_href, CacheDb, PageDetail,
+};
 use crate::index::sync_workspace;
 
 const TRASH_ROOT: &str = ".fibbelous/trash";
@@ -314,10 +317,7 @@ pub fn create_page(
     cache: &mut CacheDb,
     input: CreatePageInput,
 ) -> Result<PageDetail, String> {
-    let title = input
-        .title
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "Untitled".to_owned());
+    let title = input.title.unwrap_or_default();
     let mut slug = input
         .slug
         .filter(|value| !value.is_empty())
@@ -381,11 +381,7 @@ pub fn update_page(
     };
     let title_updated = input.title.is_some();
 
-    let title = input
-        .title
-        .or(existing.title)
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "Untitled".to_owned());
+    let title = input.title.or(existing.title).unwrap_or_default();
     let slug = if let Some(slug) = input.slug.filter(|value| !value.is_empty()) {
         slug
     } else if title_updated {
@@ -394,7 +390,7 @@ pub fn update_page(
             existing
                 .slug
                 .filter(|value| !value.is_empty())
-                .unwrap_or_else(|| existing.id.clone())
+                .unwrap_or_else(|| "untitled".to_owned())
         } else {
             derived
         }
@@ -883,8 +879,18 @@ pub fn restore_page(
     get_page_or_err(cache, id)
 }
 
-pub fn purge_page(workspace_path: &Path, id: &str) -> Result<(), String> {
+pub fn purge_page(
+    workspace_path: &Path,
+    cache: &mut CacheDb,
+    id: &str,
+) -> Result<(Vec<String>, Vec<String>), String> {
     let trashed = find_trashed_summary_by_id(workspace_path, id)?;
+    let purged_ids = collect_purged_page_ids(workspace_path, &trashed)?;
+
+    let (updated_pages, updated_rows) = cache
+        .remove_links_to_page_ids(&purged_ids)
+        .map_err(|error| error.to_string())?;
+
     let trash_file = trash_root(workspace_path).join(&trashed.original_path);
     if trash_file.is_file() {
         fs::remove_file(&trash_file).map_err(|error| error.to_string())?;
@@ -896,7 +902,40 @@ pub fn purge_page(workspace_path: &Path, id: &str) -> Result<(), String> {
         fs::remove_dir_all(&child_trash).map_err(|error| error.to_string())?;
     }
 
-    Ok(())
+    Ok((updated_pages, updated_rows))
+}
+
+fn collect_purged_page_ids(
+    workspace_path: &Path,
+    trashed: &TrashedPageSummary,
+) -> Result<HashSet<String>, String> {
+    let mut ids = HashSet::new();
+    ids.insert(trashed.id.to_ascii_lowercase());
+
+    let children_rel = children_dir(&trashed.original_path, &trashed.id);
+    let child_trash = trash_root(workspace_path).join(&children_rel);
+    if !child_trash.is_dir() {
+        return Ok(ids);
+    }
+
+    for mdx in walk_mdx_files(&child_trash)? {
+        let content = fs::read_to_string(&mdx).map_err(|error| error.to_string())?;
+        let frontmatter = parse_frontmatter(&content);
+        let id = frontmatter
+            .get("id")
+            .cloned()
+            .or_else(|| {
+                mdx.file_name()
+                    .and_then(|name| name.to_str())
+                    .and_then(page_id_from_mdx_href)
+            })
+            .unwrap_or_else(|| file_stem_id(&mdx));
+        if !id.is_empty() {
+            ids.insert(id.to_ascii_lowercase());
+        }
+    }
+
+    Ok(ids)
 }
 
 fn trash_root(workspace_path: &Path) -> PathBuf {

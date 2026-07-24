@@ -530,7 +530,7 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
 
       const detail = await rpc.call<WorkspacePageDetail>("create_page", {
         parentId: parentPage.id,
-        title: init?.title ?? "Untitled",
+        title: init?.title ?? "",
         body: init?.body ?? "",
       });
 
@@ -552,7 +552,7 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
 
       const detail = await rpc.call<WorkspacePageDetail>("create_page", {
         parentId: null,
-        title: init?.title ?? "Untitled",
+        title: init?.title ?? "",
         body: init?.body ?? "",
       });
 

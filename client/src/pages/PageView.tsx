@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { DatabaseRowAttributes } from "../components/database/DatabaseRowAttributes";
-import { PageBodyEditor } from "../components/page/PageBodyEditor";
+import { PageBodyEditor, type PageBodyEditorHandle } from "../components/page/PageBodyEditor";
 import { PageDatabaseView } from "../components/page/PageDatabaseView";
 import { PageIconPicker } from "../components/page/PageIconPicker";
 import { EmojiIcon } from "../components/emoji/EmojiIcon";
@@ -9,6 +9,7 @@ import { usePageSave } from "../context/PageSaveContext";
 import { useTabs } from "../context/TabContext";
 import { useWorkspacePages } from "../hooks/useWorkspacePages";
 import { isDatabaseOnlyBody } from "../lib/databaseBlock";
+import { consumePageTitleFocus, shouldFocusPageTitle } from "../lib/pageNavigate";
 import { cn } from "../lib/utils";
 import { bodyMatchesStored } from "../lib/pageBodyTitle";
 import {
@@ -19,6 +20,7 @@ import {
 import {
   buildPageSegment,
   pageLabel,
+  pageTitleValue,
   parsePageIdFromSegment,
   slugifyPageTitle,
   type BodyPatch,
@@ -36,7 +38,7 @@ type PageDraft = {
 type SyncedBody = { body: string; hash: string };
 
 /** Idle time before dirty page fields are synced to the server. */
-const PAGE_SAVE_DEBOUNCE_MS = 3000;
+const PAGE_SAVE_DEBOUNCE_MS = 1000;
 
 function attributesEqual(
   a: Record<string, unknown> | null | undefined,
@@ -86,8 +88,35 @@ function PageEditor({
   onIconChange,
   onRestore,
 }: PageEditorProps) {
+  const titleInputRef = useRef<HTMLInputElement>(null);
+  const bodyEditorRef = useRef<PageBodyEditorHandle>(null);
   const databasePage = isDatabaseOnlyBody(body);
   const isDatabaseRow = Boolean(databaseId) && !databasePage;
+
+  const focusTitleEnd = useCallback(() => {
+    const input = titleInputRef.current;
+    if (!input || readOnly) return;
+    input.focus();
+    const len = input.value.length;
+    input.setSelectionRange(len, len);
+  }, [readOnly]);
+
+  useEffect(() => {
+    if (readOnly || !shouldFocusPageTitle(pageId)) return;
+
+    const focusTitle = () => {
+      const input = titleInputRef.current;
+      if (!input || !consumePageTitleFocus(pageId)) return;
+      input.focus();
+      if (input.value) {
+        input.select();
+      }
+    };
+
+    // Wait a frame so the input is mounted with the new page's title.
+    const raf = requestAnimationFrame(focusTitle);
+    return () => cancelAnimationFrame(raf);
+  }, [pageId, readOnly]);
 
   return (
     <div className="flex min-h-full flex-col">
@@ -149,13 +178,24 @@ function PageEditor({
               )
             )}
             <input
+              ref={titleInputRef}
               type="text"
               value={title}
               onChange={(event) => onTitleChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (readOnly || databasePage) return;
+                if (event.key !== "Enter" || event.nativeEvent.isComposing) {
+                  return;
+                }
+                event.preventDefault();
+                bodyEditorRef.current?.focusStart();
+              }}
               readOnly={readOnly}
+              placeholder="Untitled"
               aria-label="Page title"
               className={cn(
                 "min-w-0 w-full border-none bg-transparent p-0 text-3xl font-semibold text-stone-900 outline-none",
+                "placeholder:font-semibold placeholder:text-stone-400 dark:placeholder:text-stone-500",
                 "focus:ring-0 sm:text-4xl dark:text-stone-50",
                 icon && "flex-1",
                 readOnly && "cursor-default",
@@ -189,12 +229,14 @@ function PageEditor({
             <PageDatabaseView key={pageId} body={body} />
           ) : (
             <PageBodyEditor
+              ref={bodyEditorRef}
               key={pageId}
               pageId={pageId}
               body={body}
               readOnly={readOnly}
               referencedPages={referencedPages}
               onBodyChange={onBodyChange}
+              onExitToTitle={focusTitleEnd}
             />
           )
         ) : (
@@ -211,7 +253,7 @@ function PageEditor({
 
 function draftFromDetail(detail: WorkspacePageDetail): PageDraft {
   return {
-    title: pageLabel(detail),
+    title: pageTitleValue(detail),
     body: detail.body,
     attributes: detail.attributes ?? {},
   };
@@ -219,7 +261,7 @@ function draftFromDetail(detail: WorkspacePageDetail): PageDraft {
 
 function draftFromTrashed(trashed: TrashedPageDetail): PageDraft {
   return {
-    title: pageLabel(trashed),
+    title: pageTitleValue(trashed),
     body: trashed.body,
     attributes: {},
   };
@@ -234,7 +276,7 @@ function draftFromPage(
   if (detail) return draftFromDetail(detail);
 
   const page = findPageById(pageId);
-  return { title: page ? pageLabel(page) : "", body: "", attributes: {} };
+  return { title: page ? pageTitleValue(page) : "", body: "", attributes: {} };
 }
 
 export function PageView() {
@@ -490,7 +532,7 @@ export function PageView() {
       return;
     }
 
-    const savedTitle = pageLabel(page);
+    const savedTitle = pageTitleValue(page);
     const savedBody = activeDetail.body;
     const savedAttributes = activeDetail.attributes ?? {};
     const attributesChanged = !attributesEqual(attributes, savedAttributes);
@@ -535,7 +577,7 @@ export function PageView() {
               : undefined;
           if (!detailForSave) return;
 
-          const baselineTitle = pageLabel(detailForSave);
+          const baselineTitle = pageTitleValue(detailForSave);
           const baselineBody = detailForSave.body;
           const baselineAttributes = detailForSave.attributes ?? {};
           const titleChanged = titleToSave !== baselineTitle;

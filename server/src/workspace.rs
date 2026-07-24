@@ -407,7 +407,15 @@ impl Workspace {
     }
 
     pub fn purge_page(&self, id: &str) -> Result<(), String> {
-        purge_page(&self.path, id)
+        let (updated_pages, updated_rows) =
+            self.with_cache_mut(|path, cache| purge_page(path, cache, id))?;
+        for page_id in updated_pages {
+            self.flush.mark(DirtyKey::Page(page_id));
+        }
+        for row_id in updated_rows {
+            self.flush.mark(DirtyKey::Row(row_id));
+        }
+        Ok(())
     }
 
     pub fn duplicate_page(&self, id: &str) -> Result<crate::cache::PageDetail, String> {

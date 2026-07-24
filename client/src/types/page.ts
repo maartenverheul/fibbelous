@@ -159,7 +159,16 @@ export function pageLabel(page: {
   title: string | null;
   slug: string | null;
 }) {
-  return page.title ?? page.slug ?? page.id;
+  const title = page.title?.trim();
+  if (title) return title;
+  return "Untitled";
+}
+
+/** Editable title value (empty when unset or still the default Untitled). */
+export function pageTitleValue(page: { title: string | null | undefined }) {
+  const title = page.title?.trim() ?? "";
+  if (!title || title === "Untitled") return "";
+  return title;
 }
 
 export function humanizeSlug(slug: string) {
