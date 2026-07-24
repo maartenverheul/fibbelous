@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePageSave } from "../../context/PageSaveContext";
 import { useTabs } from "../../context/TabContext";
 import { useWorkspacePages } from "../../hooks/useWorkspacePages";
@@ -16,16 +16,18 @@ import {
   PiCheck,
   PiCircle,
   PiCircleNotch,
+  PiDotsThree,
   PiStar,
   PiStarFill,
   PiWarningCircle,
 } from "react-icons/pi";
 import { EmojiIcon } from "../emoji/EmojiIcon";
+import { PageActionsMenu } from "./PageActionsMenu";
 
 import type { PageSaveStatus } from "../../context/PageSaveContext";
 
 const navClassName = cn(
-  "flex min-h-10 min-w-0 shrink-0 items-center justify-between gap-3 border-b border-[var(--app-border)] px-4 py-2 text-sm text-stone-600",
+  "flex min-h-10 min-w-0 shrink-0 items-center justify-between gap-3 border-b border-app-border px-4 py-2 text-sm text-stone-600",
   "dark:text-stone-400",
 );
 
@@ -155,9 +157,37 @@ export function PageBreadcrumbs() {
     findPageByKey,
     findPageById,
     getPageDetailById,
+    duplicatePage,
     setPageFavorite,
+    trashPage,
   } = useWorkspacePages();
   const crumbsByPageIdRef = useRef(new Map<string, WorkspacePage[]>());
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    const close = (event: MouseEvent) => {
+      if (menuRef.current?.contains(event.target as Node)) return;
+      setMenuOpen(false);
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    };
+
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menuOpen]);
+
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [activeSegment]);
 
   if (!isPagePathSegment(activeSegment)) {
     return null;
@@ -183,7 +213,52 @@ export function PageBreadcrumbs() {
   }
 
   const favorited = Boolean(page?.favorite);
-  const canFavorite = Boolean(pageId && page);
+  const canActOnPage = Boolean(pageId && page);
+  const pageTarget = page
+    ? {
+      label: pageLabel(page),
+      icon: page.icon,
+      pageId: page.id,
+    }
+    : null;
+  const pageSegment = page ? buildPageSegment(page, findPageById) : null;
+
+  const openPage = (detail: WorkspacePage) => {
+    const segment = buildPageSegment(detail, findPageById);
+    navigateInTab(segment, {
+      label: pageLabel(detail),
+      icon: detail.icon,
+      pageId: detail.id,
+    });
+  };
+
+  const handleDuplicate = async () => {
+    if (!page) return;
+    try {
+      const detail = await duplicatePage(page.id);
+      openPage(detail);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleTrash = async () => {
+    if (!page) return;
+    try {
+      await trashPage(page);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to move page to trash");
+    }
+  };
+
+  const handleToggleFavorite = async () => {
+    if (!pageId) return;
+    try {
+      await setPageFavorite(pageId, !favorited);
+    } catch (error) {
+      console.error(error);
+    }
+  };
 
   return (
     <nav aria-label="Breadcrumb" className={navClassName}>
@@ -194,17 +269,48 @@ export function PageBreadcrumbs() {
           navigateInTab={navigateInTab}
         />
       </div>
-      <div className="flex shrink-0 items-center gap-0.5">
-        {canFavorite && (
-          <FavoriteStar
-            favorited={favorited}
-            onToggle={() => {
-              if (!pageId) return;
-              void setPageFavorite(pageId, !favorited).catch((error) => {
-                console.error(error);
-              });
-            }}
-          />
+      <div className="flex shrink-0 items-center gap-1.5">
+        {canActOnPage && (
+          <>
+            <FavoriteStar
+              favorited={favorited}
+              onToggle={() => void handleToggleFavorite()}
+            />
+            <div ref={menuRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setMenuOpen((open) => !open)}
+                aria-label="Page options"
+                aria-expanded={menuOpen}
+                title="Page options"
+                className={cn(
+                  "flex h-6 w-6 shrink-0 items-center justify-center rounded",
+                  "text-stone-700 hover:bg-stone-200/80 hover:text-stone-900",
+                  "dark:text-stone-300 dark:hover:bg-stone-800 dark:hover:text-stone-50",
+                )}
+              >
+                <PiDotsThree className="h-5 w-5" aria-hidden />
+              </button>
+              {menuOpen && page && pageSegment && pageTarget && (
+                <div
+                  className={cn(
+                    "absolute top-full right-0 z-50 mt-1 min-w-52 rounded-md border border-(--app-border)",
+                    "bg-(--app-surface) py-1 shadow-lg",
+                  )}
+                >
+                  <PageActionsMenu
+                    segment={pageSegment}
+                    target={pageTarget}
+                    page={page}
+                    onClose={() => setMenuOpen(false)}
+                    onDuplicate={() => void handleDuplicate()}
+                    onToggleFavorite={() => void handleToggleFavorite()}
+                    onTrash={() => void handleTrash()}
+                  />
+                </div>
+              )}
+            </div>
+          </>
         )}
         <PageSaveIndicator status={status} />
       </div>

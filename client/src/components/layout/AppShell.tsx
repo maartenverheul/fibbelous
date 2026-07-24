@@ -9,7 +9,7 @@ function AppShellLayout() {
   return (
     <div
       className={cn(
-        "flex h-screen bg-[var(--app-bg)] text-stone-900",
+        "flex h-screen bg-app-bg text-stone-900",
         "dark:text-stone-100",
       )}
     >

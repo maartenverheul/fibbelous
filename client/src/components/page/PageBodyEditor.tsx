@@ -8,7 +8,7 @@ import {
   useCreateBlockNote,
   useEditorChange,
 } from "@blocknote/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, forwardRef } from "react";
 import { useTabs } from "../../context/TabContext";
 import { useWorkspacePages } from "../../hooks/useWorkspacePages";
 import { insertBookmarkBlock } from "../../lib/bookmarkBlock";
@@ -24,6 +24,10 @@ import { pageEditorSchema } from "../../lib/pageEditorSchema";
 import { PageEditorSideMenu } from "../../lib/pageEditorSideMenu";
 import { insertNewPageSlashMenuItem } from "../../lib/pageSlashMenu";
 import { insertTocSlashMenuItem } from "../../lib/tocSlashMenu";
+import {
+  focusEditorDocumentStart,
+  isCursorAtDocumentStart,
+} from "../../lib/titleBodyKeyboard";
 import {
   internalPageLinksToMarkers,
   isExternalLink,
@@ -52,12 +56,18 @@ import {
   type PasteLinkChoice,
 } from "./PasteLinkChoiceMenu";
 
+export type PageBodyEditorHandle = {
+  focusStart: () => void;
+};
+
 type PageBodyEditorProps = {
   pageId: string;
   body: string;
   readOnly: boolean;
   referencedPages?: ReferencedPage[];
   onBodyChange: (value: string) => void;
+  /** Backspace at the start of the document should move focus to the title. */
+  onExitToTitle?: () => void;
 };
 
 const SERIALIZE_DEBOUNCE_MS = 150;
@@ -114,25 +124,35 @@ function getSlashMenuItems(
   ];
 }
 
-export function PageBodyEditor({
-  pageId,
-  body,
-  readOnly,
-  referencedPages = [],
-  onBodyChange,
-}: PageBodyEditorProps) {
+export const PageBodyEditor = forwardRef<
+  PageBodyEditorHandle,
+  PageBodyEditorProps
+>(function PageBodyEditor(
+  {
+    pageId,
+    body,
+    readOnly,
+    referencedPages = [],
+    onBodyChange,
+    onExitToTitle,
+  },
+  ref,
+) {
   const { navigateInTab } = useTabs();
   const { createPage, findPageById } = useWorkspacePages();
   const findPageByIdRef = useRef(findPageById);
   const createPageRef = useRef(createPage);
   const navigateInTabRef = useRef(navigateInTab);
+  const onExitToTitleRef = useRef(onExitToTitle);
   const openPasteChoiceRef = useRef<(choice: PasteLinkChoice) => void>(
     () => {},
   );
+  const pendingFocusStartRef = useRef(false);
 
   findPageByIdRef.current = findPageById;
   createPageRef.current = createPage;
   navigateInTabRef.current = navigateInTab;
+  onExitToTitleRef.current = onExitToTitle;
 
   const referencedLookup = useMemo(
     () => buildReferencedPageLookup(referencedPages),
@@ -250,6 +270,48 @@ export function PageBodyEditor({
   const onBodyChangeRef = useRef(onBodyChange);
 
   onBodyChangeRef.current = onBodyChange;
+
+  const focusStart = useCallback(() => {
+    if (!ready) {
+      pendingFocusStartRef.current = true;
+      return;
+    }
+    focusEditorDocumentStart(editor);
+  }, [editor, ready]);
+
+  useImperativeHandle(ref, () => ({ focusStart }), [focusStart]);
+
+  useEffect(() => {
+    if (!ready || !pendingFocusStartRef.current) return;
+    pendingFocusStartRef.current = false;
+    focusEditorDocumentStart(editor);
+  }, [ready, editor]);
+
+  useEffect(() => {
+    if (readOnly) return;
+    const el = editor.domElement;
+    if (!el) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.key !== "Backspace" ||
+        event.isComposing ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey
+      ) {
+        return;
+      }
+      if (!isCursorAtDocumentStart(editor)) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      onExitToTitleRef.current?.();
+    };
+
+    el.addEventListener("keydown", onKeyDown, true);
+    return () => el.removeEventListener("keydown", onKeyDown, true);
+  }, [editor, readOnly, ready]);
 
   const pasteChoiceRef = useRef(pasteChoice);
   pasteChoiceRef.current = pasteChoice;
@@ -403,4 +465,4 @@ export function PageBodyEditor({
       )}
     </div>
   );
-}
+});

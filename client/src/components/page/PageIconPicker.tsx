@@ -46,7 +46,7 @@ export function PageIconPicker({ icon, onSelect }: PageIconPickerProps) {
           align="start"
           sideOffset={4}
           className={cn(
-            "z-50 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)]",
+            "z-50 rounded-lg border border-app-border bg-app-surface",
             "shadow-lg",
           )}
         >
@@ -60,7 +60,7 @@ export function PageIconPicker({ icon, onSelect }: PageIconPickerProps) {
             height={400}
             searchPlaceholder="Search emoji…"
           />
-          <Popover.Arrow className="fill-[var(--app-surface)]" />
+          <Popover.Arrow className="fill-app-surface" />
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>

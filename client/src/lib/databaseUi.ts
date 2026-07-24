@@ -7,20 +7,20 @@ export const dbRootPage =
   "my-0 w-full overflow-hidden bg-transparent select-none";
 
 export const dbEmptyShell =
-  "rounded-md bg-[color-mix(in_srgb,var(--app-border)_18%,var(--app-surface))]";
+  "rounded-md bg-app-border/18";
 
-export const dbMutedText = "py-3.5 text-sm text-[var(--app-fg-muted)]";
+export const dbMutedText = "py-3.5 text-sm text-app-fg-muted";
 
 export const dbScroll = "w-full overflow-x-auto overflow-y-hidden";
 
 export const dbTable =
-  "w-full min-w-max border-collapse table-auto border border-[var(--app-border)]";
+  "w-full min-w-max border-collapse table-auto border border-app-border";
 
 export const dbTh =
-  "min-w-32 border border-[var(--app-border)] px-2 py-1.5 text-left align-middle text-xs font-semibold whitespace-nowrap text-[var(--app-fg-muted)]";
+  "min-w-32 border border-app-border px-2 py-1.5 text-left align-middle text-xs font-semibold whitespace-nowrap text-app-fg-muted";
 
 export const dbTd =
-  "border border-[var(--app-border)] px-2 py-1.5 text-left align-middle whitespace-nowrap";
+  "border border-app-border px-2 py-1.5 text-left align-middle whitespace-nowrap";
 
 export const dbThTitle = "min-w-48";
 
@@ -33,28 +33,28 @@ export const dbTitleCell = "flex min-w-0 items-center gap-2";
 export const dbTitleCellText = "min-w-0 flex-1 truncate";
 
 export const dbOpenBtn =
-  "shrink-0 rounded-md border border-[var(--app-border)] bg-[var(--app-surface)] px-2 py-0.5 text-xs font-medium text-[var(--app-fg-muted)] opacity-0 transition-opacity hover:bg-[color-mix(in_srgb,var(--app-border)_45%,transparent)] hover:text-[var(--app-fg)] group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100";
+  "shrink-0 rounded-md border border-app-border bg-app-surface px-2 py-0.5 text-xs font-medium text-app-fg-muted opacity-0 transition-opacity hover:bg-app-border/45 hover:text-app-fg group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100";
 
 export const dbColName = "block leading-snug";
 
 export const dbCellEmpty =
-  "py-5 text-center text-sm whitespace-normal text-[var(--app-fg-muted)]";
+  "py-5 text-center text-sm whitespace-normal text-app-fg-muted";
 
 export const dbListItems = "m-0 list-none p-0";
 
 export const dbListItem = "m-0";
 
 export const dbListItemButton =
-  "flex w-full cursor-pointer items-center gap-2 rounded-md border-0 bg-transparent px-2.5 py-[0.45rem] text-left text-[0.9375rem] text-[var(--app-fg)] hover:bg-[color-mix(in_srgb,var(--app-border)_45%,transparent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[color-mix(in_srgb,var(--app-fg)_35%,transparent)]";
+  "flex min-w-0 w-full cursor-pointer items-center gap-2 overflow-hidden rounded-md border-0 bg-transparent px-2.5 py-[0.45rem] text-left text-[0.9375rem] text-app-fg hover:bg-app-border/45 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-app-fg/35";
 
-export const dbListItemTitle = "min-w-0 shrink truncate font-medium";
+export const dbListItemTitle = "shrink-0 whitespace-nowrap font-medium";
 
 export const dbListItemAttrs =
-  "flex min-w-0 flex-1 items-center gap-3 overflow-hidden text-sm font-normal text-[var(--app-fg-muted)]";
+  "flex min-w-0 flex-1 items-center gap-3 overflow-hidden text-sm font-normal text-app-fg-muted";
 
-export const dbListItemAttr = "min-w-0 shrink truncate";
+export const dbListItemAttr = "shrink-0 whitespace-nowrap";
 
 export const dbCheckbox =
-  "pointer-events-none size-3.5 shrink-0 rounded-sm border border-[color-mix(in_srgb,var(--app-fg)_35%,transparent)] accent-blue-600";
+  "pointer-events-none size-3.5 shrink-0 rounded-sm border border-app-fg/35 accent-blue-600";
 
 export const dbSentinel = "h-px w-full";

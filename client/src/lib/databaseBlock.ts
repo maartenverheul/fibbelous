@@ -199,13 +199,13 @@ export function paintDatabaseTable(
 }
 
 const VIEW_TAB_IDLE =
-  "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[0.8125rem] font-medium bg-[color-mix(in_srgb,var(--app-border)_35%,transparent)] text-[var(--app-fg-muted)] hover:bg-[color-mix(in_srgb,var(--app-border)_55%,transparent)] hover:text-[var(--app-fg)]";
+  "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[0.8125rem] font-medium bg-app-border/35 text-app-fg-muted hover:bg-app-border/55 hover:text-app-fg";
 
 const VIEW_TAB_ACTIVE =
-  "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[0.8125rem] font-medium bg-[color-mix(in_srgb,var(--app-border)_70%,transparent)] text-[var(--app-fg)]";
+  "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[0.8125rem] font-medium bg-app-border/70 text-app-fg";
 
 const CONTROL_BTN =
-  "inline-flex size-8 items-center justify-center rounded-md text-[var(--app-fg-muted)] hover:bg-[color-mix(in_srgb,var(--app-border)_45%,transparent)] hover:text-[var(--app-fg)] disabled:cursor-not-allowed disabled:opacity-45";
+  "inline-flex size-8 items-center justify-center rounded-md text-app-fg-muted hover:bg-app-border/45 hover:text-app-fg disabled:cursor-not-allowed disabled:opacity-45";
 
 const NEW_BTN =
   "inline-flex items-center gap-1 rounded-md bg-blue-600 px-3 py-1.5 text-[0.8125rem] font-semibold text-white hover:bg-blue-700 disabled:cursor-wait disabled:opacity-70";
@@ -247,7 +247,7 @@ function renderViewControls(databaseId: string): {
 
   const popover = document.createElement("div");
   popover.className = cn(
-    "absolute top-full right-0 z-50 mt-1.5 hidden w-56 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-3 shadow-lg",
+    "absolute top-full right-0 z-50 mt-1.5 hidden w-56 rounded-lg border border-app-border bg-app-surface p-3 shadow-lg",
   );
   popover.setAttribute("role", "dialog");
   popover.innerHTML =

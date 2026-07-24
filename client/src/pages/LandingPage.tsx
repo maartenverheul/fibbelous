@@ -38,7 +38,7 @@ export function LandingPage() {
       {!managerOpen && (
         <div
           className={cn(
-            "flex min-h-screen flex-col items-center justify-center gap-3 bg-[var(--app-bg)] p-6 text-center",
+            "flex min-h-screen flex-col items-center justify-center gap-3 bg-app-bg p-6 text-center",
           )}
         >
           <h1 className="text-xl font-semibold text-stone-900 dark:text-stone-50">
@@ -62,7 +62,7 @@ export function LandingPage() {
         </div>
       )}
       {managerOpen && (
-        <div className="min-h-screen bg-[var(--app-bg)]" aria-hidden />
+        <div className="min-h-screen bg-app-bg" aria-hidden />
       )}
       <WorkspaceManagerDialog
         open={managerOpen}

@@ -12,7 +12,7 @@ export function MobileHeader() {
   return (
     <header
       className={cn(
-        "flex h-11 shrink-0 items-center gap-2 border-b border-[var(--app-border)] bg-[var(--app-panel)] px-2 md:hidden",
+        "flex h-11 shrink-0 items-center gap-2 border-b border-app-border bg-app-panel px-2 md:hidden",
       )}
     >
       <button

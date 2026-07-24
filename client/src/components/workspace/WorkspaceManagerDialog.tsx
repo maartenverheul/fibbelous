@@ -47,7 +47,7 @@ type WorkspaceManagerDialogProps = {
 type ConnectionStatus = "idle" | "connecting" | "connected" | "error";
 
 const inputClassName = cn(
-  "w-full rounded-md border border-[var(--app-border)] bg-[var(--app-surface)] px-2.5 py-1.5 text-sm text-stone-900 placeholder:text-stone-500 dark:text-stone-50 dark:placeholder:text-stone-500",
+  "w-full rounded-md border border-app-border bg-app-surface px-2.5 py-1.5 text-sm text-stone-900 placeholder:text-stone-500 dark:text-stone-50 dark:placeholder:text-stone-500",
 );
 
 const labelClassName = cn(
@@ -61,7 +61,7 @@ const buttonPrimaryClassName = cn(
 );
 
 const buttonSecondaryClassName = cn(
-  "rounded-md border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-1.5 text-sm text-stone-900",
+  "rounded-md border border-app-border bg-app-surface px-3 py-1.5 text-sm text-stone-900",
   "hover:bg-stone-100 dark:text-stone-50 dark:hover:bg-stone-800",
 );
 
@@ -658,7 +658,7 @@ export function WorkspaceManagerDialog({
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
         <Dialog.Content
           className={cn(
-            "fixed top-1/2 left-1/2 z-50 max-h-[85vh] w-[min(36rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] p-5 text-stone-900 shadow-xl dark:text-stone-50",
+            "fixed top-1/2 left-1/2 z-50 max-h-[85vh] w-[min(36rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-app-border bg-app-surface p-5 text-stone-900 shadow-xl dark:text-stone-50",
           )}
         >
           <div className="flex items-start justify-between gap-3">
@@ -714,7 +714,7 @@ export function WorkspaceManagerDialog({
 
           {activeTab === "browse" ? (
             <div className="mt-5 space-y-5">
-              <section className="rounded-lg border border-[var(--app-border)] bg-[var(--app-bg)]/40 p-3">
+              <section className="rounded-lg border border-app-border bg-app-bg/40 p-3">
                 <div className="grid grid-cols-[1fr_auto] gap-2">
                   <Field label="Server">
                     <input
@@ -746,7 +746,7 @@ export function WorkspaceManagerDialog({
                   </p>
                 )}
                 {showUseFolder && (
-                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[var(--app-border)] pt-3">
+                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-app-border pt-3">
                     <button
                       type="button"
                       onClick={() => void handleUseFolder()}
@@ -783,7 +783,7 @@ export function WorkspaceManagerDialog({
                   </div>
 
                   {showCreateForm && (
-                    <div className="grid gap-3 rounded-lg border border-[var(--app-border)] bg-[var(--app-bg)]/40 p-3">
+                    <div className="grid gap-3 rounded-lg border border-app-border bg-app-bg/40 p-3">
                       <div className="grid grid-cols-[3rem_1fr] gap-2">
                         <div className="grid gap-1">
                           <span className={labelClassName}>Icon</span>
@@ -835,7 +835,7 @@ export function WorkspaceManagerDialog({
                   )}
 
                   {remoteWorkspaces.length === 0 ? (
-                    <p className="rounded-lg border border-dashed border-[var(--app-border)] px-3 py-6 text-center text-sm text-stone-600 dark:text-stone-400">
+                    <p className="rounded-lg border border-dashed border-app-border px-3 py-6 text-center text-sm text-stone-600 dark:text-stone-400">
                       No workspaces on this server yet.
                     </p>
                   ) : (
@@ -843,7 +843,7 @@ export function WorkspaceManagerDialog({
                       {remoteWorkspaces.map((workspace) => (
                         <li
                           key={workspace.id}
-                          className="flex items-center gap-3 rounded-lg border border-[var(--app-border)] bg-[var(--app-bg)]/40 px-3 py-2.5"
+                          className="flex items-center gap-3 rounded-lg border border-app-border bg-app-bg/40 px-3 py-2.5"
                         >
                           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-stone-200/80 text-lg dark:bg-stone-800">
                             <WorkspaceIcon icon={workspace.icon} />
@@ -891,7 +891,7 @@ export function WorkspaceManagerDialog({
                     {workspaces.map((workspace) => (
                       <li
                         key={workspace.id}
-                        className="flex items-center gap-3 rounded-lg border border-[var(--app-border)] bg-[var(--app-bg)]/40 px-3 py-2.5"
+                        className="flex items-center gap-3 rounded-lg border border-app-border bg-app-bg/40 px-3 py-2.5"
                       >
                         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-stone-200/80 text-lg dark:bg-stone-800">
                           <WorkspaceIcon icon={workspace.icon} />
@@ -935,7 +935,7 @@ export function WorkspaceManagerDialog({
           ) : (
             <div className="mt-5 space-y-4">
               {workspaces.length === 0 ? (
-                <p className="rounded-lg border border-dashed border-[var(--app-border)] px-3 py-6 text-center text-sm text-stone-600 dark:text-stone-400">
+                <p className="rounded-lg border border-dashed border-app-border px-3 py-6 text-center text-sm text-stone-600 dark:text-stone-400">
                   Save a workspace first to edit its settings.
                 </p>
               ) : (
@@ -958,7 +958,7 @@ export function WorkspaceManagerDialog({
                   </Field>
 
                   {settingsWorkspace && (
-                    <div className="space-y-4 rounded-lg border border-[var(--app-border)] bg-[var(--app-bg)]/40 p-3">
+                    <div className="space-y-4 rounded-lg border border-app-border bg-app-bg/40 p-3">
                       <div className="grid grid-cols-[3rem_1fr] gap-2">
                         <div className="grid gap-1">
                           <span className={labelClassName}>Icon</span>

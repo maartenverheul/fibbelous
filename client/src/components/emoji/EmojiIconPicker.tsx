@@ -28,7 +28,7 @@ export function EmojiIconPicker({
           type="button"
           aria-label={icon ? "Change icon" : "Add icon"}
           className={cn(
-            "flex h-[34px] w-full items-center justify-center rounded-md border border-[var(--app-border)] bg-[var(--app-surface)]",
+            "flex h-[34px] w-full items-center justify-center rounded-md border border-app-border bg-app-surface",
             "hover:bg-stone-100 dark:hover:bg-stone-800",
             className,
           )}
@@ -48,7 +48,7 @@ export function EmojiIconPicker({
           align="start"
           sideOffset={4}
           className={cn(
-            "z-[60] rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)]",
+            "z-[60] rounded-lg border border-app-border bg-app-surface",
             "shadow-lg",
           )}
         >
@@ -62,7 +62,7 @@ export function EmojiIconPicker({
             height={400}
             searchPlaceholder="Search emoji…"
           />
-          <Popover.Arrow className="fill-[var(--app-surface)]" />
+          <Popover.Arrow className="fill-app-surface" />
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>

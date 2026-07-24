@@ -251,8 +251,8 @@ function DatabaseViewTabs({
             className={cn(
               "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[0.8125rem] font-medium",
               selected
-                ? "bg-[color-mix(in_srgb,var(--app-border)_70%,transparent)] text-[var(--app-fg)]"
-                : "bg-[color-mix(in_srgb,var(--app-border)_35%,transparent)] text-[var(--app-fg-muted)] hover:bg-[color-mix(in_srgb,var(--app-border)_55%,transparent)] hover:text-[var(--app-fg)]",
+                ? "bg-app-border/70 text-app-fg"
+                : "bg-app-border/35 text-app-fg-muted hover:bg-app-border/55 hover:text-app-fg",
             )}
             onClick={() => onSelect(view.id)}
           >
@@ -285,8 +285,8 @@ function DatabaseViewControls({
   onNew: () => void;
 }) {
   const controlBtnClass = cn(
-    "inline-flex size-8 items-center justify-center rounded-md text-[var(--app-fg-muted)]",
-    "hover:bg-[color-mix(in_srgb,var(--app-border)_45%,transparent)] hover:text-[var(--app-fg)]",
+    "inline-flex size-8 items-center justify-center rounded-md text-app-fg-muted",
+    "hover:bg-app-border/45 hover:text-app-fg",
     "disabled:cursor-not-allowed disabled:opacity-45",
   );
 
@@ -372,7 +372,7 @@ function DatabaseSettingsPopover({
           className={cn(
             triggerClassName,
             open &&
-              "bg-[color-mix(in_srgb,var(--app-border)_45%,transparent)] text-[var(--app-fg)]",
+              "bg-app-border/45 text-app-fg",
           )}
           aria-label="View settings"
           title="View settings"
@@ -387,17 +387,17 @@ function DatabaseSettingsPopover({
           align="end"
           sideOffset={6}
           className={cn(
-            "z-50 w-64 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-3",
+            "z-50 w-64 rounded-lg border border-app-border bg-app-surface p-3",
             "shadow-lg outline-none",
           )}
           onOpenAutoFocus={(event) => event.preventDefault()}
         >
           <section className="space-y-2">
-            <h3 className="text-sm font-medium text-[var(--app-fg)]">
+            <h3 className="text-sm font-medium text-app-fg">
               View settings
             </h3>
             <label className="block space-y-1">
-              <span className="text-xs font-medium text-[var(--app-fg-muted)]">
+              <span className="text-xs font-medium text-app-fg-muted">
                 Name
               </span>
               <input
@@ -418,15 +418,15 @@ function DatabaseSettingsPopover({
                   }
                 }}
                 className={cn(
-                  "w-full rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-2.5 py-1.5",
-                  "text-sm text-[var(--app-fg)] outline-none",
+                  "w-full rounded-md border border-app-border bg-app-bg px-2.5 py-1.5",
+                  "text-sm text-app-fg outline-none",
                   "focus:border-blue-500 focus:ring-1 focus:ring-blue-500",
                   "disabled:opacity-60",
                 )}
               />
             </label>
           </section>
-          <Popover.Arrow className="fill-[var(--app-surface)]" />
+          <Popover.Arrow className="fill-app-surface" />
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
@@ -473,7 +473,7 @@ function DatabaseSortPopover({
             open &&
               (hasSort
                 ? "bg-blue-500/10 text-blue-700"
-                : "bg-[color-mix(in_srgb,var(--app-border)_45%,transparent)]"),
+                : "bg-app-border/45"),
           )}
           aria-label="Sort"
           title="Sort"
@@ -488,11 +488,11 @@ function DatabaseSortPopover({
           align="end"
           sideOffset={6}
           className={cn(
-            "z-50 w-64 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] p-2",
+            "z-50 w-64 rounded-lg border border-app-border bg-app-surface p-2",
             "shadow-lg outline-none",
           )}
         >
-          <p className="px-1.5 pb-1.5 pt-0.5 text-sm font-medium text-[var(--app-fg)]">
+          <p className="px-1.5 pb-1.5 pt-0.5 text-sm font-medium text-app-fg">
             Sort
           </p>
           <ul className="app-scroll m-0 max-h-64 list-none overflow-y-auto p-0">
@@ -508,13 +508,13 @@ function DatabaseSortPopover({
                     className={cn(
                       "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm",
                       selected
-                        ? "bg-[color-mix(in_srgb,var(--app-border)_55%,transparent)] text-[var(--app-fg)]"
-                        : "text-[var(--app-fg)] hover:bg-[color-mix(in_srgb,var(--app-border)_40%,transparent)]",
+                        ? "bg-app-border/55 text-app-fg"
+                        : "text-app-fg hover:bg-app-border/40",
                     )}
                     onClick={() => selectProperty(property.id)}
                   >
                     <TypeIcon
-                      className="size-3.5 shrink-0 text-[var(--app-fg-muted)]"
+                      className="size-3.5 shrink-0 text-app-fg-muted"
                       aria-hidden
                     />
                     <span className="min-w-0 flex-1 truncate">
@@ -522,7 +522,7 @@ function DatabaseSortPopover({
                     </span>
                     {selected ? (
                       <DirectionIcon
-                        className="size-3.5 shrink-0 text-[var(--app-fg)]"
+                        className="size-3.5 shrink-0 text-app-fg"
                         aria-hidden
                       />
                     ) : null}
@@ -531,7 +531,7 @@ function DatabaseSortPopover({
               );
             })}
           </ul>
-          <Popover.Arrow className="fill-[var(--app-surface)]" />
+          <Popover.Arrow className="fill-app-surface" />
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>

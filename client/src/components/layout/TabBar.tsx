@@ -11,7 +11,7 @@ export function TabBar() {
   return (
     <div
       className={cn(
-        "flex h-9 shrink-0 items-end gap-0.5 overflow-x-auto border-b border-[var(--app-border)] bg-[var(--app-panel)] px-2",
+        "flex h-9 shrink-0 items-end gap-0.5 overflow-x-auto border-b border-app-border bg-app-panel px-2",
       )}
     >
       {tabs.map((tab) => {
@@ -23,7 +23,7 @@ export function TabBar() {
             className={cn(
               "group flex max-w-48 shrink-0 items-center rounded-t-md border border-b-0 px-2 py-1 text-sm",
               isActive
-                ? "border-[var(--app-border)] bg-[var(--app-surface)] font-medium text-stone-900 dark:text-stone-50"
+                ? "border-app-border bg-app-surface font-medium text-stone-900 dark:text-stone-50"
                 : "border-transparent bg-transparent text-stone-600 hover:bg-stone-200/70 dark:text-stone-400 dark:hover:bg-stone-800/70",
             )}
           >

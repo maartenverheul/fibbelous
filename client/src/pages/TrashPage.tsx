@@ -102,7 +102,7 @@ export function TrashPage() {
             disabled={busyId !== null}
             onClick={() => void handleEmptyTrash()}
             className={cn(
-              "shrink-0 rounded-md border border-[var(--app-border)] px-3 py-1.5 text-sm text-stone-800",
+              "shrink-0 rounded-md border border-app-border px-3 py-1.5 text-sm text-stone-800",
               "hover:bg-stone-100 disabled:opacity-50 dark:text-stone-200 dark:hover:bg-stone-800",
             )}
           >
@@ -124,7 +124,7 @@ export function TrashPage() {
           {pages.map((page) => (
             <li
               key={page.id}
-              className="flex items-center justify-between gap-3 rounded-md border border-[var(--app-border)] bg-[var(--app-bg)]/50 px-3 py-2"
+              className="flex items-center justify-between gap-3 rounded-md border border-app-border bg-app-bg/50 px-3 py-2"
             >
               <div className="min-w-0">
                 <div className="flex items-center gap-2">

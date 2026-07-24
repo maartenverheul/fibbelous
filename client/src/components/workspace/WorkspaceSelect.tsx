@@ -44,7 +44,7 @@ export function WorkspaceSelect() {
         >
           <Select.Trigger
             className={cn(
-              "grid min-h-12 w-full min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1 border-b border-[var(--app-border)] bg-[var(--app-surface)] py-2.5 pr-2 pl-3 text-left text-base font-medium text-stone-900 outline-none dark:text-stone-50",
+              "grid min-h-12 w-full min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1 border-b border-app-border bg-app-surface py-2.5 pr-2 pl-3 text-left text-base font-medium text-stone-900 outline-none dark:text-stone-50",
             )}
             aria-label="Select workspace"
           >
@@ -93,7 +93,7 @@ export function WorkspaceSelect() {
           <Select.Portal>
             <Select.Content
               className={cn(
-                "z-50 min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-md border border-[var(--app-border)] bg-[var(--app-surface)] text-stone-900 shadow-lg dark:text-stone-50",
+                "z-50 min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-md border border-app-border bg-app-surface text-stone-900 shadow-lg dark:text-stone-50",
               )}
               position="popper"
               sideOffset={4}
@@ -118,7 +118,7 @@ export function WorkspaceSelect() {
                     </Select.ItemText>
                   </Select.Item>
                 ))}
-                <Select.Separator className="my-1 h-px bg-[var(--app-border)]" />
+                <Select.Separator className="my-1 h-px bg-app-border" />
                 <Select.Item
                   value={NEW_WORKSPACE_VALUE}
                   className={cn(

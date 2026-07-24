@@ -3,6 +3,7 @@ import { PiFileText, PiGear, PiMagnifyingGlass, PiTrash, PiX } from "react-icons
 import { useSidebar } from "../../context/SidebarContext";
 import { useTabs, type TabTarget } from "../../context/TabContext";
 import { useWorkspacePages } from "../../hooks/useWorkspacePages";
+import { requestPageTitleFocus } from "../../lib/pageNavigate";
 import { cn } from "../../lib/utils";
 import {
   buildPageSegment,
@@ -41,7 +42,6 @@ export function Sidebar() {
     rootError,
     rootLoaded,
     findPageById,
-    createPage,
     createRootPage,
     duplicatePage,
     setPageFavorite,
@@ -95,18 +95,10 @@ export function Sidebar() {
     });
   };
 
-  const handleContextCreate = async (page: WorkspacePage) => {
-    try {
-      const detail = await createPage(page);
-      openPage(detail);
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
   const handleCreateRootPage = async () => {
     try {
       const detail = await createRootPage();
+      requestPageTitleFocus(detail.id);
       openPage(detail);
     } catch (error) {
       console.error(error);
@@ -143,7 +135,7 @@ export function Sidebar() {
       <aside
         aria-hidden={isMobile && !isOpen}
         className={cn(
-          "flex h-full shrink-0 flex-col border-r border-[var(--app-border)] bg-[var(--app-panel)]",
+          "flex h-full shrink-0 flex-col border-r border-app-border bg-app-panel",
           isMobile ? "w-full" : "w-60",
           isMobile &&
             "fixed inset-0 z-40 transition-transform duration-200 ease-out",
@@ -152,7 +144,7 @@ export function Sidebar() {
         )}
       >
         {isMobile && (
-          <div className="flex shrink-0 justify-end border-b border-[var(--app-border)] px-2 py-1">
+          <div className="flex shrink-0 justify-end border-b border-app-border px-2 py-1">
             <button
               type="button"
               onClick={close}
@@ -296,7 +288,7 @@ export function Sidebar() {
         <div
           ref={menuRef}
           className={cn(
-            "fixed z-50 min-w-40 rounded-md border border-[var(--app-border)] bg-[var(--app-surface)] py-1 shadow-lg",
+            "fixed z-50 min-w-52 rounded-md border border-app-border bg-app-surface py-1 shadow-lg",
           )}
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
@@ -305,11 +297,6 @@ export function Sidebar() {
             target={contextMenu.target}
             page={contextMenu.page}
             onClose={() => setContextMenu(null)}
-            onCreateSubpage={
-              contextMenu.page
-                ? () => void handleContextCreate(contextMenu.page!)
-                : undefined
-            }
             onDuplicate={
               contextMenu.page
                 ? () => void handleContextDuplicate(contextMenu.page!)

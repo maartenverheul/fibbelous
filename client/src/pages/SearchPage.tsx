@@ -75,7 +75,7 @@ export function SearchPage() {
         placeholder="Search pages…"
         autoFocus
         className={cn(
-          "w-full rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] px-4 py-3 text-base",
+          "w-full rounded-md border border-app-border bg-app-bg px-4 py-3 text-base",
           "text-stone-900 placeholder:text-stone-500 outline-none",
           "focus:border-stone-400 dark:text-stone-50 dark:placeholder:text-stone-400 dark:focus:border-stone-500",
         )}
@@ -109,7 +109,7 @@ export function SearchPage() {
                   })
                 }
                 className={cn(
-                  "flex w-full items-start gap-3 rounded-md border border-[var(--app-border)] bg-[var(--app-bg)]/50 px-3 py-2 text-left",
+                  "flex w-full items-start gap-3 rounded-md border border-app-border bg-app-bg/50 px-3 py-2 text-left",
                   "hover:bg-stone-100/80 dark:hover:bg-stone-800/80",
                 )}
               >

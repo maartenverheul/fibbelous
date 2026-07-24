@@ -3,6 +3,7 @@ import { PiCaretRight, PiDotsThreeVertical, PiFileText, PiPlus } from "react-ico
 import { EmojiIcon } from "../emoji/EmojiIcon";
 import { useTabs, type TabTarget } from "../../context/TabContext";
 import { useWorkspacePages } from "../../hooks/useWorkspacePages";
+import { requestPageTitleFocus } from "../../lib/pageNavigate";
 import { cn } from "../../lib/utils";
 import { PageActionsMenu } from "./PageActionsMenu";
 import {
@@ -107,6 +108,7 @@ export function PageTreeItem({
       const detail = await createPage(page);
       userCollapsedRef.current = false;
       setOpen(true);
+      requestPageTitleFocus(detail.id);
       openPage(detail);
     } catch (error) {
       console.error(error);
@@ -284,7 +286,7 @@ export function PageTreeItem({
         {menuOpen && (
           <div
             className={cn(
-              "absolute top-full right-0 z-50 mt-1 min-w-40 rounded-md border border-[var(--app-border)] bg-[var(--app-surface)] py-1 shadow-lg",
+              "absolute top-full right-0 z-50 mt-1 min-w-52 rounded-md border border-app-border bg-app-surface py-1 shadow-lg",
             )}
           >
             <PageActionsMenu
@@ -292,7 +294,6 @@ export function PageTreeItem({
               target={{ label, icon: page.icon, pageId: page.id }}
               page={page}
               onClose={() => setMenuOpen(false)}
-              onCreateSubpage={() => void handleCreateSubpage()}
               onDuplicate={() => void handleDuplicate()}
               onToggleFavorite={() => void handleToggleFavorite()}
               onTrash={() => void handleTrash()}

@@ -51,7 +51,7 @@ export function insertNewPageSlashMenuItem(
 
           const markdown = await serializePageBody(editor);
           options.flushBody(markdown);
-          openWorkspacePage(detail);
+          openWorkspacePage(detail, { focusTitle: true });
         } catch (error) {
           console.error(error);
         }
