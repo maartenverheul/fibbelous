@@ -4,6 +4,10 @@ import {
   mdxRawWithAttrs,
 } from "./mdxPlaceholders";
 import {
+  formatDatabaseTimestamp,
+  getRowPropertyValue,
+} from "./databaseAttributes";
+import {
   dbSelectChip,
   dbSelectChipGroup,
   resolveSelectTokens,
@@ -42,6 +46,7 @@ import {
 import { getScrollParent, isInVerticalScrollport, cn } from "./utils";
 import {
   databaseDisplayTitle,
+  databaseViewProperties,
   pageFromDatabaseRow,
   parseDatabaseSchema,
   type DatabasePropertyColumn,
@@ -145,12 +150,13 @@ export function paintDatabaseTable(
     const activeView =
       schema.views.find((view) => view.id === activeViewId) ?? schema.views[0];
     bodyHost.replaceChildren();
+    const viewProperties = databaseViewProperties(schema.properties);
 
-    if (!activeView || schema.properties.length === 0) {
+    if (!activeView || viewProperties.length === 0) {
       const empty = document.createElement("div");
       empty.className = dbMutedText;
       empty.textContent =
-        schema.properties.length === 0
+        viewProperties.length === 0
           ? "No properties defined"
           : "No view selected";
       bodyHost.appendChild(empty);
@@ -160,7 +166,7 @@ export function paintDatabaseTable(
     const painted = renderViewBody(
       schema.id,
       activeView,
-      schema.properties,
+      viewProperties,
       title,
     );
     bodyHost.appendChild(painted.dom);
@@ -678,7 +684,11 @@ function listRowAttributes(
       attrs.push({ id: property.id, value: "", property });
       continue;
     }
-    const value = formatCellValue(raw);
+    const value =
+      property.type === "created_time" ||
+      property.type === "last_edited_time"
+        ? formatDatabaseTimestamp(raw)
+        : formatCellValue(raw);
     if (!value) continue;
     attrs.push({ id: property.id, value, property });
   }
@@ -698,6 +708,13 @@ function appendPropertyValue(
   }
   if (property.type === "checkbox" || typeof value === "boolean") {
     host.appendChild(renderCheckboxValue(value));
+    return;
+  }
+  if (
+    property.type === "created_time" ||
+    property.type === "last_edited_time"
+  ) {
+    host.textContent = formatDatabaseTimestamp(value);
     return;
   }
   host.textContent = formatCellValue(value);
@@ -747,14 +764,7 @@ function rowCellValue(
   row: DatabaseRowSummary,
   property: DatabasePropertyColumn,
 ): unknown {
-  if (property.type === "title") return row.title;
-  const attrs =
-    row.attributes && typeof row.attributes === "object"
-      ? row.attributes
-      : {};
-  const byName = attrs[property.name.toLowerCase()];
-  if (byName !== undefined) return byName;
-  return attrs[property.key.toLowerCase()];
+  return getRowPropertyValue(row, property);
 }
 
 function formatCellValue(value: unknown): string {

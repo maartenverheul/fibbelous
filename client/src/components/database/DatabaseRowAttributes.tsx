@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
 import { PiClock } from "react-icons/pi";
+import {
+  formatDatabaseTimestamp,
+  getAttributeValue,
+  getRowPropertyValue,
+  setAttributeValue,
+} from "../../lib/databaseAttributes";
 import { fetchDatabaseDetail } from "../../lib/databaseFetch";
 import { databasePropertyTypeIcon } from "../../lib/databasePropertyIcons";
 import {
@@ -34,48 +40,6 @@ type DatabaseRowAttributesProps = {
   onChange?: (attributes: Record<string, unknown>) => void;
 };
 
-function attributeValue(
-  attrs: Record<string, unknown>,
-  property: DatabasePropertyColumn,
-): unknown {
-  const key = findAttributeKey(attrs, property);
-  return key ? attrs[key] : undefined;
-}
-
-function findAttributeKey(
-  attrs: Record<string, unknown>,
-  property: DatabasePropertyColumn,
-): string | null {
-  const nameLower = property.name.toLowerCase();
-  const keyLower = property.key.toLowerCase();
-  for (const key of Object.keys(attrs)) {
-    const lower = key.toLowerCase();
-    if (lower === nameLower || lower === keyLower) return key;
-  }
-  return null;
-}
-
-function setAttributeValue(
-  attrs: Record<string, unknown>,
-  property: DatabasePropertyColumn,
-  value: unknown,
-): Record<string, unknown> {
-  const next = { ...attrs };
-  const existingKey = findAttributeKey(attrs, property);
-  const writeKey = existingKey ?? property.name;
-
-  if (value === null || value === undefined || value === "") {
-    if (existingKey) delete next[existingKey];
-    return next;
-  }
-
-  if (existingKey && existingKey !== writeKey) {
-    delete next[existingKey];
-  }
-  next[writeKey] = value;
-  return next;
-}
-
 function formatReadonlyValue(value: unknown): string {
   if (value == null || value === "") return "—";
   if (typeof value === "boolean") return value ? "Yes" : "No";
@@ -93,16 +57,7 @@ function formatReadonlyValue(value: unknown): string {
 }
 
 function formatTimestamp(value: string | null | undefined): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDatabaseTimestamp(value) || "—";
 }
 
 function toDateInputValue(value: unknown): string {
@@ -190,11 +145,18 @@ export function DatabaseRowAttributes({
       {properties.map((property) => {
         const TypeIcon = databasePropertyTypeIcon(property.type);
         const value =
-          property.type === "created_time"
-            ? (attributeValue(attrs, property) ?? created)
-            : property.type === "last_edited_time"
-              ? (attributeValue(attrs, property) ?? edited)
-              : attributeValue(attrs, property);
+          property.type === "created_time" ||
+          property.type === "last_edited_time"
+            ? getRowPropertyValue(
+                {
+                  title: null,
+                  created: created ?? null,
+                  edited: edited ?? null,
+                  attributes: attrs,
+                },
+                property,
+              )
+            : getAttributeValue(attrs, property);
         const propertyReadOnly =
           Boolean(readOnly) || READONLY_TYPES.has(property.type);
 

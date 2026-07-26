@@ -57,6 +57,8 @@ export type DatabaseProperty = {
   id: string;
   name: string;
   description?: string | null;
+  /** When true, the property is omitted from database views. */
+  disable?: boolean;
 } & DatabasePropertyConfig;
 
 export type EmptyObject = Record<string, never>;
@@ -138,6 +140,8 @@ export type DatabasePropertyColumn = {
   id: string;
   name: string;
   type: DatabasePropertyConfig["type"];
+  /** When true, the property is omitted from database views. */
+  disable?: boolean;
   /** Present for select / multi_select (and similar option-backed types). */
   options?: SelectOption[];
 };
@@ -329,6 +333,7 @@ export function parseDatabaseSchema(json: unknown): DatabaseSchema | null {
         id: propId,
         name,
         type,
+        ...(prop.disable === true ? { disable: true } : {}),
         ...(options ? { options } : {}),
       });
     }
@@ -348,6 +353,13 @@ export function parseDatabaseSchema(json: unknown): DatabaseSchema | null {
     properties,
     views: parseDatabaseViews(root.views),
   };
+}
+
+/** Properties shown as columns in table/list views (`disable: true` excluded). */
+export function databaseViewProperties(
+  properties: DatabasePropertyColumn[],
+): DatabasePropertyColumn[] {
+  return properties.filter((property) => !property.disable);
 }
 
 export function databaseDisplayTitle(

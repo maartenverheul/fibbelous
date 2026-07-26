@@ -11,6 +11,10 @@ import {
   PiTable,
 } from "react-icons/pi";
 import {
+  formatDatabaseTimestamp,
+  getRowPropertyValue,
+} from "../../lib/databaseAttributes";
+import {
   createDatabaseRow,
   fetchDatabaseRows,
   updateDatabaseView,
@@ -49,6 +53,7 @@ import {
 import { cn, getScrollParent, isInVerticalScrollport } from "../../lib/utils";
 import {
   databaseDisplayTitle,
+  databaseViewProperties,
   pageFromDatabaseRow,
   parseDatabaseSchema,
   type DatabasePropertyColumn,
@@ -97,6 +102,7 @@ export function DatabaseDisplay({
     schema.views.find((view) => view.id === activeViewId) ?? schema.views[0];
   const title = databaseDisplayTitle(detail, schema);
   const activeSort = activeView?.settings.sort ?? null;
+  const viewProperties = databaseViewProperties(schema.properties);
 
   useEffect(() => {
     setDetail(detailProp);
@@ -196,7 +202,7 @@ export function DatabaseDisplay({
         <DatabaseViewControls
           creating={creating}
           savingView={savingView}
-          properties={schema.properties}
+          properties={viewProperties}
           viewName={activeView?.name ?? ""}
           sort={activeSort}
           onSortChange={(next) => void applySort(next)}
@@ -204,9 +210,9 @@ export function DatabaseDisplay({
           onNew={() => void handleNew()}
         />
       </div>
-      {!activeView || schema.properties.length === 0 ? (
+      {!activeView || viewProperties.length === 0 ? (
         <div className={dbMutedText}>
-          {schema.properties.length === 0
+          {viewProperties.length === 0
             ? "No properties defined"
             : "No view selected"}
         </div>
@@ -214,7 +220,7 @@ export function DatabaseDisplay({
         <DatabaseViewBody
           databaseId={schema.id}
           view={activeView}
-          properties={schema.properties}
+          properties={viewProperties}
           title={title}
           sort={activeSort}
         />
@@ -848,7 +854,10 @@ function listRowAttributes(
         isSelectPropertyType(property.type) ||
         isCheckboxPropertyType(property.type)
           ? undefined
-          : formatCellValue(value) || undefined,
+          : property.type === "created_time" ||
+              property.type === "last_edited_time"
+            ? formatDatabaseTimestamp(value) || undefined
+            : formatCellValue(value) || undefined,
       node,
     });
   }
@@ -868,6 +877,13 @@ function formatPropertyValue(
   if (isCheckboxPropertyType(property.type) || typeof value === "boolean") {
     return <DatabaseCheckboxValue value={value} />;
   }
+  if (
+    property.type === "created_time" ||
+    property.type === "last_edited_time"
+  ) {
+    const text = formatDatabaseTimestamp(value);
+    return text || null;
+  }
   const text = formatCellValue(value);
   return text || null;
 }
@@ -876,17 +892,7 @@ function rowCellValue(
   row: DatabaseRowSummary,
   property: DatabasePropertyColumn,
 ): unknown {
-  if (property.type === "title") {
-    return row.title;
-  }
-
-  const attrs =
-    row.attributes && typeof row.attributes === "object"
-      ? row.attributes
-      : {};
-  const byName = attrs[property.name.toLowerCase()];
-  if (byName !== undefined) return byName;
-  return attrs[property.key.toLowerCase()];
+  return getRowPropertyValue(row, property);
 }
 
 function formatCellValue(value: unknown): string {

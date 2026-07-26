@@ -1425,11 +1425,11 @@ pub(crate) fn parse_row_cache_fields(content: &str) -> (Option<String>, Option<S
     let edited = mapping
         .and_then(|map| map.get(serde_yaml::Value::String("edited".into())))
         .and_then(yaml_scalar_to_string);
-    let attributes = mapping
-        .and_then(|map| map.get(serde_yaml::Value::String("attributes".into())))
+    let properties = mapping
+        .and_then(|map| map.get(serde_yaml::Value::String("properties".into())))
         .cloned()
         .unwrap_or(serde_yaml::Value::Mapping(serde_yaml::Mapping::new()));
-    let attributes_json = serde_json::to_string(&yaml_value_to_json(attributes))
+    let attributes_json = serde_json::to_string(&yaml_value_to_json(properties))
         .unwrap_or_else(|_| "{}".to_owned());
 
     (created, edited, attributes_json)

@@ -39,6 +39,9 @@ pub struct DatabaseProperty {
     pub name: String,
     #[serde(default)]
     pub description: Option<String>,
+    /// When true, the property is omitted from database views.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub disable: bool,
     #[serde(flatten)]
     pub config: DatabasePropertyConfig,
 }
@@ -433,7 +436,8 @@ pub fn resolve_sort_field(
         DatabasePropertyConfig::CreatedTime { .. } => Ok((DatabaseSortField::Created, None)),
         DatabasePropertyConfig::LastEditedTime { .. } => Ok((DatabaseSortField::Edited, None)),
         _ => {
-            let key = property.name.to_lowercase();
+            // Attribute map keys match `database.json` property `name` casing.
+            let key = property.name.clone();
             if !is_safe_attribute_key(&key) {
                 return Err(format!("invalid sort property key: {key}"));
             }
@@ -486,7 +490,7 @@ pub fn create_database_row(
             favorite: false,
             created: now.clone(),
             edited: now.clone(),
-            attributes_block: "attributes: {}\n".to_owned(),
+            properties_block: "properties: {}\n".to_owned(),
         },
         "",
     );

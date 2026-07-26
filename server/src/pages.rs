@@ -110,7 +110,7 @@ pub struct UpdatePageInput {
     pub body: Option<String>,
     pub body_patch: Option<BodyPatch>,
     pub favorite: Option<bool>,
-    /// When set on a database row, replaces the frontmatter `attributes` map.
+    /// When set on a database row, replaces the frontmatter `properties` map.
     pub attributes: Option<serde_json::Value>,
 }
 
@@ -242,7 +242,7 @@ impl PageFrontmatter {
 }
 
 /// Canonical database-row frontmatter order:
-/// `id`, `slug`, `title`, `icon?`, `favorite?`, `created`, `edited`, `attributes`.
+/// `id`, `slug`, `title`, `icon?`, `favorite?`, `created`, `edited`, `properties`.
 #[derive(Debug, Clone)]
 pub(crate) struct DatabaseRowFrontmatter {
     pub id: String,
@@ -252,8 +252,8 @@ pub(crate) struct DatabaseRowFrontmatter {
     pub favorite: bool,
     pub created: String,
     pub edited: String,
-    /// Raw `attributes:` block including continuation lines; ends with `\n`.
-    pub attributes_block: String,
+    /// Raw `properties:` block including continuation lines; ends with `\n`.
+    pub properties_block: String,
 }
 
 impl DatabaseRowFrontmatter {
@@ -272,8 +272,8 @@ impl DatabaseRowFrontmatter {
             "created: \"{}\"\nedited: \"{}\"\n",
             self.created, self.edited
         ));
-        yaml.push_str(&self.attributes_block);
-        if !self.attributes_block.ends_with('\n') {
+        yaml.push_str(&self.properties_block);
+        if !self.properties_block.ends_with('\n') {
             yaml.push('\n');
         }
         yaml.push_str("---\n");
@@ -492,10 +492,10 @@ fn update_database_row(
         .or(existing.created.clone())
         .unwrap_or_else(now_iso);
     let edited = now_iso();
-    let attributes_block = if let Some(attributes) = input.attributes.as_ref() {
-        format_attributes_block(attributes)?
+    let properties_block = if let Some(attributes) = input.attributes.as_ref() {
+        format_properties_block(attributes)?
     } else {
-        extract_attributes_block(existing_frontmatter)
+        extract_properties_block(existing_frontmatter)
     };
     let content = format_database_row_content(
         &DatabaseRowFrontmatter {
@@ -506,7 +506,7 @@ fn update_database_row(
             favorite,
             created: created.clone(),
             edited: edited.clone(),
-            attributes_block,
+            properties_block,
         },
         &body,
     );
@@ -577,17 +577,17 @@ fn extract_frontmatter_inner(content: &str) -> Option<&str> {
     Some(&rest[..end])
 }
 
-/// Preserves the raw `attributes:` block (including indented continuation lines).
-fn extract_attributes_block(frontmatter_inner: &str) -> String {
+/// Preserves the raw `properties:` block (including indented continuation lines).
+fn extract_properties_block(frontmatter_inner: &str) -> String {
     let lines = frontmatter_inner.lines().collect::<Vec<_>>();
     let mut index = 0usize;
     while index < lines.len() {
         let line = lines[index];
-        let is_attributes = !line.chars().next().is_some_and(char::is_whitespace)
+        let is_properties = !line.chars().next().is_some_and(char::is_whitespace)
             && line
                 .split_once(':')
-                .is_some_and(|(key, _)| key.trim() == "attributes");
-        if !is_attributes {
+                .is_some_and(|(key, _)| key.trim() == "properties");
+        if !is_properties {
             index += 1;
             continue;
         }
@@ -608,24 +608,24 @@ fn extract_attributes_block(frontmatter_inner: &str) -> String {
         }
         return block;
     }
-    "attributes: {}\n".to_owned()
+    "properties: {}\n".to_owned()
 }
 
-/// Serialize a JSON attribute map to a YAML `attributes:` frontmatter block.
+/// Serialize a JSON property map to a YAML `properties:` frontmatter block.
 /// Arrays of scalars use inline flow style: `Tags: [A, B]`.
-fn format_attributes_block(attributes: &serde_json::Value) -> Result<String, String> {
-    let attrs = match attributes {
+fn format_properties_block(properties: &serde_json::Value) -> Result<String, String> {
+    let props = match properties {
         serde_json::Value::Null => serde_json::Map::new(),
         serde_json::Value::Object(map) => map.clone(),
-        _ => return Err("attributes must be a JSON object".to_owned()),
+        _ => return Err("properties must be a JSON object".to_owned()),
     };
 
-    if attrs.is_empty() {
-        return Ok("attributes: {}\n".to_owned());
+    if props.is_empty() {
+        return Ok("properties: {}\n".to_owned());
     }
 
-    let mut block = String::from("attributes:\n");
-    for (key, value) in &attrs {
+    let mut block = String::from("properties:\n");
+    for (key, value) in &props {
         block.push_str("  ");
         block.push_str(&format_yaml_plain_or_quoted(key));
         block.push_str(": ");
