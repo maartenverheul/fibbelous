@@ -261,8 +261,11 @@ export function PageBreadcrumbs() {
   };
 
   return (
-    <nav aria-label="Breadcrumb" className={navClassName}>
-      <div className="flex min-w-0 items-center gap-1">
+    <nav
+      aria-label="Breadcrumb"
+      className={cn(navClassName, "justify-end md:justify-between")}
+    >
+      <div className="hidden min-w-0 items-center gap-1 md:flex">
         <CrumbList
           crumbs={crumbs}
           findPageById={findPageById}
