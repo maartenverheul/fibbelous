@@ -12,7 +12,7 @@ export function MobileHeader() {
   return (
     <header
       className={cn(
-        "flex h-11 shrink-0 items-center gap-2 border-b border-app-border bg-app-panel px-2 md:hidden",
+        "sticky top-0 z-20 flex h-11 shrink-0 items-center gap-2 border-b border-app-border bg-app-panel px-2 md:hidden",
       )}
     >
       <button

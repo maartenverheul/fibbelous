@@ -185,15 +185,23 @@ export function DatabaseSelectOptionPicker({
 
   if (isMobile) {
     return (
-      <Drawer.Root open={open} onOpenChange={setOpen}>
+      <Drawer.Root
+        open={open}
+        onOpenChange={setOpen}
+        // App shell already locks body scroll; vaul body/input repositioning
+        // fights that on iOS Safari/PWA and can dismiss or jump the page.
+        noBodyStyles
+        repositionInputs={false}
+      >
         <Drawer.Trigger asChild>{trigger}</Drawer.Trigger>
         <Drawer.Portal>
           <Drawer.Overlay className="fixed inset-0 z-50 bg-black/40" />
           <Drawer.Content
             className={cn(
-              "fixed inset-x-0 bottom-0 z-50 flex max-h-[85vh] flex-col rounded-t-xl",
+              "fixed inset-x-0 bottom-0 z-50 flex max-h-[85dvh] flex-col rounded-t-xl",
               "border-t border-app-border bg-app-surface outline-none",
             )}
+            onOpenAutoFocus={(event) => event.preventDefault()}
           >
             <div className="mx-auto mt-3 h-1.5 w-10 shrink-0 rounded-full bg-app-border" />
             <div className="flex items-center justify-between gap-2 px-4 pt-3 pb-2">
