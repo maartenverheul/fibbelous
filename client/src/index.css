@@ -506,6 +506,9 @@
   line-height: inherit;
   text-decoration: none !important;
   vertical-align: baseline;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: pointer;
 }
 
 .page-body-editor .bn-editor .bn-page-link__icon {

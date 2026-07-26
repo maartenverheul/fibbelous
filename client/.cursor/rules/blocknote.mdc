@@ -1,0 +1,34 @@
+---
+description: BlockNote package notes for the page editor (avoid re-digging node_modules)
+globs:
+  - src/components/page/**
+  - src/lib/page*.ts
+  - src/lib/page*.tsx
+  - src/lib/*Editor*
+  - src/lib/*Slash*
+  - src/index.css
+alwaysApply: false
+---
+
+# BlockNote (fibbelous client)
+
+Packages live at repo-root `node_modules/@blocknote/{core,react,ariakit}` (hoisted), not under `client/node_modules`. Version pin: `package.json` `^0.51.x`.
+
+## Custom inline content
+
+Created via `createReactInlineContentSpec` (`@blocknote/react`).
+
+For `content: "none"` (our `pageLink`):
+
+- TipTap node is `atom: true`
+- `selectable: false` (only `"styled"` content is selectable)
+- Rendered with `ReactNodeViewRenderer` + wrapper `data-inline-content-type="<type>"`
+
+Key impl: `node_modules/@blocknote/react/src/schema/ReactInlineContentSpec.tsx`
+
+## Where our editor code lives
+
+- Schema / specs: `src/lib/pageEditorSchema.ts`, `src/lib/pageLinkInline.tsx`
+- Editor host + `links.onClick` for normal/legacy links: `src/components/page/PageBodyEditor.tsx`
+- Link helpers / HTML round-trip: `src/lib/pageLinks.ts`
+- Navigation from DOM renders: `src/lib/pageNavigate.ts`

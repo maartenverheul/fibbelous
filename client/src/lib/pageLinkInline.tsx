@@ -130,6 +130,8 @@ function PageLinkInline(props: {
     };
   }, [label, icon]);
 
+  const navigate = () => openWorkspacePage(page);
+
   return (
     <a
       ref={anchorRef}
@@ -137,10 +139,24 @@ function PageLinkInline(props: {
       className={cn("bn-page-link", solo ? "bn-page-link--solo" : "bn-page-link--inline")}
       contentEditable={false}
       title={label}
+      // ProseMirror consumes the first press on atom inline content for
+      // selection/focus, so click alone needs a second tap. Prevent that on
+      // pointerdown; navigate on pointerup. Keep click for keyboard (detail === 0).
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+      onPointerUp={(event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        navigate();
+      }}
       onClick={(event) => {
         event.preventDefault();
         event.stopPropagation();
-        openWorkspacePage(page);
+        if (event.detail === 0) navigate();
       }}
     >
       <span className="bn-page-link__icon" aria-hidden>
