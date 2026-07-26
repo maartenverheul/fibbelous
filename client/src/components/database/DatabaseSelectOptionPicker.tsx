@@ -62,15 +62,19 @@ function PickerBody({
           )}
         />
       </div>
-      {selected.length > 0 && (
-        <button
-          type="button"
-          onClick={onClear}
-          className="shrink-0 self-start text-xs text-app-fg-muted hover:text-app-fg"
-        >
-          Clear
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={onClear}
+        disabled={selected.length === 0}
+        tabIndex={selected.length === 0 ? -1 : undefined}
+        aria-hidden={selected.length === 0}
+        className={cn(
+          "shrink-0 self-start text-xs text-app-fg-muted hover:text-app-fg",
+          selected.length === 0 && "invisible",
+        )}
+      >
+        Clear
+      </button>
       <ul className="app-scroll min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain">
         {filtered.length === 0 ? (
           <li className="px-2 py-3 text-sm text-app-fg-muted">No options</li>

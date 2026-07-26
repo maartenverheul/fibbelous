@@ -479,10 +479,9 @@ impl CacheDb {
         limit: usize,
         offset: usize,
         direction: Option<crate::databases::DatabaseSortDirection>,
-        field: crate::databases::DatabaseSortField,
-        attribute_key: Option<&str>,
+        sort: &crate::databases::ResolvedDatabaseSort,
     ) -> rusqlite::Result<DatabaseRowsPage> {
-        use crate::databases::{DatabaseSortDirection, DatabaseSortField};
+        use crate::databases::{DatabaseSortDirection, ResolvedDatabaseSort};
 
         let limit = limit.clamp(1, 200);
         let total: usize = self.conn.query_row(
@@ -497,39 +496,35 @@ impl CacheDb {
             DatabaseSortDirection::Desc => "DESC",
         };
 
-        let sql = match field {
-            DatabaseSortField::Edited => format!(
+        let sql = match sort {
+            ResolvedDatabaseSort::Edited => format!(
                 "SELECT id, slug, title, icon, created, edited, attributes_json, path, favorite
                  FROM database_rows
                  WHERE database_id = ?1
                  ORDER BY COALESCE(edited, '') {order}, id {order}
                  LIMIT ?2 OFFSET ?3"
             ),
-            DatabaseSortField::Title => format!(
+            ResolvedDatabaseSort::Title => format!(
                 "SELECT id, slug, title, icon, created, edited, attributes_json, path, favorite
                  FROM database_rows
                  WHERE database_id = ?1
                  ORDER BY COALESCE(title, '') COLLATE NOCASE {order}, id {order}
                  LIMIT ?2 OFFSET ?3"
             ),
-            DatabaseSortField::Created => format!(
+            ResolvedDatabaseSort::Created => format!(
                 "SELECT id, slug, title, icon, created, edited, attributes_json, path, favorite
                  FROM database_rows
                  WHERE database_id = ?1
                  ORDER BY COALESCE(created, '') {order}, id {order}
                  LIMIT ?2 OFFSET ?3"
             ),
-            DatabaseSortField::Attribute => {
-                let key = attribute_key.unwrap_or("");
-                // key is validated upstream to safe characters only.
-                format!(
-                    "SELECT id, slug, title, icon, created, edited, attributes_json, path, favorite
-                     FROM database_rows
-                     WHERE database_id = ?1
-                     ORDER BY json_extract(attributes_json, '$.{key}') COLLATE NOCASE {order}, id {order}
-                     LIMIT ?2 OFFSET ?3"
-                )
-            }
+            ResolvedDatabaseSort::AttributeExpr(expr) => format!(
+                "SELECT id, slug, title, icon, created, edited, attributes_json, path, favorite
+                 FROM database_rows
+                 WHERE database_id = ?1
+                 ORDER BY {expr} {order}, id {order}
+                 LIMIT ?2 OFFSET ?3"
+            ),
         };
 
         let mut stmt = self.conn.prepare(&sql)?;

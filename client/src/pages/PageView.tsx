@@ -206,7 +206,7 @@ function PageEditor({
       </header>
       <div
         className={cn(
-          "mx-auto w-full flex-1 pb-48",
+          "mx-auto w-full flex-1 pb-[80dvh]",
           databasePage
             ? "page-database-body max-w-none px-4 sm:px-6 lg:px-8"
             : "max-w-3xl px-4",

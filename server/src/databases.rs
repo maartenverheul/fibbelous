@@ -313,16 +313,16 @@ pub fn list_database_rows(
         return Ok(None);
     };
 
-    let (field, attribute_key) = if let Some(ref sort) = sort {
+    let resolved = if let Some(ref sort) = sort {
         let contents = cache
             .get_database_content(database_id)
             .map_err(|error| error.to_string())?
             .ok_or_else(|| "database content not found".to_owned())?;
         let database: DatabaseFile =
             serde_json::from_str(&contents).map_err(|error| error.to_string())?;
-        resolve_sort_field(&database, sort)?
+        resolve_sort(&database, sort)?
     } else {
-        (DatabaseSortField::Edited, None)
+        ResolvedDatabaseSort::Edited
     };
 
     let direction = sort
@@ -336,19 +336,19 @@ pub fn list_database_rows(
             limit.unwrap_or(50),
             offset.unwrap_or(0),
             direction,
-            field,
-            attribute_key.as_deref(),
+            &resolved,
         )
         .map_err(|error| error.to_string())?;
     Ok(Some(page))
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum DatabaseSortField {
+#[derive(Debug, Clone)]
+pub enum ResolvedDatabaseSort {
     Edited,
     Title,
     Created,
-    Attribute,
+    /// Full SQL expression for `ORDER BY <expr> ASC|DESC` (no direction suffix).
+    AttributeExpr(String),
 }
 
 pub fn update_database_view(
@@ -420,37 +420,116 @@ fn mutate_database_view(
     }))
 }
 
-/// Resolve which SQLite field to sort by for a property id in this database.
-pub fn resolve_sort_field(
+/// Resolve which SQLite field / expression to sort by for a property id.
+pub fn resolve_sort(
     database: &DatabaseFile,
     sort: &DatabaseViewSort,
-) -> Result<(DatabaseSortField, Option<String>), String> {
-    let property = database
+) -> Result<ResolvedDatabaseSort, String> {
+    let (map_key, property) = database
         .properties
-        .values()
-        .find(|property| property.id == sort.property)
+        .iter()
+        .find(|(_, property)| property.id == sort.property)
+        .map(|(key, property)| (key.as_str(), property))
         .ok_or_else(|| format!("sort property not found: {}", sort.property))?;
 
     match &property.config {
-        DatabasePropertyConfig::Title { .. } => Ok((DatabaseSortField::Title, None)),
-        DatabasePropertyConfig::CreatedTime { .. } => Ok((DatabaseSortField::Created, None)),
-        DatabasePropertyConfig::LastEditedTime { .. } => Ok((DatabaseSortField::Edited, None)),
-        _ => {
-            // Attribute map keys match `database.json` property `name` casing.
-            let key = property.name.clone();
-            if !is_safe_attribute_key(&key) {
-                return Err(format!("invalid sort property key: {key}"));
-            }
-            Ok((DatabaseSortField::Attribute, Some(key)))
-        }
+        DatabasePropertyConfig::Title { .. } => Ok(ResolvedDatabaseSort::Title),
+        DatabasePropertyConfig::CreatedTime { .. } => Ok(ResolvedDatabaseSort::Created),
+        DatabasePropertyConfig::LastEditedTime { .. } => Ok(ResolvedDatabaseSort::Edited),
+        DatabasePropertyConfig::Number { .. } => Ok(ResolvedDatabaseSort::AttributeExpr(
+            attribute_sort_expression(&[property.name.as_str(), map_key], true),
+        )),
+        _ => Ok(ResolvedDatabaseSort::AttributeExpr(
+            attribute_sort_expression(&[property.name.as_str(), map_key], false),
+        )),
     }
 }
 
-fn is_safe_attribute_key(key: &str) -> bool {
-    !key.is_empty()
-        && key
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+/// Build a SQL expression that reads an attribute from `attributes_json`.
+/// Tries `property.name` then the `database.json` map key (Notion-style ids).
+fn attribute_sort_expression(keys: &[&str], numeric: bool) -> String {
+    let mut unique = Vec::new();
+    for key in keys {
+        if key.is_empty() {
+            continue;
+        }
+        if !unique.iter().any(|existing| existing == key) {
+            unique.push(*key);
+        }
+    }
+
+    let extract = match unique.as_slice() {
+        [] => "NULL".to_owned(),
+        [key] => format!(
+            "json_extract(attributes_json, {})",
+            json_path_sql_literal(key)
+        ),
+        keys => {
+            let parts: Vec<String> = keys
+                .iter()
+                .map(|key| {
+                    format!(
+                        "json_extract(attributes_json, {})",
+                        json_path_sql_literal(key)
+                    )
+                })
+                .collect();
+            format!("COALESCE({})", parts.join(", "))
+        }
+    };
+
+    if numeric {
+        format!("CAST(({extract}) AS REAL)")
+    } else {
+        format!("CAST(({extract}) AS TEXT) COLLATE NOCASE")
+    }
+}
+
+/// JSON path for `json_extract`, as a SQL string literal: `'$."Key"'`.
+fn json_path_sql_literal(key: &str) -> String {
+    let mut path = String::from("$.\"");
+    for ch in key.chars() {
+        match ch {
+            '\\' => path.push_str("\\\\"),
+            '"' => path.push_str("\\\""),
+            _ => path.push(ch),
+        }
+    }
+    path.push('"');
+    format!("'{}'", path.replace('\'', "''"))
+}
+
+#[cfg(test)]
+mod sort_tests {
+    use super::{attribute_sort_expression, json_path_sql_literal};
+
+    #[test]
+    fn json_path_quotes_keys_with_spaces() {
+        assert_eq!(json_path_sql_literal("Story Points"), "'$.\"Story Points\"'");
+    }
+
+    #[test]
+    fn json_path_escapes_quotes_and_sql() {
+        assert_eq!(json_path_sql_literal(r#"a"b"#), r#"'$."a\"b"'"#);
+        assert_eq!(json_path_sql_literal("O'Brien"), r#"'$."O''Brien"'"#);
+    }
+
+    #[test]
+    fn attribute_expression_coalesces_name_and_map_key() {
+        let expr = attribute_sort_expression(&["Status", "AbCd"], false);
+        assert!(expr.contains("COALESCE("));
+        assert!(expr.contains("$.\"Status\""));
+        assert!(expr.contains("$.\"AbCd\""));
+        assert!(expr.contains("COLLATE NOCASE"));
+    }
+
+    #[test]
+    fn number_expression_casts_to_real() {
+        let expr = attribute_sort_expression(&["Count"], true);
+        assert!(expr.starts_with("CAST("));
+        assert!(expr.contains("AS REAL"));
+        assert!(!expr.contains("COLLATE"));
+    }
 }
 
 pub fn create_database_row(
