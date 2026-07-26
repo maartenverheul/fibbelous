@@ -426,21 +426,20 @@ fn with_cors(req: &Request<Incoming>, response: RpcResponse) -> RpcResponse {
 }
 
 fn with_cors_origin(
-    origin: Option<hyper::header::HeaderValue>,
+    _origin: Option<hyper::header::HeaderValue>,
     mut response: RpcResponse,
 ) -> RpcResponse {
-    let origin = origin.unwrap_or_else(|| hyper::header::HeaderValue::from_static("*"));
-
-    response
-        .headers_mut()
-        .insert(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, origin);
+    response.headers_mut().insert(
+        hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN,
+        hyper::header::HeaderValue::from_static("*"),
+    );
     response.headers_mut().insert(
         hyper::header::ACCESS_CONTROL_ALLOW_METHODS,
-        hyper::header::HeaderValue::from_static("GET, POST, PATCH, OPTIONS"),
+        hyper::header::HeaderValue::from_static("*"),
     );
     response.headers_mut().insert(
         hyper::header::ACCESS_CONTROL_ALLOW_HEADERS,
-        hyper::header::HeaderValue::from_static("content-type"),
+        hyper::header::HeaderValue::from_static("*"),
     );
     response
 }
