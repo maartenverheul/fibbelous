@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { PiCaretRight, PiDotsThreeVertical, PiFileText, PiPlus } from "react-icons/pi";
 import { EmojiIcon } from "../emoji/EmojiIcon";
+import { useSidebar } from "../../context/SidebarContext";
 import { useTabs, type TabTarget } from "../../context/TabContext";
 import { useWorkspacePages } from "../../hooks/useWorkspacePages";
 import { requestPageTitleFocus } from "../../lib/pageNavigate";
@@ -53,6 +54,7 @@ export function PageTreeItem({
   depth = 0,
   onContextMenu,
 }: PageTreeItemProps) {
+  const { isMobile, close: closeSidebar } = useSidebar();
   const { activeSegment, navigateInTab } = useTabs();
   const {
     getChildren,
@@ -205,6 +207,10 @@ export function PageTreeItem({
             }
             if ((event.target as HTMLElement).closest("[data-add-child]")) {
               void handleCreateSubpage();
+              return;
+            }
+            if (isMobile && isActive) {
+              closeSidebar();
               return;
             }
             navigateInTab(segment, { label, icon: page.icon, pageId: page.id });

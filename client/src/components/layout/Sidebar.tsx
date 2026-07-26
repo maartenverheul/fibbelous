@@ -95,6 +95,18 @@ export function Sidebar() {
     });
   };
 
+  const navigateFromSidebar = (
+    segment: string,
+    target: TabTarget,
+    active: boolean,
+  ) => {
+    if (isMobile && active) {
+      close();
+      return;
+    }
+    navigateInTab(segment, target);
+  };
+
   const handleCreateRootPage = async () => {
     try {
       const detail = await createRootPage();
@@ -176,11 +188,15 @@ export function Sidebar() {
                     key={page.id}
                     type="button"
                     onClick={() =>
-                      navigateInTab(segment, {
-                        label,
-                        icon: page.icon,
-                        pageId: page.id,
-                      })
+                      navigateFromSidebar(
+                        segment,
+                        {
+                          label,
+                          icon: page.icon,
+                          pageId: page.id,
+                        },
+                        active,
+                      )
                     }
                     onContextMenu={(event) =>
                       openContextMenu(
@@ -240,7 +256,13 @@ export function Sidebar() {
 
         <button
           type="button"
-          onClick={() => navigateInTab("search", { label: "Search" })}
+          onClick={() =>
+            navigateFromSidebar(
+              "search",
+              { label: "Search" },
+              activeSegment === "search",
+            )
+          }
           onContextMenu={(event) =>
             openContextMenu(event, "search", { label: "Search" })
           }
@@ -255,7 +277,13 @@ export function Sidebar() {
 
         <button
           type="button"
-          onClick={() => navigateInTab("trash", { label: "Trash" })}
+          onClick={() =>
+            navigateFromSidebar(
+              "trash",
+              { label: "Trash" },
+              activeSegment === "trash",
+            )
+          }
           onContextMenu={(event) =>
             openContextMenu(event, "trash", { label: "Trash" })
           }
@@ -270,7 +298,13 @@ export function Sidebar() {
 
         <button
           type="button"
-          onClick={() => navigateInTab("settings", { label: "Settings" })}
+          onClick={() =>
+            navigateFromSidebar(
+              "settings",
+              { label: "Settings" },
+              activeSegment === "settings",
+            )
+          }
           onContextMenu={(event) =>
             openContextMenu(event, "settings", { label: "Settings" })
           }
