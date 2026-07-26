@@ -10,7 +10,8 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
 use crate::cache::{
-    children_dir, hash_body, page_id_from_mdx_href, CacheDb, PageDetail,
+    children_dir, hash_body, page_body_from_content, page_id_from_mdx_href, parse_row_cache_fields,
+    CacheDb, PageDetail,
 };
 use crate::index::sync_workspace;
 
@@ -745,6 +746,21 @@ pub fn trash_page(
     cache: &mut CacheDb,
     id: &str,
 ) -> Result<Vec<String>, String> {
+    if cache
+        .get_page_by_id(id)
+        .map_err(|error| error.to_string())?
+        .is_some()
+    {
+        return trash_regular_page(workspace_path, cache, id);
+    }
+    trash_database_row(workspace_path, cache, id)
+}
+
+fn trash_regular_page(
+    workspace_path: &Path,
+    cache: &mut CacheDb,
+    id: &str,
+) -> Result<Vec<String>, String> {
     let existing = get_page_or_err(cache, id)?;
     let mut trashed_ids = vec![existing.id.clone()];
     let descendants = cache
@@ -783,16 +799,34 @@ pub fn trash_page(
     Ok(trashed_ids)
 }
 
+fn trash_database_row(
+    workspace_path: &Path,
+    cache: &mut CacheDb,
+    id: &str,
+) -> Result<Vec<String>, String> {
+    let existing = cache
+        .get_database_row_by_id(id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "page not found".to_string())?;
+    let trashed_ids = vec![existing.id.clone()];
+    cache
+        .delete_database_row_by_id(&existing.id)
+        .map_err(|error| error.to_string())?;
+    move_to_trash(workspace_path, &existing.path)?;
+    Ok(trashed_ids)
+}
+
 pub fn list_trashed_pages(workspace_path: &Path) -> Result<Vec<TrashedPageSummary>, String> {
-    let trash_pages = trash_root(workspace_path).join("pages");
-    if !trash_pages.is_dir() {
+    let trash = trash_root(workspace_path);
+    if !trash.is_dir() {
         return Ok(Vec::new());
     }
 
+    let trash_prefix = format!("{TRASH_ROOT}/");
     let mut pages = Vec::new();
-    for mdx in walk_mdx_files(&trash_pages)? {
+    for mdx in walk_mdx_files(&trash)? {
         let relative = path_relative_to_workspace(workspace_path, &mdx);
-        let Some(original_path) = relative.strip_prefix(&format!("{TRASH_ROOT}/")) else {
+        let Some(original_path) = relative.strip_prefix(&trash_prefix) else {
             continue;
         };
 
@@ -810,7 +844,8 @@ pub fn list_trashed_pages(workspace_path: &Path) -> Result<Vec<TrashedPageSummar
             .map(|duration| duration.as_secs().to_string())
             .unwrap_or_default();
 
-        let child_trash_dir = trash_pages.join(&id);
+        let children_rel = children_dir(original_path, &id);
+        let child_trash_dir = trash.join(&children_rel);
         let has_children = child_trash_dir.is_dir()
             && walk_mdx_files(&child_trash_dir)
                 .map(|files| !files.is_empty())
@@ -876,7 +911,74 @@ pub fn restore_page(
     }
 
     sync_workspace(workspace_path, cache).map_err(|error| error.to_string())?;
-    get_page_or_err(cache, id)
+    get_page_or_database_row(cache, id)
+}
+
+fn get_page_or_database_row(cache: &CacheDb, id: &str) -> Result<PageDetail, String> {
+    if let Some(page) = cache
+        .get_page_by_id(id)
+        .map_err(|error| error.to_string())?
+    {
+        return Ok(page);
+    }
+    database_row_page_detail(cache, id)
+}
+
+fn database_row_page_detail(cache: &CacheDb, id: &str) -> Result<PageDetail, String> {
+    let row = cache
+        .get_database_row_by_id(id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "page not found".to_string())?;
+    let content = cache
+        .get_database_row_content(id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "database row content not found".to_owned())?;
+    let (created, edited, attributes_json) = parse_row_cache_fields(&content);
+    let attributes =
+        serde_json::from_str(&attributes_json).unwrap_or_else(|_| serde_json::json!({}));
+    let body = page_body_from_content(&content);
+    let referenced_pages = cache
+        .referenced_pages_for_body(&body)
+        .map_err(|error| error.to_string())?;
+
+    let mut ancestors = Vec::new();
+    if let Some(host) = cache
+        .get_page_by_id(&row.database_id)
+        .map_err(|error| error.to_string())?
+    {
+        ancestors = host.ancestors;
+        ancestors.push(crate::cache::PageSummary {
+            id: host.id,
+            parent_id: host.parent_id,
+            slug: host.slug,
+            title: host.title,
+            icon: host.icon,
+            path: host.path,
+            has_children: host.has_children,
+            favorite: host.favorite,
+            database_id: None,
+            children: None,
+        });
+    }
+
+    Ok(PageDetail {
+        id: row.id,
+        parent_id: None,
+        slug: row.slug,
+        title: row.title,
+        icon: row.icon,
+        path: row.path,
+        has_children: false,
+        favorite: row.favorite,
+        database_id: Some(row.database_id),
+        attributes: Some(attributes),
+        created: created.or(row.created),
+        edited: edited.or(row.edited),
+        body_hash: hash_body(&body),
+        body,
+        referenced_pages,
+        ancestors,
+    })
 }
 
 pub fn purge_page(

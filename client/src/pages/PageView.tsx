@@ -436,18 +436,22 @@ export function PageView() {
   const applyTrashed = useCallback(
     (trashed: TrashedPageDetail, forPageId: string = pageId ?? "") => {
       const nextDraft = draftFromTrashed(trashed);
+      dirtyPageIdsRef.current.delete(forPageId);
       draftsRef.current.set(forPageId, nextDraft);
-      if (!dirtyPageIdsRef.current.has(forPageId)) {
-        if (forPageId === pageId) {
-          setTitle(nextDraft.title);
-          setBody(nextDraft.body);
-        }
+      if (forPageId === pageId) {
+        setTitle(nextDraft.title);
+        setBody(nextDraft.body);
+        setStatus("saved");
       }
       setDetail(null);
       setTrashedDetail(trashed);
     },
-    [pageId],
+    [pageId, setStatus],
   );
+
+  // When the live page leaves the workspace cache (e.g. moved to trash),
+  // re-run the fetch so the open tab can show the trashed version.
+  const hasLiveDetail = Boolean(pageId && cachedDetail);
 
   useEffect(() => {
     if (!pagePath) {
@@ -465,6 +469,11 @@ export function PageView() {
     }
 
     if (connectionStatus !== "connected") {
+      return;
+    }
+
+    // Layout effect already applied a cached live detail.
+    if (hasLiveDetail) {
       return;
     }
 
@@ -507,7 +516,15 @@ export function PageView() {
     return () => {
       cancelled = true;
     };
-  }, [pagePath, pageId, connectionStatus, markLoadStatus, applyDetail, applyTrashed]);
+  }, [
+    pagePath,
+    pageId,
+    connectionStatus,
+    hasLiveDetail,
+    markLoadStatus,
+    applyDetail,
+    applyTrashed,
+  ]);
 
   useLayoutEffect(() => {
     if (!pageId) return;

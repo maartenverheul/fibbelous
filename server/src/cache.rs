@@ -929,6 +929,11 @@ impl CacheDb {
             .execute("DELETE FROM pages WHERE id = ?1", params![id])
     }
 
+    pub fn delete_database_row_by_id(&mut self, id: &str) -> rusqlite::Result<usize> {
+        self.conn
+            .execute("DELETE FROM database_rows WHERE id = ?1", params![id])
+    }
+
     /// Strip inbound body links to `page_ids` from pages and database rows.
     /// Returns `(updated_page_ids, updated_row_ids)`.
     pub fn remove_links_to_page_ids(
