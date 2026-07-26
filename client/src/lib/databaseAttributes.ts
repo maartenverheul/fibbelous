@@ -8,10 +8,13 @@ export function findAttributeKey(
   attrs: Record<string, unknown>,
   property: DatabasePropertyColumn,
 ): string | null {
-  if (Object.hasOwn(attrs, property.name)) {
+  if (Object.prototype.hasOwnProperty.call(attrs, property.name)) {
     return property.name;
   }
-  if (property.key !== property.name && Object.hasOwn(attrs, property.key)) {
+  if (
+    property.key !== property.name &&
+    Object.prototype.hasOwnProperty.call(attrs, property.key)
+  ) {
     return property.key;
   }
 
