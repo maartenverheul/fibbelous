@@ -1,5 +1,5 @@
-import { dbCheckbox } from "../../lib/databaseUi";
-import type { DatabasePropertyColumn } from "../../types/database";
+import { dbCheckbox } from "../../lib/database/ui";
+import type { DatabasePropertyColumn } from "../../lib/database/types";
 
 export function isCheckboxPropertyType(
   type: DatabasePropertyColumn["type"],

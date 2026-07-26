@@ -5,14 +5,14 @@ import {
   getAttributeValue,
   getRowPropertyValue,
   setAttributeValue,
-} from "../../lib/databaseAttributes";
-import { fetchDatabaseDetail } from "../../lib/databaseFetch";
-import { databasePropertyTypeIcon } from "../../lib/databasePropertyIcons";
+} from "../../lib/database/attributes";
+import { fetchDatabaseDetail } from "../../lib/database/fetch";
+import { databasePropertyTypeIcon } from "../../lib/database/propertyIcons";
 import {
   parseDatabaseSchema,
   type DatabasePropertyColumn,
   type DatabaseSchema,
-} from "../../types/database";
+} from "../../lib/database/types";
 import {
   DatabaseCheckboxValue,
   isCheckboxChecked,

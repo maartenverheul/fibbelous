@@ -2,9 +2,9 @@ import {
   dbSelectChip,
   dbSelectChipGroup,
   resolveSelectTokens,
-} from "../../lib/databaseSelect";
+} from "../../lib/database/select";
 import { cn } from "../../lib/utils";
-import type { DatabasePropertyColumn } from "../../types/database";
+import type { DatabasePropertyColumn } from "../../lib/database/types";
 
 export function DatabaseSelectChips({
   value,

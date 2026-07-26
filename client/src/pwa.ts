@@ -1,6 +1,6 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { registerSW } from "virtual:pwa-register";
-import { buildInfo } from "./lib/buildInfo";
+import { buildInfo } from "./lib/app/buildInfo";
 
 const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 const VERSION_RELOAD_KEY = "fibbelous:version-reload";

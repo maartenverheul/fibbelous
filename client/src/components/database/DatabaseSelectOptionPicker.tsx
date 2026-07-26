@@ -7,9 +7,9 @@ import {
   dbSelectChip,
   dbSelectChipGroup,
   resolveSelectTokens,
-} from "../../lib/databaseSelect";
+} from "../../lib/database/select";
 import { cn } from "../../lib/utils";
-import type { SelectOption } from "../../types/database";
+import type { SelectOption } from "../../lib/database/types";
 import { DatabaseSelectChips } from "./DatabaseSelectChips";
 
 type DatabaseSelectOptionPickerProps = {

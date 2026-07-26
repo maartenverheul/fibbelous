@@ -14,8 +14,8 @@ import {
   parseWorkspacePath,
 } from "../routes";
 import { useWorkspacePages } from "../hooks/useWorkspacePages";
-import { pageLabel, parsePageIdFromSegment } from "../types/page";
-import { registerPageNavigator } from "../lib/pageNavigate";
+import { pageLabel, parsePageIdFromSegment } from "../lib/page/types";
+import { registerPageNavigator } from "../lib/page/navigate";
 
 export type TabTarget = {
   label: string;

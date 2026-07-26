@@ -1,5 +1,5 @@
-import type { WorkspacePage } from "../types/page";
-import { buildPageSegment, pageLabel } from "../types/page";
+import type { WorkspacePage } from "./types";
+import { buildPageSegment, pageLabel } from "./types";
 
 type PageNavigator = (
   segment: string,

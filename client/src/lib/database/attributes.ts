@@ -1,7 +1,7 @@
 import type {
   DatabasePropertyColumn,
   DatabaseRowSummary,
-} from "../types/database";
+} from "./types";
 
 /** Find the attribute key for a property. Prefers the exact `name` from database.json. */
 export function findAttributeKey(

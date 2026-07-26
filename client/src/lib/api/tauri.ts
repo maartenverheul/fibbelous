@@ -1,6 +1,6 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { WorkspaceInfo } from "../types/workspace";
+import type { WorkspaceInfo } from "./workspace";
 
 export { isTauri };
 

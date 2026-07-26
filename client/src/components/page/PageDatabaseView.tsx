@@ -1,18 +1,18 @@
 import { useEffect, useState } from "react";
 import { DatabaseDisplay } from "../database/DatabaseDisplay";
-import { fetchDatabaseDetail } from "../../lib/databaseFetch";
-import { databaseIdFromBody } from "../../lib/databaseBlock";
+import { fetchDatabaseDetail } from "../../lib/database/fetch";
+import { databaseIdFromBody } from "../../lib/database/block";
 import {
   dbEmptyShell,
   dbMutedText,
   dbRootPage,
-} from "../../lib/databaseUi";
+} from "../../lib/database/ui";
 import { cn } from "../../lib/utils";
 import {
   parseDatabaseSchema,
   type DatabaseSchema,
   type WorkspaceDatabaseDetail,
-} from "../../types/database";
+} from "../../lib/database/types";
 
 type PageDatabaseViewProps = {
   body: string;

@@ -21,7 +21,7 @@ import {
   PiUserCircle,
   PiUsers,
 } from "react-icons/pi";
-import type { DatabasePropertyConfig } from "../types/database";
+import type { DatabasePropertyConfig } from "./types";
 
 const PROPERTY_TYPE_ICONS: Record<
   DatabasePropertyConfig["type"],

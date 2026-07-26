@@ -1,11 +1,11 @@
 import type { DefaultReactSuggestionItem } from "@blocknote/react";
 import { PiFilePlus } from "react-icons/pi";
-import type { WorkspacePage, WorkspacePageDetail } from "../types/page";
-import { pageLabel } from "../types/page";
-import { htmlToMarkdown } from "./markdownPipeline";
-import type { PageEditor } from "./pageEditorSchema";
-import { pageLinkMarkersToAnchors } from "./pageLinks";
-import { openWorkspacePage } from "./pageNavigate";
+import type { WorkspacePage, WorkspacePageDetail } from "../../page/types";
+import { pageLabel } from "../../page/types";
+import { htmlToMarkdown } from "../markdownPipeline";
+import type { PageEditor } from "../schema";
+import { pageLinkMarkersToAnchors } from "../pageLinks";
+import { openWorkspacePage } from "../../page/navigate";
 
 async function serializePageBody(editor: PageEditor): Promise<string> {
   const html = pageLinkMarkersToAnchors(editor.blocksToHTMLLossy());

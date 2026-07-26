@@ -13,21 +13,21 @@ import {
   isWorkspaceNotFoundError,
   openLocalWorkspaceConnection,
   openRemoteWorkspaceConnection,
-} from "../../lib/api";
-import type { RpcClient } from "../../lib/rpc";
+} from "../../lib/api/api";
+import type { RpcClient } from "../../lib/api/rpc";
 import {
   buildWorkspaceConnectionKey,
   closePooledConnection,
   getPooledConnection,
-} from "../../lib/workspaceConnection";
+} from "../../lib/api/workspaceConnection";
 import {
   workspaceManagerRedirectState,
   type WorkspaceNotice,
-} from "../../lib/navigation";
+} from "../../lib/app/navigation";
 import {
   isLocalWorkspace,
   type WorkspaceConnectionStatus,
-} from "../../types/workspace";
+} from "../../lib/api/workspace";
 import { useWorkspaceSession } from "./WorkspaceSessionProvider";
 
 export type WorkspaceConnectionValue = {

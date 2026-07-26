@@ -11,7 +11,7 @@ import {
   pageLabel,
   parsePageIdFromSegment,
   type WorkspacePage,
-} from "../../types/page";
+} from "../../lib/page/types";
 import {
   PiCheck,
   PiCircle,

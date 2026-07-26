@@ -5,15 +5,15 @@ import {
   defaultInlineContentSpecs,
   type BlockNoteEditor,
 } from "@blocknote/core";
-import { calloutBlock } from "./calloutBlock";
-import { commitMapsUrl, mapsRawFromUrl } from "./mapsBlock";
+import { calloutBlock } from "./blocks/callout";
+import { commitMapsUrl, mapsRawFromUrl } from "./blocks/maps";
 import {
   databaseRawFromId,
   paintDatabaseError,
   paintDatabaseTable,
-} from "./databaseBlock";
-import { fetchDatabaseDetail } from "./databaseFetch";
-import { dbMutedText, dbRoot } from "./databaseUi";
+} from "../database/block";
+import { fetchDatabaseDetail } from "../database/fetch";
+import { dbMutedText, dbRoot } from "../database/ui";
 import {
   bookmarkDisplayLabel,
   elementToMdxTag,
@@ -24,10 +24,10 @@ import {
   urlAttrFromMdxRaw,
   type MdxPlaceholderTag,
 } from "./mdxPlaceholders";
-import { openExternalUrl } from "./tauri";
-import { bookmarkRawFromUrl } from "./bookmarkBlock";
+import { openExternalUrl } from "../api/tauri";
+import { bookmarkRawFromUrl } from "./blocks/bookmark";
 import { pageLink } from "./pageLinkInline";
-import { renderTocDom, tocDefaultRaw } from "./tocBlock";
+import { renderTocDom, tocDefaultRaw } from "./blocks/toc";
 
 export {
   elementToMdxTag,

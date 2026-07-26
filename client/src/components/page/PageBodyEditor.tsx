@@ -11,23 +11,23 @@ import {
 import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, forwardRef } from "react";
 import { useTabs } from "../../context/TabContext";
 import { useWorkspacePages } from "../../hooks/useWorkspacePages";
-import { insertBookmarkBlock } from "../../lib/bookmarkBlock";
+import { insertBookmarkBlock } from "../../lib/editor/blocks/bookmark";
 import {
   htmlToMarkdown,
   markdownToHtml,
-} from "../../lib/markdownPipeline";
-import { insertMapsBlock } from "../../lib/mapsBlock";
-import { insertCalloutSlashMenuItem } from "../../lib/calloutSlashMenu";
-import { insertMapsSlashMenuItem } from "../../lib/mapsSlashMenu";
-import type { PageEditor } from "../../lib/pageEditorSchema";
-import { pageEditorSchema } from "../../lib/pageEditorSchema";
-import { PageEditorSideMenu } from "../../lib/pageEditorSideMenu";
-import { insertNewPageSlashMenuItem } from "../../lib/pageSlashMenu";
-import { insertTocSlashMenuItem } from "../../lib/tocSlashMenu";
+} from "../../lib/editor/markdownPipeline";
+import { insertMapsBlock } from "../../lib/editor/blocks/maps";
+import { insertCalloutSlashMenuItem } from "../../lib/editor/slash/callout";
+import { insertMapsSlashMenuItem } from "../../lib/editor/slash/maps";
+import type { PageEditor } from "../../lib/editor/schema";
+import { pageEditorSchema } from "../../lib/editor/schema";
+import { PageEditorSideMenu } from "../../lib/editor/sideMenu";
+import { insertNewPageSlashMenuItem } from "../../lib/editor/slash/page";
+import { insertTocSlashMenuItem } from "../../lib/editor/slash/toc";
 import {
   focusEditorDocumentStart,
   isCursorAtDocumentStart,
-} from "../../lib/titleBodyKeyboard";
+} from "../../lib/editor/titleBodyKeyboard";
 import {
   internalPageLinksToMarkers,
   isExternalLink,
@@ -37,20 +37,20 @@ import {
   pageIdFromInternalLink,
   pageLinkMarkersToAnchors,
   type PageLinkMeta,
-} from "../../lib/pageLinks";
+} from "../../lib/editor/pageLinks";
 import {
   getPasteLinkChoiceOptions,
   insertPastedInlineLink,
   insertPastedPlainText,
   shouldOfferPasteLinkChoice,
-} from "../../lib/pasteLinkChoice";
-import { openExternalUrl } from "../../lib/tauri";
+} from "../../lib/editor/pasteLinkChoice";
+import { openExternalUrl } from "../../lib/api/tauri";
 import { cn } from "../../lib/utils";
 import {
   buildPageSegment,
   pageLabel,
   type ReferencedPage,
-} from "../../types/page";
+} from "../../lib/page/types";
 import {
   PasteLinkChoiceMenu,
   type PasteLinkChoice,

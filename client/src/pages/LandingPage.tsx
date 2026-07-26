@@ -3,12 +3,12 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useSavedWorkspaces } from "../hooks/useSavedWorkspaces";
 import { WorkspaceManagerDialog } from "../components/workspace/WorkspaceManagerDialog";
 import { cn } from "../lib/utils";
-import { closePooledConnection } from "../lib/workspaceConnection";
+import { closePooledConnection } from "../lib/api/workspaceConnection";
 import {
   shouldOpenWorkspaceManager,
   type LandingLocationState,
   type WorkspaceNotice,
-} from "../lib/navigation";
+} from "../lib/app/navigation";
 
 export function LandingPage() {
   const { workspaces, setActive } = useSavedWorkspaces();

@@ -1,4 +1,4 @@
-import type { SavedWorkspace } from "../types/workspace";
+import type { SavedWorkspace } from "./workspace";
 import type { RpcClient } from "./rpc";
 
 export type WorkspaceConnectionKey = string;

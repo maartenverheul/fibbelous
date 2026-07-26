@@ -2,7 +2,7 @@ import type {
   CreateWorkspaceInput,
   UpdateWorkspaceInput,
   WorkspaceInfo,
-} from "../types/workspace";
+} from "./workspace";
 import { createLocalRpcClient, createRpcClient, type RpcClient } from "./rpc";
 import { openLocalWorkspace } from "./tauri";
 import {

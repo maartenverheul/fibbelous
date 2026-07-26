@@ -1,5 +1,5 @@
 import { diffChars } from "diff";
-import type { BodyPatch, BodyPatchOp } from "../types/page";
+import type { BodyPatch, BodyPatchOp } from "./types";
 
 const textEncoder = new TextEncoder();
 const BODY_HASH_LEN = 10;

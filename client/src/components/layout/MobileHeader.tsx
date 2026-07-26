@@ -8,7 +8,7 @@ import {
   pageLabel,
   type WorkspacePage,
   type WorkspacePageDetail,
-} from "../../types/page";
+} from "../../lib/page/types";
 import { EmojiIcon } from "../emoji/EmojiIcon";
 
 function resolveParentPage(

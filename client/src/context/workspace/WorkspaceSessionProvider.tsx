@@ -10,7 +10,7 @@ import {
 } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useSavedWorkspaces } from "../../hooks/useSavedWorkspaces";
-import type { SavedWorkspace } from "../../types/workspace";
+import type { SavedWorkspace } from "../../lib/api/workspace";
 
 export type WorkspaceSessionValue = {
   workspaces: SavedWorkspace[];

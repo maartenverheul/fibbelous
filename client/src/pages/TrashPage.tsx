@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useTabs } from "../context/TabContext";
 import { useWorkspacePages } from "../hooks/useWorkspacePages";
 import { cn } from "../lib/utils";
-import { buildTrashedPageSegment, type TrashedPage } from "../types/page";
+import { buildTrashedPageSegment, type TrashedPage } from "../lib/page/types";
 import { EmojiIcon } from "../components/emoji/EmojiIcon";
 
 function trashedPageLabel(page: TrashedPage) {

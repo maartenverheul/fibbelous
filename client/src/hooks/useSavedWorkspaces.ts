@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import useLocalStorageState from "use-local-storage-state";
-import type { SavedWorkspace } from "../types/workspace";
+import type { SavedWorkspace } from "../lib/api/workspace";
 
 const WORKSPACES_KEY = "fibbelous.workspaces";
 const ACTIVE_WORKSPACE_KEY = "fibbelous.activeWorkspaceId";

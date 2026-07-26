@@ -4,7 +4,7 @@ import { EmojiIcon } from "../emoji/EmojiIcon";
 import { useSidebar } from "../../context/SidebarContext";
 import { useTabs, type TabTarget } from "../../context/TabContext";
 import { useWorkspacePages } from "../../hooks/useWorkspacePages";
-import { requestPageTitleFocus } from "../../lib/pageNavigate";
+import { requestPageTitleFocus } from "../../lib/page/navigate";
 import { cn } from "../../lib/utils";
 import { PageActionsMenu } from "./PageActionsMenu";
 import {
@@ -13,7 +13,7 @@ import {
   isPageSegmentActive,
   pageLabel,
   type WorkspacePage,
-} from "../../types/page";
+} from "../../lib/page/types";
 
 type PageTreeItemProps = {
   page: WorkspacePage;

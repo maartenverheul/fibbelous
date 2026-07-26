@@ -9,7 +9,7 @@ import { SearchPage } from "./pages/SearchPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { TrashPage } from "./pages/TrashPage";
 import { useSavedWorkspaces } from "./hooks/useSavedWorkspaces";
-import { shouldOpenWorkspaceManager } from "./lib/navigation";
+import { shouldOpenWorkspaceManager } from "./lib/app/navigation";
 
 function RootRedirect() {
   const location = useLocation();

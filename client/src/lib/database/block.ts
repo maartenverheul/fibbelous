@@ -2,22 +2,22 @@ import {
   MDX_PLACEHOLDER_TAG_RE,
   idAttrFromMdxRaw,
   mdxRawWithAttrs,
-} from "./mdxPlaceholders";
+} from "../editor/mdxPlaceholders";
 import {
   formatDatabaseTimestamp,
   getRowPropertyValue,
-} from "./databaseAttributes";
+} from "./attributes";
 import {
   dbSelectChip,
   dbSelectChipGroup,
   resolveSelectTokens,
-} from "./databaseSelect";
-import { fetchDatabaseRows, createDatabaseRow } from "./databaseFetch";
+} from "./select";
+import { fetchDatabaseRows, createDatabaseRow } from "./fetch";
 import {
   getStoredDatabaseViewId,
   setStoredDatabaseViewId,
-} from "./databaseViewStorage";
-import { openWorkspacePage } from "./pageNavigate";
+} from "./viewStorage";
+import { openWorkspacePage } from "../page/navigate";
 import {
   dbCellEmpty,
   dbColName,
@@ -42,8 +42,8 @@ import {
   dbTitleCellText,
   dbTableRow,
   dbOpenBtn,
-} from "./databaseUi";
-import { getScrollParent, isInVerticalScrollport, cn } from "./utils";
+} from "./ui";
+import { getScrollParent, isInVerticalScrollport, cn } from "../utils";
 import {
   databaseDisplayTitle,
   databaseViewProperties,
@@ -54,8 +54,8 @@ import {
   type DatabaseSchema,
   type DatabaseView,
   type WorkspaceDatabaseDetail,
-} from "../types/database";
-import { pageLabel } from "../types/page";
+} from "./types";
+import { pageLabel } from "../page/types";
 
 const ROW_PAGE_SIZE = 50;
 

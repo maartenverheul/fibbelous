@@ -1,10 +1,10 @@
 import type { Dispatch, RefObject, SetStateAction } from "react";
-import { isIgnorableRpcError } from "../../lib/rpc";
+import { isIgnorableRpcError } from "../../lib/api/rpc";
 import {
   treeCacheKey,
   type WorkspacePage,
   type WorkspacePageDetail,
-} from "../../types/page";
+} from "../../lib/page/types";
 
 export function resetPageTree(
   setChildrenByParent: Dispatch<

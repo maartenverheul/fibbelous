@@ -1,8 +1,8 @@
 import { insertOrUpdateBlockForSlashMenu } from "@blocknote/core/extensions";
 import type { DefaultReactSuggestionItem } from "@blocknote/react";
 import { PiMapTrifold } from "react-icons/pi";
-import { mapsRawFromUrl } from "./mapsBlock";
-import type { PageEditor } from "./pageEditorSchema";
+import { mapsRawFromUrl } from "../blocks/maps";
+import type { PageEditor } from "../schema";
 
 
 /** Slash / + menu item that inserts an empty Maps block ready for a URL. */

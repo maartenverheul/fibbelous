@@ -3,8 +3,8 @@ import type {
   DatabaseViewLayout,
   DatabaseViewSort,
   WorkspaceDatabaseDetail,
-} from "../types/database";
-import type { WorkspacePageDetail } from "../types/page";
+} from "./types";
+import type { WorkspacePageDetail } from "../page/types";
 
 type DatabaseFetcher = (
   id: string,

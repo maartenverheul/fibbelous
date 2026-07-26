@@ -1,6 +1,6 @@
 import type { BlockNoteEditor } from "@blocknote/core";
 import { insertOrUpdateBlockForSlashMenu } from "@blocknote/core/extensions";
-import { mdxRawWithAttrs, normalizeMapsInput } from "./mdxPlaceholders";
+import { mdxRawWithAttrs, normalizeMapsInput } from "../mdxPlaceholders";
 
 export function mapsRawFromUrl(url: string, existingRaw?: string): string {
   return mdxRawWithAttrs("maps", { url }, existingRaw);

@@ -1,5 +1,5 @@
 import { normalizeMapsInput } from "./mdxPlaceholders";
-import type { PageEditor } from "./pageEditorSchema";
+import type { PageEditor } from "./schema";
 
 /** Single http(s) URL with no surrounding text. */
 export function isBareHttpUrl(text: string): boolean {

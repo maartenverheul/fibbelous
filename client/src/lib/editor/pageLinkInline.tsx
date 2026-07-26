@@ -1,12 +1,12 @@
 import { createReactInlineContentSpec } from "@blocknote/react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { PiFileText } from "react-icons/pi";
-import { EmojiIcon } from "../components/emoji/EmojiIcon";
-import { useWorkspacePages } from "../hooks/useWorkspacePages";
-import { cn } from "./utils";
-import type { WorkspacePage } from "../types/page";
-import { pageLabel } from "../types/page";
-import { openWorkspacePage } from "./pageNavigate";
+import { EmojiIcon } from "../../components/emoji/EmojiIcon";
+import { useWorkspacePages } from "../../hooks/useWorkspacePages";
+import { cn } from "../utils";
+import type { WorkspacePage } from "../page/types";
+import { pageLabel } from "../page/types";
+import { openWorkspacePage } from "../page/navigate";
 import { normalizePageHref, pageIdFromInternalLink } from "./pageLinks";
 
 function parsePageLinkProps(element: HTMLElement) {

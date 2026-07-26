@@ -7,7 +7,7 @@ import {
   buildPageSegment,
   pageLabel,
   type SearchPageHit,
-} from "../types/page";
+} from "../lib/page/types";
 
 const DEBOUNCE_MS = 300;
 

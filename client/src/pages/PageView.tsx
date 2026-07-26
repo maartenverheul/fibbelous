@@ -8,15 +8,15 @@ import { EmojiIcon } from "../components/emoji/EmojiIcon";
 import { usePageSave } from "../context/PageSaveContext";
 import { useTabs } from "../context/TabContext";
 import { useWorkspacePages } from "../hooks/useWorkspacePages";
-import { isDatabaseOnlyBody } from "../lib/databaseBlock";
-import { consumePageTitleFocus, shouldFocusPageTitle } from "../lib/pageNavigate";
+import { isDatabaseOnlyBody } from "../lib/database/block";
+import { consumePageTitleFocus, shouldFocusPageTitle } from "../lib/page/navigate";
 import { cn } from "../lib/utils";
-import { bodyMatchesStored } from "../lib/pageBodyTitle";
+import { bodyMatchesStored } from "../lib/page/bodyTitle";
 import {
   buildBodyPatch,
   isBodyHashMismatchError,
   shouldSendBodyPatch,
-} from "../lib/pageBodySync";
+} from "../lib/page/bodySync";
 import {
   buildPageSegment,
   pageLabel,
@@ -27,7 +27,7 @@ import {
   type ReferencedPage,
   type TrashedPageDetail,
   type WorkspacePageDetail,
-} from "../types/page";
+} from "../lib/page/types";
 
 type PageLoadStatus = "idle" | "loading" | "ready" | "missing";
 type PageDraft = {

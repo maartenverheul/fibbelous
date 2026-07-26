@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import { isPagePathSegment, parsePageIdFromSegment, parsePageKey, humanizeSlug } from "./types/page";
+import { isPagePathSegment, parsePageIdFromSegment, parsePageKey, humanizeSlug } from "./lib/page/types";
 import { HomePage } from "./pages/HomePage";
 import { SearchPage } from "./pages/SearchPage";
 import { SettingsPage } from "./pages/SettingsPage";

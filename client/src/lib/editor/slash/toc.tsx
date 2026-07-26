@@ -1,8 +1,8 @@
 import { insertOrUpdateBlockForSlashMenu } from "@blocknote/core/extensions";
 import type { DefaultReactSuggestionItem } from "@blocknote/react";
 import { PiListBullets } from "react-icons/pi";
-import type { PageEditor } from "./pageEditorSchema";
-import { tocDefaultRaw } from "./tocBlock";
+import type { PageEditor } from "../schema";
+import { tocDefaultRaw } from "../blocks/toc";
 
 /** Slash / + menu item that inserts a live table of contents block. */
 export function insertTocSlashMenuItem(

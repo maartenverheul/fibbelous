@@ -8,7 +8,7 @@ import {
   type SideMenuProps,
   useDictionary,
 } from "@blocknote/react";
-import { CalloutColorItem } from "./calloutColorItem";
+import { CalloutColorItem } from "./blocks/calloutColorItem";
 
 function PageEditorDragHandleMenu() {
   const dict = useDictionary();

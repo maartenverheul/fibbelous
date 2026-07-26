@@ -1,8 +1,8 @@
 import { insertOrUpdateBlockForSlashMenu } from "@blocknote/core/extensions";
 import type { DefaultReactSuggestionItem } from "@blocknote/react";
 import { PiChatTeardropText } from "react-icons/pi";
-import { CALLOUT_DEFAULT_ICON } from "./calloutBlock";
-import type { PageEditor } from "./pageEditorSchema";
+import { CALLOUT_DEFAULT_ICON } from "../blocks/callout";
+import type { PageEditor } from "../schema";
 
 /** Slash / + menu item that inserts a Callout with the default lightbulb icon. */
 export function insertCalloutSlashMenuItem(

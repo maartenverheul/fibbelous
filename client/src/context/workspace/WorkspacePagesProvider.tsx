@@ -11,7 +11,7 @@ import {
 import type {
   DatabaseRowsPage,
   WorkspaceDatabaseDetail,
-} from "../../types/database";
+} from "../../lib/database/types";
 import {
   DEFAULT_LIST_PAGES_DEPTH,
   isPagePathSegment,
@@ -24,14 +24,14 @@ import {
   type TrashedPageDetail,
   type WorkspacePage,
   type WorkspacePageDetail,
-} from "../../types/page";
-import { slugFromPageLink } from "../../lib/pageLinks";
+} from "../../lib/page/types";
+import { slugFromPageLink } from "../../lib/editor/pageLinks";
 import {
   registerDatabaseFetcher,
   registerDatabaseRowCreator,
   registerDatabaseRowsFetcher,
   registerDatabaseViewUpdater,
-} from "../../lib/databaseFetch";
+} from "../../lib/database/fetch";
 import { useWorkspaceConnection } from "./WorkspaceConnectionProvider";
 import { maybeSetRootError, resetPageTree } from "./pageTreeState";
 import { useWorkspaceSession } from "./WorkspaceSessionProvider";

@@ -1,4 +1,4 @@
-import type { WorkspacePage } from "./page";
+import type { WorkspacePage } from "../page/types";
 
 export type WorkspaceDatabaseDetail = {
   id: string;

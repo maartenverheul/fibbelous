@@ -1,5 +1,5 @@
 import { TextSelection } from "prosemirror-state";
-import type { PageEditor } from "./pageEditorSchema";
+import type { PageEditor } from "./schema";
 
 /** True when the caret is collapsed at the very start of the document. */
 export function isCursorAtDocumentStart(editor: PageEditor): boolean {

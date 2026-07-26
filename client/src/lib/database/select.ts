@@ -1,4 +1,4 @@
-import type { SelectOption } from "../types/database";
+import type { SelectOption } from "./types";
 
 export type SelectToken = {
   name: string;

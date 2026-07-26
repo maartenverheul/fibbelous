@@ -1,5 +1,5 @@
 import type { BlockNoteEditor } from "@blocknote/core";
-import { mdxTagWriteName } from "./mdxPlaceholders";
+import { mdxTagWriteName } from "../mdxPlaceholders";
 
 export function tocDefaultRaw(): string {
   return `<${mdxTagWriteName("toc")} />`;

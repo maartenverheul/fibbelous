@@ -16,22 +16,22 @@ import {
   updateWorkspaceSettings,
   verifyLocalWorkspaceConnection,
   verifySavedWorkspaceConnection,
-} from "../../lib/api";
+} from "../../lib/api/api";
 import {
   DEFAULT_SERVER_URL,
   normalizeServerUrl,
   parseServerUrl,
-} from "../../lib/serverAddress";
+} from "../../lib/api/serverAddress";
 import { cn, formatUnknownError } from "../../lib/utils";
-import { isTauri, openLocalWorkspace, pickWorkspaceFolder, updateLocalWorkspaceSettings } from "../../lib/tauri";
-import { workspaceNoticeMessage, type WorkspaceNotice } from "../../lib/navigation";
-import { slugifyPageTitle } from "../../types/page";
+import { isTauri, openLocalWorkspace, pickWorkspaceFolder, updateLocalWorkspaceSettings } from "../../lib/api/tauri";
+import { workspaceNoticeMessage, type WorkspaceNotice } from "../../lib/app/navigation";
+import { slugifyPageTitle } from "../../lib/page/types";
 import {
   isLocalWorkspace,
   type IndexStatus,
   type SavedWorkspace,
   type WorkspaceInfo,
-} from "../../types/workspace";
+} from "../../lib/api/workspace";
 import { useWorkspaceOptional } from "../../context/WorkspaceContext";
 
 export type WorkspaceManagerTab = "browse" | "settings";

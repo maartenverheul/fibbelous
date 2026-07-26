@@ -2,10 +2,8 @@
 description: BlockNote package notes for the page editor (avoid re-digging node_modules)
 globs:
   - src/components/page/**
-  - src/lib/page*.ts
-  - src/lib/page*.tsx
-  - src/lib/*Editor*
-  - src/lib/*Slash*
+  - src/lib/editor/**
+  - src/lib/database/block.ts
   - src/index.css
 alwaysApply: false
 ---
@@ -28,7 +26,9 @@ Key impl: `node_modules/@blocknote/react/src/schema/ReactInlineContentSpec.tsx`
 
 ## Where our editor code lives
 
-- Schema / specs: `src/lib/pageEditorSchema.ts`, `src/lib/pageLinkInline.tsx`
+- Schema / specs: `src/lib/editor/schema.ts`, `src/lib/editor/pageLinkInline.tsx`
+- Custom blocks: `src/lib/editor/blocks/*`, database block host: `src/lib/database/block.ts`
+- Slash menus: `src/lib/editor/slash/*`
 - Editor host + `links.onClick` for normal/legacy links: `src/components/page/PageBodyEditor.tsx`
-- Link helpers / HTML round-trip: `src/lib/pageLinks.ts`
-- Navigation from DOM renders: `src/lib/pageNavigate.ts`
+- Link helpers / HTML round-trip: `src/lib/editor/pageLinks.ts`
+- Navigation from DOM renders: `src/lib/page/navigate.ts`

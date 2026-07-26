@@ -3,19 +3,19 @@ import { PiFileText, PiGear, PiMagnifyingGlass, PiTrash, PiX } from "react-icons
 import { useSidebar } from "../../context/SidebarContext";
 import { useTabs, type TabTarget } from "../../context/TabContext";
 import { useWorkspacePages } from "../../hooks/useWorkspacePages";
-import { requestPageTitleFocus } from "../../lib/pageNavigate";
+import { requestPageTitleFocus } from "../../lib/page/navigate";
 import { cn } from "../../lib/utils";
 import {
   buildPageSegment,
   isPageSegmentActive,
   pageLabel,
-} from "../../types/page";
+} from "../../lib/page/types";
 import { WorkspaceSelect } from "../workspace/WorkspaceSelect";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { PageActionsMenu } from "./PageActionsMenu";
 import { PageTreeItem } from "./PageTreeItem";
 import { EmojiIcon } from "../emoji/EmojiIcon";
-import type { WorkspacePage } from "../../types/page";
+import type { WorkspacePage } from "../../lib/page/types";
 
 type ContextMenuState = {
   x: number;

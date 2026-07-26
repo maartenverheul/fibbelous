@@ -1,7 +1,7 @@
 import { createReactBlockSpec } from "@blocknote/react";
-import { EmojiIcon } from "../components/emoji/EmojiIcon";
-import { EmojiIconPicker } from "../components/emoji/EmojiIconPicker";
-import { cn } from "./utils";
+import { EmojiIcon } from "../../../components/emoji/EmojiIcon";
+import { EmojiIconPicker } from "../../../components/emoji/EmojiIconPicker";
+import { cn } from "../../utils";
 
 /** Default callout icon when none is specified. */
 export const CALLOUT_DEFAULT_ICON = "💡";

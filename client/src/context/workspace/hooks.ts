@@ -1,7 +1,7 @@
 import { useMemo } from "react";
-import type { RpcClient } from "../../lib/rpc";
-import type { SavedWorkspace } from "../../types/workspace";
-import type { WorkspaceConnectionStatus } from "../../types/workspace";
+import type { RpcClient } from "../../lib/api/rpc";
+import type { SavedWorkspace } from "../../lib/api/workspace";
+import type { WorkspaceConnectionStatus } from "../../lib/api/workspace";
 import type { useSavedWorkspaces } from "../../hooks/useSavedWorkspaces";
 import type {
   BodyPatch,
@@ -10,7 +10,7 @@ import type {
   TrashedPageDetail,
   WorkspacePage,
   WorkspacePageDetail,
-} from "../../types/page";
+} from "../../lib/page/types";
 import {
   useWorkspaceConnection,
   useWorkspaceConnectionOptional,

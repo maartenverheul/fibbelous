@@ -1,5 +1,5 @@
 import { useWorkspace } from "../context/WorkspaceContext";
-import { treeCacheKey } from "../types/page";
+import { treeCacheKey } from "../lib/page/types";
 
 export function useWorkspacePages() {
   const {

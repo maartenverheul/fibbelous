@@ -13,20 +13,20 @@ import {
 import {
   formatDatabaseTimestamp,
   getRowPropertyValue,
-} from "../../lib/databaseAttributes";
+} from "../../lib/database/attributes";
 import {
   createDatabaseRow,
   fetchDatabaseRows,
   updateDatabaseView,
   type DatabaseViewUpdate,
-} from "../../lib/databaseFetch";
-import { openWorkspacePage } from "../../lib/pageNavigate";
-import { resolveDatabaseViewId } from "../../lib/databaseBlock";
+} from "../../lib/database/fetch";
+import { openWorkspacePage } from "../../lib/page/navigate";
+import { resolveDatabaseViewId } from "../../lib/database/block";
 import {
   getStoredDatabaseViewId,
   setStoredDatabaseViewId,
-} from "../../lib/databaseViewStorage";
-import { databasePropertyTypeIcon } from "../../lib/databasePropertyIcons";
+} from "../../lib/database/viewStorage";
+import { databasePropertyTypeIcon } from "../../lib/database/propertyIcons";
 import {
   dbCellEmpty,
   dbColName,
@@ -49,7 +49,7 @@ import {
   dbTitleCellText,
   dbTableRow,
   dbOpenBtn,
-} from "../../lib/databaseUi";
+} from "../../lib/database/ui";
 import { cn, getScrollParent, isInVerticalScrollport } from "../../lib/utils";
 import {
   databaseDisplayTitle,
@@ -62,8 +62,8 @@ import {
   type DatabaseView,
   type DatabaseViewSort,
   type WorkspaceDatabaseDetail,
-} from "../../types/database";
-import { pageLabel } from "../../types/page";
+} from "../../lib/database/types";
+import { pageLabel } from "../../lib/page/types";
 import { EmojiIcon } from "../emoji/EmojiIcon";
 import {
   DatabaseSelectChips,
@@ -73,7 +73,7 @@ import {
   DatabaseCheckboxValue,
   isCheckboxPropertyType,
 } from "./DatabaseCheckboxValue";
-import { resolveSelectTokens } from "../../lib/databaseSelect";
+import { resolveSelectTokens } from "../../lib/database/select";
 
 const ROW_PAGE_SIZE = 50;
 

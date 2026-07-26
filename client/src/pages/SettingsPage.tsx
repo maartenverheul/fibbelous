@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
-import { buildInfo } from "../lib/buildInfo";
+import { buildInfo } from "../lib/app/buildInfo";
 import { cn } from "../lib/utils";
 import { checkForAppUpdate } from "../pwa";
 

@@ -7,7 +7,7 @@ import {
 } from "react-icons/pi";
 import { useTabs, type TabTarget } from "../../context/TabContext";
 import { cn } from "../../lib/utils";
-import type { WorkspacePage } from "../../types/page";
+import type { WorkspacePage } from "../../lib/page/types";
 
 const menuItemClassName = cn(
   "flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-stone-800",

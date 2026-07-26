@@ -6,7 +6,7 @@ import {
   useExtensionState,
 } from "@blocknote/react";
 import { useEffect, useState } from "react";
-import { CALLOUT_COLORS } from "./calloutBlock";
+import { CALLOUT_COLORS } from "./callout";
 
 const PICKER_COLORS = ["default", ...CALLOUT_COLORS] as const;
 
