@@ -57,7 +57,7 @@ function PickerBody({
           placeholder="Search options…"
           className={cn(
             "w-full rounded-md border border-app-border bg-transparent",
-            "py-2 pr-3 pl-8 text-sm text-app-fg outline-none",
+            "py-2 pr-3 pl-8 text-base text-app-fg outline-none",
             "placeholder:text-app-fg-muted focus:border-app-fg-muted",
           )}
         />

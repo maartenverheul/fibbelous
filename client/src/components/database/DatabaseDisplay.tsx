@@ -425,7 +425,7 @@ function DatabaseSettingsPopover({
                 }}
                 className={cn(
                   "w-full rounded-md border border-app-border bg-app-bg px-2.5 py-1.5",
-                  "text-sm text-app-fg outline-none",
+                  "text-base text-app-fg outline-none",
                   "focus:border-blue-500 focus:ring-1 focus:ring-blue-500",
                   "disabled:opacity-60",
                 )}

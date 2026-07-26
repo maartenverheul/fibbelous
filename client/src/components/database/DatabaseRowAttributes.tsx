@@ -91,7 +91,7 @@ function parseComplexText(text: string): unknown {
 }
 
 const inputClassName =
-  "min-h-8 w-full min-w-0 rounded-md border-none bg-transparent px-1.5 py-1 text-sm text-app-fg outline-none placeholder:text-app-fg-muted hover:bg-app-border/40 focus:bg-app-border/35";
+  "min-h-8 w-full min-w-0 rounded-md border-none bg-transparent px-1.5 py-1 text-base text-app-fg outline-none placeholder:text-app-fg-muted hover:bg-app-border/40 focus:bg-app-border/35";
 
 export function DatabaseRowAttributes({
   pageId,

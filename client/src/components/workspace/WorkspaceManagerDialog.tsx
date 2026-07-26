@@ -47,7 +47,7 @@ type WorkspaceManagerDialogProps = {
 type ConnectionStatus = "idle" | "connecting" | "connected" | "error";
 
 const inputClassName = cn(
-  "w-full rounded-md border border-app-border bg-app-surface px-2.5 py-1.5 text-sm text-stone-900 placeholder:text-stone-500 dark:text-stone-50 dark:placeholder:text-stone-500",
+  "w-full rounded-md border border-app-border bg-app-surface px-2.5 py-1.5 text-base text-stone-900 placeholder:text-stone-500 dark:text-stone-50 dark:placeholder:text-stone-500",
 );
 
 const labelClassName = cn(
