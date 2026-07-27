@@ -3,27 +3,31 @@ import type {
   DatabaseRowSummary,
 } from "./types";
 
-/** Find the attribute key for a property. Prefers the exact `name` from database.json. */
+/** Candidate keys for a property in a row's `properties` map (id preferred). */
+function propertyAttributeKeys(property: DatabasePropertyColumn): string[] {
+  const keys = [property.id, property.key, property.name];
+  return keys.filter(
+    (key, index) => key.length > 0 && keys.indexOf(key) === index,
+  );
+}
+
+/** Find the attribute key for a property. Prefers `id`, then map key, then name. */
 export function findAttributeKey(
   attrs: Record<string, unknown>,
   property: DatabasePropertyColumn,
 ): string | null {
-  if (Object.prototype.hasOwnProperty.call(attrs, property.name)) {
-    return property.name;
-  }
-  if (
-    property.key !== property.name &&
-    Object.prototype.hasOwnProperty.call(attrs, property.key)
-  ) {
-    return property.key;
+  for (const candidate of propertyAttributeKeys(property)) {
+    if (Object.prototype.hasOwnProperty.call(attrs, candidate)) {
+      return candidate;
+    }
   }
 
   // Fall back to case-insensitive match for differently cased legacy keys.
-  const nameLower = property.name.toLowerCase();
-  const keyLower = property.key.toLowerCase();
+  const candidatesLower = new Set(
+    propertyAttributeKeys(property).map((key) => key.toLowerCase()),
+  );
   for (const key of Object.keys(attrs)) {
-    const lower = key.toLowerCase();
-    if (lower === nameLower || lower === keyLower) return key;
+    if (candidatesLower.has(key.toLowerCase())) return key;
   }
   return null;
 }
@@ -76,8 +80,8 @@ export function formatDatabaseTimestamp(value: unknown): string {
 
 
 /**
- * Set or clear a property value. Keys use the property `name` casing from
- * `database.json`. Differently cased keys from older edits are migrated on write.
+ * Set or clear a property value. Keys use the property `id` from
+ * `database.json`. Name / map-key legacy entries are migrated on write.
  */
 export function setAttributeValue(
   attrs: Record<string, unknown>,
@@ -86,7 +90,7 @@ export function setAttributeValue(
 ): Record<string, unknown> {
   const next = { ...attrs };
   const existingKey = findAttributeKey(attrs, property);
-  const writeKey = property.name;
+  const writeKey = property.id;
 
   if (value === null || value === undefined || value === "") {
     if (existingKey) delete next[existingKey];

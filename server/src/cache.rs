@@ -877,6 +877,8 @@ impl CacheDb {
         Ok(())
     }
 
+    /// Upserts a mutable database row. Returns the previous path when it changed
+    /// (caller should schedule deletion of the old file).
     pub fn upsert_database_row_mutable(
         &mut self,
         path: &str,
@@ -887,7 +889,16 @@ impl CacheDb {
         icon: Option<&str>,
         content: &str,
         favorite: bool,
-    ) -> rusqlite::Result<()> {
+    ) -> rusqlite::Result<Option<String>> {
+        let old_path: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT path FROM database_rows WHERE id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .optional()?;
+
         let (created, edited, attributes_json) = parse_row_cache_fields(content);
         self.conn.execute(
             "INSERT INTO database_rows (path, database_id, id, slug, title, icon, created, edited, attributes_json, content, favorite, modified_ns, size_bytes, fs_dirty)
@@ -911,7 +922,7 @@ impl CacheDb {
                 favorite
             ],
         )?;
-        Ok(())
+        Ok(old_path.filter(|previous| previous != path))
     }
 
     pub fn get_database_row_content(&self, id: &str) -> rusqlite::Result<Option<String>> {
@@ -1738,6 +1749,7 @@ fn anchor_open_targets_page_id(open_tag: &str, page_ids: &HashSet<String>) -> bo
 
 /// Replace the MDX body while keeping YAML frontmatter bytes intact.
 pub fn replace_body_preserving_frontmatter(content: &str, new_body: &str) -> String {
+    let new_body = new_body.trim_end_matches(['\n', '\r']);
     let trimmed_start = content.len() - content.trim_start().len();
     let trimmed = &content[trimmed_start..];
     if let Some(rest) = trimmed.strip_prefix("---") {
@@ -1748,7 +1760,7 @@ pub fn replace_body_preserving_frontmatter(content: &str, new_body: &str) -> Str
             let body_start = close_end + body_trim;
             let mut out = content[..body_start].to_owned();
             out.push_str(new_body);
-            if !new_body.is_empty() && !new_body.ends_with('\n') {
+            if !new_body.is_empty() {
                 out.push('\n');
             }
             return out;
@@ -1756,7 +1768,7 @@ pub fn replace_body_preserving_frontmatter(content: &str, new_body: &str) -> Str
     }
 
     let mut out = new_body.to_owned();
-    if !new_body.is_empty() && !new_body.ends_with('\n') {
+    if !new_body.is_empty() {
         out.push('\n');
     }
     out

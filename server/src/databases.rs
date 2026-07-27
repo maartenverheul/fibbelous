@@ -437,16 +437,22 @@ pub fn resolve_sort(
         DatabasePropertyConfig::CreatedTime { .. } => Ok(ResolvedDatabaseSort::Created),
         DatabasePropertyConfig::LastEditedTime { .. } => Ok(ResolvedDatabaseSort::Edited),
         DatabasePropertyConfig::Number { .. } => Ok(ResolvedDatabaseSort::AttributeExpr(
-            attribute_sort_expression(&[property.name.as_str(), map_key], true),
+            attribute_sort_expression(
+                &[property.id.as_str(), map_key, property.name.as_str()],
+                true,
+            ),
         )),
         _ => Ok(ResolvedDatabaseSort::AttributeExpr(
-            attribute_sort_expression(&[property.name.as_str(), map_key], false),
+            attribute_sort_expression(
+                &[property.id.as_str(), map_key, property.name.as_str()],
+                false,
+            ),
         )),
     }
 }
 
 /// Build a SQL expression that reads an attribute from `attributes_json`.
-/// Tries `property.name` then the `database.json` map key (Notion-style ids).
+/// Tries `property.id`, then the `database.json` map key, then `property.name`.
 fn attribute_sort_expression(keys: &[&str], numeric: bool) -> String {
     let mut unique = Vec::new();
     for key in keys {

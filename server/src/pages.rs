@@ -297,10 +297,11 @@ fn unquote_yaml(value: &str) -> String {
 }
 
 fn format_page_content(frontmatter: &PageFrontmatter, body: &str) -> String {
+    let body = body.trim_end_matches(['\n', '\r']);
     let mut content = frontmatter.to_yaml();
     content.push('\n');
     content.push_str(body);
-    if !body.is_empty() && !body.ends_with('\n') {
+    if !body.is_empty() {
         content.push('\n');
     }
     content
@@ -481,8 +482,22 @@ fn update_database_row(
         .or(existing.slug.clone())
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| input.id.clone());
+    let file_slug = {
+        let derived = slugify(&slug);
+        if derived.is_empty() {
+            "untitled".to_owned()
+        } else {
+            derived
+        }
+    };
     let icon = input.icon.or(existing.icon.clone());
     let favorite = input.favorite.unwrap_or(existing.favorite);
+
+    let parent_path = Path::new(&existing.path)
+        .parent()
+        .map(|path| path.to_string_lossy().replace('\\', "/"))
+        .ok_or_else(|| "invalid database row path".to_owned())?;
+    let new_path = format!("{parent_path}/{}-{}.mdx", input.id, file_slug);
 
     let existing_frontmatter = extract_frontmatter_inner(&existing_content).unwrap_or("");
     let existing_fields = parse_frontmatter(&existing_content);
@@ -501,7 +516,7 @@ fn update_database_row(
     let content = format_database_row_content(
         &DatabaseRowFrontmatter {
             id: input.id.clone(),
-            slug: slug.clone(),
+            slug: file_slug.clone(),
             title: title.clone(),
             icon: icon.clone(),
             favorite,
@@ -512,12 +527,12 @@ fn update_database_row(
         &body,
     );
 
-    cache
+    let old_path = cache
         .upsert_database_row_mutable(
-            &existing.path,
+            &new_path,
             &existing.database_id,
             &input.id,
-            Some(&slug),
+            Some(&file_slug),
             Some(&title),
             icon.as_deref(),
             &content,
@@ -552,10 +567,10 @@ fn update_database_row(
         PageDetail {
             id: input.id,
             parent_id: None,
-            slug: Some(slug),
+            slug: Some(file_slug),
             title: Some(title),
             icon,
-            path: existing.path,
+            path: new_path,
             has_children: false,
             favorite,
             database_id: Some(existing.database_id),
@@ -567,7 +582,7 @@ fn update_database_row(
             referenced_pages,
             ancestors,
         },
-        None,
+        old_path,
     ))
 }
 
@@ -732,10 +747,11 @@ pub(crate) fn format_database_row_content(
     frontmatter: &DatabaseRowFrontmatter,
     body: &str,
 ) -> String {
+    let body = body.trim_end_matches(['\n', '\r']);
     let mut content = frontmatter.to_yaml();
     content.push('\n');
     content.push_str(body);
-    if !body.is_empty() && !body.ends_with('\n') {
+    if !body.is_empty() {
         content.push('\n');
     }
     content

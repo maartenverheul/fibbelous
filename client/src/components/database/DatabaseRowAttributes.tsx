@@ -146,16 +146,16 @@ export function DatabaseRowAttributes({
         const TypeIcon = databasePropertyTypeIcon(property.type);
         const value =
           property.type === "created_time" ||
-          property.type === "last_edited_time"
+            property.type === "last_edited_time"
             ? getRowPropertyValue(
-                {
-                  title: null,
-                  created: created ?? null,
-                  edited: edited ?? null,
-                  attributes: attrs,
-                },
-                property,
-              )
+              {
+                title: null,
+                created: created ?? null,
+                edited: edited ?? null,
+                attributes: attrs,
+              },
+              property,
+            )
             : getAttributeValue(attrs, property);
         const propertyReadOnly =
           Boolean(readOnly) || READONLY_TYPES.has(property.type);
@@ -177,7 +177,7 @@ export function DatabaseRowAttributes({
             </div>
             <div role="cell" className="min-w-0">
               {property.type === "created_time" ||
-              property.type === "last_edited_time" ? (
+                property.type === "last_edited_time" ? (
                 <span className="block px-1.5 py-1 text-sm text-app-fg-muted">
                   {formatTimestamp(
                     typeof value === "string" ? value : undefined,
