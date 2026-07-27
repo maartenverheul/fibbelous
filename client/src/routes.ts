@@ -3,6 +3,7 @@ import { isPagePathSegment, parsePageIdFromSegment, parsePageKey, humanizeSlug }
 import { HomePage } from "./pages/HomePage";
 import { SearchPage } from "./pages/SearchPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { SyncPage } from "./pages/SyncPage";
 import { TrashPage } from "./pages/TrashPage";
 
 export type AppRoute = {
@@ -15,6 +16,7 @@ export type AppRoute = {
 export const appRoutes: AppRoute[] = [
   { id: "home", segment: "", label: "Home", component: HomePage },
   { id: "settings", segment: "settings", label: "Settings", component: SettingsPage },
+  { id: "sync", segment: "sync", label: "Sync", component: SyncPage },
   { id: "trash", segment: "trash", label: "Trash", component: TrashPage },
   { id: "search", segment: "search", label: "Search", component: SearchPage },
 ];

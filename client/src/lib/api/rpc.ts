@@ -111,11 +111,28 @@ export function createLocalRpcClient(workspaceId: string): RpcClient {
       if (!open) {
         throw new RpcConnectionClosedError();
       }
-      return invoke<T>("local_workspace_rpc", {
-        workspaceId,
-        method,
-        params: params ?? null,
-      });
+      try {
+        return await invoke<T>("local_workspace_rpc", {
+          workspaceId,
+          method,
+          params: params ?? null,
+        });
+      } catch (error) {
+        if (error instanceof Error) throw error;
+        if (typeof error === "string" && error.trim()) {
+          throw new Error(error);
+        }
+        if (error && typeof error === "object") {
+          const record = error as Record<string, unknown>;
+          for (const key of ["message", "error", "msg"] as const) {
+            const value = record[key];
+            if (typeof value === "string" && value.trim()) {
+              throw new Error(value);
+            }
+          }
+        }
+        throw new Error(String(error ?? "RPC call failed"));
+      }
     },
     close() {
       open = false;

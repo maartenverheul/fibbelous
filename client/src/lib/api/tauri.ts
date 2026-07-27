@@ -34,6 +34,32 @@ export async function openLocalWorkspace(path: string): Promise<WorkspaceInfo> {
   return invoke<WorkspaceInfo>("open_local_workspace", { path });
 }
 
+export async function cloneLocalWorkspace(
+  url: string,
+  parentPath: string,
+): Promise<WorkspaceInfo & { path: string }> {
+  return invoke<WorkspaceInfo & { path: string }>("clone_local_workspace", {
+    url,
+    parentPath,
+  });
+}
+
+export async function pickCloneParentFolder(): Promise<string | null> {
+  if (!isTauri()) return null;
+
+  const selected = await open({
+    directory: true,
+    multiple: false,
+    title: "Choose folder for cloned workspace",
+  });
+
+  if (typeof selected === "string" && selected.length > 0) {
+    return selected;
+  }
+
+  return null;
+}
+
 export async function updateLocalWorkspaceSettings(
   workspaceId: string,
   input: { title?: string; slug?: string; icon?: string },

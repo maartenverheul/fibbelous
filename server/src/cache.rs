@@ -1878,7 +1878,7 @@ pub fn ensure_runtime_dir(workspace_path: &Path) -> std::io::Result<PathBuf> {
     Ok(path)
 }
 
-fn ensure_workspace_gitignore(workspace_path: &Path) -> std::io::Result<()> {
+pub(crate) fn ensure_workspace_gitignore(workspace_path: &Path) -> std::io::Result<()> {
     const ENTRY: &str = ".fibbelous/";
     let gitignore_path = workspace_path.join(".gitignore");
 

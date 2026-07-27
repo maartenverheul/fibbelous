@@ -4,7 +4,8 @@ use std::sync::Mutex;
 use serde_json::Value;
 use server::rpc::call_workspace_rpc;
 use server::workspace::{
-    OpenWorkspaceOutcome, Workspace, WorkspaceInfo, open_workspace_at_path, spawn_indexing,
+    clone_workspace_to_parent, OpenWorkspaceOutcome, Workspace, WorkspaceInfo,
+    open_workspace_at_path, spawn_indexing,
 };
 use tauri::State;
 
@@ -68,6 +69,26 @@ async fn open_local_workspace(
 }
 
 #[tauri::command]
+async fn clone_local_workspace(
+    url: String,
+    parent_path: String,
+    state: State<'_, LocalWorkspaces>,
+) -> Result<serde_json::Value, String> {
+    let existing = state.snapshot();
+    let workspace = clone_workspace_to_parent(&existing, &url, std::path::Path::new(&parent_path))
+        .map_err(|error| error.message())?;
+    let path = workspace.path.to_string_lossy().into_owned();
+    let info = workspace.info();
+    state.insert(workspace.clone());
+    spawn_indexing(workspace);
+    let mut value = serde_json::to_value(info).map_err(|error| error.to_string())?;
+    if let Some(object) = value.as_object_mut() {
+        object.insert("path".to_owned(), serde_json::Value::String(path));
+    }
+    Ok(value)
+}
+
+#[tauri::command]
 async fn local_workspace_rpc(
     workspace_id: String,
     method: String,
@@ -126,6 +147,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet,
             open_local_workspace,
+            clone_local_workspace,
             local_workspace_rpc,
             update_local_workspace_settings
         ])

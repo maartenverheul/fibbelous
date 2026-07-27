@@ -7,6 +7,7 @@ import { LandingPage } from "./pages/LandingPage";
 import { PageView } from "./pages/PageView";
 import { SearchPage } from "./pages/SearchPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { SyncPage } from "./pages/SyncPage";
 import { TrashPage } from "./pages/TrashPage";
 import { useSavedWorkspaces } from "./hooks/useSavedWorkspaces";
 import { shouldOpenWorkspaceManager } from "./lib/app/navigation";
@@ -43,6 +44,7 @@ export default function App() {
       <Route path="/:slug" element={<WorkspaceLayout />}>
         <Route index element={<HomePage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="sync" element={<SyncPage />} />
         <Route path="trash" element={<TrashPage />} />
         <Route path="search" element={<SearchPage />} />
         <Route path="*" element={<PageView />} />

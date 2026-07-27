@@ -8,6 +8,7 @@ import useLocalStorageState from "use-local-storage-state";
 import { useSavedWorkspaces } from "../../hooks/useSavedWorkspaces";
 import {
   checkServerHealth,
+  cloneWorkspace,
   createWorkspace,
   fetchWorkspaces,
   isWorkspaceNotFoundError,
@@ -23,7 +24,14 @@ import {
   parseServerUrl,
 } from "../../lib/api/serverAddress";
 import { cn, formatUnknownError } from "../../lib/utils";
-import { isTauri, openLocalWorkspace, pickWorkspaceFolder, updateLocalWorkspaceSettings } from "../../lib/api/tauri";
+import {
+  isTauri,
+  cloneLocalWorkspace,
+  openLocalWorkspace,
+  pickCloneParentFolder,
+  pickWorkspaceFolder,
+  updateLocalWorkspaceSettings,
+} from "../../lib/api/tauri";
 import { workspaceNoticeMessage, type WorkspaceNotice } from "../../lib/app/navigation";
 import { slugifyPageTitle } from "../../lib/page/types";
 import {
@@ -193,6 +201,11 @@ export function WorkspaceManagerDialog({
   );
   const [openingFolder, setOpeningFolder] = useState(false);
   const [folderError, setFolderError] = useState<string | null>(null);
+
+  const [showCloneForm, setShowCloneForm] = useState(false);
+  const [cloneUrl, setCloneUrl] = useState("");
+  const [cloneError, setCloneError] = useState<string | null>(null);
+  const [cloning, setCloning] = useState(false);
 
   const activeNotice = localNotice ?? notice;
   const showUseFolder = isTauri();
@@ -481,6 +494,64 @@ export function WorkspaceManagerDialog({
     }
   };
 
+  const handleCloneRemote = async () => {
+    setCloneError(null);
+
+    if (!serverUrl) {
+      setCloneError("Connect to a server first");
+      return;
+    }
+
+    const url = cloneUrl.trim();
+    if (!url) {
+      setCloneError("Repository URL is required");
+      return;
+    }
+
+    setCloning(true);
+    try {
+      const workspace = await cloneWorkspace(serverUrl, { url });
+      setRemoteWorkspaces((prev) => [...prev, workspace]);
+      setCloneUrl("");
+      setShowCloneForm(false);
+      openWorkspace(workspace);
+    } catch (error) {
+      setCloneError(
+        error instanceof Error ? error.message : "Failed to clone repository",
+      );
+    } finally {
+      setCloning(false);
+    }
+  };
+
+  const handleCloneLocal = async () => {
+    if (!showUseFolder) return;
+
+    setCloneError(null);
+    const url = cloneUrl.trim();
+    if (!url) {
+      setCloneError("Repository URL is required");
+      return;
+    }
+
+    setCloning(true);
+    try {
+      const parentPath = await pickCloneParentFolder();
+      if (!parentPath) return;
+
+      const workspace = await cloneLocalWorkspace(url, parentPath);
+      setCloneUrl("");
+      setShowCloneForm(false);
+      await openLocalFolderWorkspace(workspace.path, workspace);
+    } catch (error) {
+      setCloneError(
+        formatUnknownError(error, "Failed to clone repository"),
+      );
+    } finally {
+      setCloning(false);
+    }
+  };
+
   const handleSaveSettings = async () => {
     if (!settingsWorkspace) return;
 
@@ -755,9 +826,44 @@ export function WorkspaceManagerDialog({
                     >
                       {openingFolder ? "Opening..." : "Use folder"}
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowCloneForm((value) => !value);
+                        setCloneError(null);
+                      }}
+                      className={buttonSecondaryClassName}
+                    >
+                      {showCloneForm ? "Cancel clone" : "Clone repository"}
+                    </button>
                     <p className="text-xs text-stone-600 dark:text-stone-400">
                       Open or create a workspace from a local folder (no server).
                     </p>
+                  </div>
+                )}
+                {showUseFolder && showCloneForm && (
+                  <div className="mt-3 grid gap-2 border-t border-app-border pt-3">
+                    <Field label="Git repository URL">
+                      <input
+                        value={cloneUrl}
+                        onChange={(event) => setCloneUrl(event.target.value)}
+                        className={inputClassName}
+                        placeholder="git@github.com:org/workspace.git"
+                      />
+                    </Field>
+                    {cloneError && (
+                      <p className="text-sm text-red-600 dark:text-red-400">
+                        {cloneError}
+                      </p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => void handleCloneLocal()}
+                      disabled={cloning}
+                      className={cn(buttonPrimaryClassName, "self-start")}
+                    >
+                      {cloning ? "Cloning..." : "Clone into folder…"}
+                    </button>
                   </div>
                 )}
                 {folderError && (
@@ -773,14 +879,52 @@ export function WorkspaceManagerDialog({
                     <h2 className="text-sm font-medium text-stone-800 dark:text-stone-200">
                       On this server
                     </h2>
-                    <button
-                      type="button"
-                      onClick={() => setShowCreateForm((value) => !value)}
-                      className="text-sm text-stone-700 hover:underline dark:text-stone-300"
-                    >
-                      {showCreateForm ? "Cancel" : "+ New workspace"}
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowCloneForm((value) => !value);
+                          setCloneError(null);
+                        }}
+                        className="text-sm text-stone-700 hover:underline dark:text-stone-300"
+                      >
+                        {showCloneForm ? "Cancel" : "Clone repository"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowCreateForm((value) => !value)}
+                        className="text-sm text-stone-700 hover:underline dark:text-stone-300"
+                      >
+                        {showCreateForm ? "Cancel" : "+ New workspace"}
+                      </button>
+                    </div>
                   </div>
+
+                  {showCloneForm && (
+                    <div className="grid gap-3 rounded-lg border border-app-border bg-app-bg/40 p-3">
+                      <Field label="Git repository URL">
+                        <input
+                          value={cloneUrl}
+                          onChange={(event) => setCloneUrl(event.target.value)}
+                          className={inputClassName}
+                          placeholder="https://github.com/org/workspace.git"
+                        />
+                      </Field>
+                      {cloneError && (
+                        <p className="text-sm text-red-600 dark:text-red-400">
+                          {cloneError}
+                        </p>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void handleCloneRemote()}
+                        disabled={cloning}
+                        className={cn(buttonPrimaryClassName, "self-start")}
+                      >
+                        {cloning ? "Cloning..." : "Clone & open"}
+                      </button>
+                    </div>
+                  )}
 
                   {showCreateForm && (
                     <div className="grid gap-3 rounded-lg border border-app-border bg-app-bg/40 p-3">

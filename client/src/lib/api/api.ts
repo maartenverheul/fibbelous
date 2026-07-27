@@ -85,6 +85,30 @@ export async function createWorkspace(
   return response.json() as Promise<WorkspaceInfo>;
 }
 
+export type CloneWorkspaceInput = {
+  url: string;
+  title?: string;
+  slug?: string;
+  icon?: string;
+};
+
+export async function cloneWorkspace(
+  serverUrl: string,
+  input: CloneWorkspaceInput,
+): Promise<WorkspaceInfo> {
+  const response = await fetch(httpUrl(serverUrl, "workspaces/clone"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    await failResponse(response);
+  }
+
+  return response.json() as Promise<WorkspaceInfo>;
+}
+
 export async function updateWorkspaceSettings(
   serverUrl: string,
 

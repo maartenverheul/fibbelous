@@ -17,9 +17,10 @@ use tower::Service;
 use crate::rpc::{build_workspace_module, WorkspaceRpcState};
 use crate::static_files::{read_response, resolve_file, should_spa_fallback, spa_index};
 use crate::workspace::{
-    create_workspace, find_by_id, find_by_id_mut, open_workspace_at_path, spawn_indexing,
-    CreateWorkspaceError, CreateWorkspaceRequest, OpenWorkspaceError, OpenWorkspaceOutcome,
-    OpenWorkspaceRequest, UpdateWorkspaceError, UpdateWorkspaceRequest, Workspace,
+    clone_workspace, create_workspace, find_by_id, find_by_id_mut, open_workspace_at_path,
+    spawn_indexing, CloneWorkspaceRequest, CreateWorkspaceError, CreateWorkspaceRequest,
+    OpenWorkspaceError, OpenWorkspaceOutcome, OpenWorkspaceRequest, UpdateWorkspaceError,
+    UpdateWorkspaceRequest, Workspace,
 };
 
 type RpcServiceBuilder = jsonrpsee::server::TowerServiceBuilder<
@@ -96,6 +97,12 @@ pub async fn run_server(
                         if method == Method::POST && path == "/workspaces" {
                             return Ok::<_, Infallible>(
                                 handle_create_workspace(req, &app_state).await,
+                            );
+                        }
+
+                        if method == Method::POST && path == "/workspaces/clone" {
+                            return Ok::<_, Infallible>(
+                                handle_clone_workspace(req, &app_state).await,
                             );
                         }
 
@@ -283,6 +290,64 @@ async fn handle_create_workspace(req: Request<Incoming>, state: &AppState) -> Rp
                 json_error(
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "failed to create workspace",
+                )
+            }
+        },
+    )
+}
+
+async fn handle_clone_workspace(req: Request<Incoming>, state: &AppState) -> RpcResponse {
+    let origin = req.headers().get(hyper::header::ORIGIN).cloned();
+    let body = match req.into_body().collect().await {
+        Ok(collected) => collected.to_bytes(),
+        Err(error) => {
+            tracing::warn!(%error, "failed to read clone workspace request body");
+            return with_cors_origin(
+                origin,
+                json_error(StatusCode::BAD_REQUEST, "invalid request body"),
+            );
+        }
+    };
+
+    let input = match serde_json::from_slice::<CloneWorkspaceRequest>(&body) {
+        Ok(input) => input,
+        Err(error) => {
+            return with_cors_origin(
+                origin,
+                json_error(StatusCode::BAD_REQUEST, error.to_string()),
+            );
+        }
+    };
+
+    let cloned = {
+        let existing = state.workspaces.read().expect("workspaces lock poisoned");
+        clone_workspace(&state.workspaces_dir, &existing, input)
+    };
+
+    with_cors_origin(
+        origin,
+        match cloned {
+            Ok(workspace) => {
+                let info = workspace.info();
+                state
+                    .workspaces
+                    .write()
+                    .expect("workspaces lock poisoned")
+                    .push(workspace.clone());
+                spawn_indexing(workspace);
+                json_response(StatusCode::CREATED, info)
+            }
+            Err(CreateWorkspaceError::SlugConflict) => {
+                json_error(StatusCode::CONFLICT, "slug already exists")
+            }
+            Err(CreateWorkspaceError::Validation(message)) => {
+                json_error(StatusCode::BAD_REQUEST, message)
+            }
+            Err(CreateWorkspaceError::Io(error)) => {
+                tracing::warn!(%error, "failed to clone workspace");
+                json_error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "failed to clone workspace",
                 )
             }
         },

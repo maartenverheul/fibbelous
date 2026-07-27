@@ -402,6 +402,39 @@ pub fn build_workspace_module(state: WorkspaceRpcState) -> RpcModule<WorkspaceRp
         .expect("reindex method registration");
 
     module
+        .register_async_method("git_status", |_, ctx, _| async move {
+            let workspace = ctx.workspace.clone();
+            let status = tokio::task::spawn_blocking(move || workspace.git_status())
+                .await
+                .map_err(|error| ErrorObjectOwned::owned(1, error.to_string(), None::<()>))?
+                .map_err(|error| ErrorObjectOwned::owned(2, error, None::<()>))?;
+            Ok::<serde_json::Value, ErrorObjectOwned>(serde_json::to_value(status).unwrap())
+        })
+        .expect("git_status method registration");
+
+    module
+        .register_async_method("git_commit", |_, ctx, _| async move {
+            let workspace = ctx.workspace.clone();
+            let status = tokio::task::spawn_blocking(move || workspace.git_commit())
+                .await
+                .map_err(|error| ErrorObjectOwned::owned(1, error.to_string(), None::<()>))?
+                .map_err(|error| ErrorObjectOwned::owned(2, error, None::<()>))?;
+            Ok::<serde_json::Value, ErrorObjectOwned>(serde_json::to_value(status).unwrap())
+        })
+        .expect("git_commit method registration");
+
+    module
+        .register_async_method("git_push", |_, ctx, _| async move {
+            let workspace = ctx.workspace.clone();
+            let status = tokio::task::spawn_blocking(move || workspace.git_push())
+                .await
+                .map_err(|error| ErrorObjectOwned::owned(1, error.to_string(), None::<()>))?
+                .map_err(|error| ErrorObjectOwned::owned(2, error, None::<()>))?;
+            Ok::<serde_json::Value, ErrorObjectOwned>(serde_json::to_value(status).unwrap())
+        })
+        .expect("git_push method registration");
+
+    module
 }
 
 fn params_or_null(params: serde_json::Value) -> serde_json::Value {
@@ -637,6 +670,30 @@ pub async fn call_workspace_rpc(
                 .map_err(|error| error.to_string())?
                 .map_err(|error| error)?;
             serde_json::to_value(workspace.info()).map_err(|error| error.to_string())
+        }
+        "git_status" => {
+            let workspace = workspace.clone();
+            let status = tokio::task::spawn_blocking(move || workspace.git_status())
+                .await
+                .map_err(|error| error.to_string())?
+                .map_err(|error| error)?;
+            serde_json::to_value(status).map_err(|error| error.to_string())
+        }
+        "git_commit" => {
+            let workspace = workspace.clone();
+            let status = tokio::task::spawn_blocking(move || workspace.git_commit())
+                .await
+                .map_err(|error| error.to_string())?
+                .map_err(|error| error)?;
+            serde_json::to_value(status).map_err(|error| error.to_string())
+        }
+        "git_push" => {
+            let workspace = workspace.clone();
+            let status = tokio::task::spawn_blocking(move || workspace.git_push())
+                .await
+                .map_err(|error| error.to_string())?
+                .map_err(|error| error)?;
+            serde_json::to_value(status).map_err(|error| error.to_string())
         }
         other => Err(format!("unknown method: {other}")),
     }

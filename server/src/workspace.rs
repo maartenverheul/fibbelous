@@ -10,12 +10,14 @@ use serde::{Deserialize, Serialize};
 use crate::cache::{ensure_runtime_dir, CacheDb};
 use crate::data::log_path;
 use crate::databases;
-use crate::flush::{spawn_flush, DirtyKey, FlushScheduler};
+use crate::flush::{self, spawn_flush, DirtyKey, FlushScheduler};
+use crate::git::{self, GitStatus};
 use crate::index::sync_workspace;
 use crate::pages::{
     create_page, duplicate_page, get_trashed_page, list_trashed_pages, purge_page, restore_page,
     trash_page, update_page, CreatePageInput, UpdatePageInput,
 };
+use std::collections::HashSet;
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -60,6 +62,15 @@ impl std::fmt::Debug for Workspace {
 #[serde(rename_all = "camelCase")]
 pub struct CreateWorkspaceRequest {
     pub title: String,
+    pub slug: Option<String>,
+    pub icon: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloneWorkspaceRequest {
+    pub url: String,
+    pub title: Option<String>,
     pub slug: Option<String>,
     pub icon: Option<String>,
 }
@@ -504,6 +515,38 @@ impl Workspace {
         self.persist_settings()?;
         Ok(self.info())
     }
+
+    pub fn flush_to_disk(&self) -> Result<(), String> {
+        flush::flush_pending(&self.path, &self.cache, &HashSet::new())
+    }
+
+    pub fn ensure_git(&self) -> Result<(), String> {
+        self.flush_to_disk()?;
+        if !git::is_git_repo(&self.path) {
+            git::init_repo(&self.path)?;
+            git::commit_daily(&self.path)?;
+            return Ok(());
+        }
+        git::ensure_repo_with_commit(&self.path)
+    }
+
+    pub fn git_status(&self) -> Result<GitStatus, String> {
+        self.ensure_git()?;
+        self.flush_to_disk()?;
+        git::status(&self.path)
+    }
+
+    pub fn git_commit(&self) -> Result<GitStatus, String> {
+        self.ensure_git()?;
+        self.flush_to_disk()?;
+        git::commit_daily(&self.path)
+    }
+
+    pub fn git_push(&self) -> Result<GitStatus, String> {
+        self.ensure_git()?;
+        self.flush_to_disk()?;
+        git::push(&self.path)
+    }
 }
 
 pub fn find_by_id<'a>(workspaces: &'a [Workspace], id: &str) -> Option<&'a Workspace> {
@@ -614,6 +657,9 @@ fn initialize_workspace_at_path(
 
     let workspace = open_workspace(id, path.to_path_buf())?;
     seed_welcome_page(&workspace)?;
+    workspace.flush_to_disk()?;
+    git::init_repo(&workspace.path)?;
+    git::commit_daily(&workspace.path)?;
 
     tracing::info!(
         workspace = %workspace.id,
@@ -682,6 +728,147 @@ pub fn create_workspace(
     })
 }
 
+pub fn clone_workspace(
+    workspaces_dir: &Path,
+    existing: &[Workspace],
+    input: CloneWorkspaceRequest,
+) -> Result<Workspace, CreateWorkspaceError> {
+    let url = input.url.trim().to_owned();
+    if url.is_empty() {
+        return Err(CreateWorkspaceError::Validation(
+            "url is required".to_owned(),
+        ));
+    }
+
+    let id = unique_workspace_id(workspaces_dir, &url);
+    let path = workspaces_dir.join(&id);
+
+    git::clone_repo(&url, &path).map_err(CreateWorkspaceError::Validation)?;
+
+    if path.join("workspace.json").is_file() {
+        let workspace =
+            open_workspace(id, path).map_err(CreateWorkspaceError::Validation)?;
+        if existing
+            .iter()
+            .any(|item| item.settings.slug == workspace.settings.slug)
+        {
+            let _ = fs::remove_dir_all(&workspace.path);
+            return Err(CreateWorkspaceError::SlugConflict);
+        }
+        workspace
+            .ensure_git()
+            .map_err(CreateWorkspaceError::Validation)?;
+        return Ok(workspace);
+    }
+
+    let folder = git::folder_name_from_url(&url);
+    let title = input
+        .title
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| folder.clone());
+    let slug = input
+        .slug
+        .map(|value| slugify(&value))
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| slugify(&title));
+    if slug.is_empty() {
+        let _ = fs::remove_dir_all(&path);
+        return Err(CreateWorkspaceError::Validation(
+            "slug is required".to_owned(),
+        ));
+    }
+    if existing
+        .iter()
+        .any(|workspace| workspace.settings.slug == slug)
+    {
+        let _ = fs::remove_dir_all(&path);
+        return Err(CreateWorkspaceError::SlugConflict);
+    }
+
+    let icon = input.icon.unwrap_or_default();
+    let settings = WorkspaceSettings {
+        slug: slug.clone(),
+        title: title.clone(),
+        icon,
+        created_at: now_timestamp(),
+    };
+    let contents = serde_json::to_string_pretty(&settings).map_err(|error| {
+        CreateWorkspaceError::Validation(format!("failed to serialize workspace.json: {error}"))
+    })?;
+    fs::write(path.join("workspace.json"), contents)?;
+    fs::create_dir_all(path.join("pages"))?;
+
+    let workspace = open_workspace(id, path).map_err(CreateWorkspaceError::Validation)?;
+    workspace
+        .ensure_git()
+        .map_err(CreateWorkspaceError::Validation)?;
+
+    tracing::info!(
+        workspace = %workspace.id,
+        title = %workspace.settings.title,
+        path = %log_path(&workspace.path),
+        "cloned workspace"
+    );
+
+    Ok(workspace)
+}
+
+/// Clone a git URL into `parent_dir/<repo-name>` and open it as a local workspace.
+pub fn clone_workspace_to_parent(
+    existing: &[Workspace],
+    url: &str,
+    parent_dir: &Path,
+) -> Result<Workspace, OpenWorkspaceError> {
+    let url = url.trim();
+    if url.is_empty() {
+        return Err(OpenWorkspaceError::Validation(
+            "url is required".to_owned(),
+        ));
+    }
+    if !parent_dir.is_dir() {
+        return Err(OpenWorkspaceError::Validation(
+            "parent path must be a directory".to_owned(),
+        ));
+    }
+
+    let dest = git::clone_dest_in_parent(parent_dir, url);
+    git::clone_repo(url, &dest).map_err(OpenWorkspaceError::Validation)?;
+
+    if !dest.join("workspace.json").is_file() {
+        let folder = git::folder_name_from_url(url);
+        let slug = slugify(&folder);
+        if slug.is_empty() {
+            let _ = fs::remove_dir_all(&dest);
+            return Err(OpenWorkspaceError::Validation(
+                "repository name must produce a valid slug".to_owned(),
+            ));
+        }
+        let settings = WorkspaceSettings {
+            slug,
+            title: folder,
+            icon: String::new(),
+            created_at: now_timestamp(),
+        };
+        let contents = serde_json::to_string_pretty(&settings).map_err(|error| {
+            OpenWorkspaceError::Validation(format!("failed to serialize workspace.json: {error}"))
+        })?;
+        fs::write(dest.join("workspace.json"), contents).map_err(OpenWorkspaceError::Io)?;
+        fs::create_dir_all(dest.join("pages")).map_err(OpenWorkspaceError::Io)?;
+    }
+
+    match open_workspace_at_path(existing, &dest.to_string_lossy())? {
+        OpenWorkspaceOutcome::AlreadyLoaded(info) => existing
+            .iter()
+            .find(|workspace| workspace.id == info.id)
+            .cloned()
+            .ok_or_else(|| {
+                OpenWorkspaceError::Validation("cloned workspace not found".to_owned())
+            }),
+        OpenWorkspaceOutcome::Opened(workspace) => Ok(workspace),
+    }
+}
+
 pub fn open_workspace_at_path(
     existing: &[Workspace],
     path_input: &str,
@@ -723,6 +910,15 @@ pub fn open_workspace_at_path(
             .any(|item| item.settings.slug == workspace.settings.slug)
         {
             return Err(OpenWorkspaceError::SlugConflict);
+        }
+
+        if let Err(error) = workspace.ensure_git() {
+            tracing::warn!(
+                workspace = %workspace.id,
+                %error,
+                "failed to ensure git repository for workspace"
+            );
+            return Err(OpenWorkspaceError::Validation(error));
         }
 
         tracing::info!(
@@ -784,6 +980,10 @@ pub fn discover_workspaces(dir: &Path) -> std::io::Result<Vec<Workspace>> {
         let id = entry.file_name().to_string_lossy().into_owned();
         match open_workspace(id, path.clone()) {
             Ok(workspace) => {
+                if let Err(error) = workspace.ensure_git() {
+                    tracing::warn!(path = %log_path(&path), %error, "skipping workspace without git");
+                    continue;
+                }
                 tracing::info!(
                     workspace = %workspace.id,
                     title = %workspace.settings.title,

@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+git2 = "0.20"
 dotenvy = "0.15"
 http-body-util = "0.1"
 hyper = { version = "1", features = ["server", "http1"] }

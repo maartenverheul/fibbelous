@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { PiFileText, PiGear, PiMagnifyingGlass, PiTrash, PiX } from "react-icons/pi";
+import { PiFileText, PiGear, PiGitBranch, PiMagnifyingGlass, PiTrash, PiX } from "react-icons/pi";
 import { useSidebar } from "../../context/SidebarContext";
 import { useTabs, type TabTarget } from "../../context/TabContext";
 import { useWorkspacePages } from "../../hooks/useWorkspacePages";
@@ -273,6 +273,27 @@ export function Sidebar() {
         >
           <PiMagnifyingGlass className="h-4 w-4 shrink-0" aria-hidden />
           Search
+        </button>
+
+        <button
+          type="button"
+          onClick={() =>
+            navigateFromSidebar(
+              "sync",
+              { label: "Sync" },
+              activeSegment === "sync",
+            )
+          }
+          onContextMenu={(event) =>
+            openContextMenu(event, "sync", { label: "Sync" })
+          }
+          className={cn(
+            navButtonClassName(activeSegment === "sync"),
+            "mx-3 mt-2 flex shrink-0 items-center gap-2",
+          )}
+        >
+          <PiGitBranch className="h-4 w-4 shrink-0" aria-hidden />
+          Sync
         </button>
 
         <button
