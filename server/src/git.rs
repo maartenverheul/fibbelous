@@ -2,8 +2,8 @@ use std::path::{Path, PathBuf};
 
 use chrono::Local;
 use git2::{
-    build::RepoBuilder, Commit, Cred, CredentialType, IndexAddOption, PushOptions,
-    RemoteCallbacks, Repository, Signature, Status, StatusOptions,
+    build::RepoBuilder, Commit, Cred, CredentialType, IndexAddOption, PushOptions, RemoteCallbacks,
+    Repository, Signature, Status, StatusOptions,
 };
 use serde::Serialize;
 
@@ -122,9 +122,7 @@ fn open_repo(path: &Path) -> Result<Repository, String> {
 fn head_commit(repo: &Repository) -> Result<Option<Commit<'_>>, String> {
     match repo.head() {
         Ok(head) => {
-            let commit = head
-                .peel_to_commit()
-                .map_err(|error| error.to_string())?;
+            let commit = head.peel_to_commit().map_err(|error| error.to_string())?;
             Ok(Some(commit))
         }
         Err(error) if error.code() == git2::ErrorCode::UnbornBranch => Ok(None),
@@ -180,7 +178,9 @@ pub fn commit_daily(path: &Path) -> Result<GitStatus, String> {
 
     stage_all(&repo)?;
     let tree_oid = write_tree_oid(&repo)?;
-    let tree = repo.find_tree(tree_oid).map_err(|error| error.to_string())?;
+    let tree = repo
+        .find_tree(tree_oid)
+        .map_err(|error| error.to_string())?;
 
     match head_commit(&repo)? {
         None => {
@@ -252,7 +252,9 @@ fn branch_name(repo: &Repository) -> Result<String, String> {
     Ok("HEAD".to_owned())
 }
 
-fn ahead_behind(repo: &Repository) -> Result<(Option<String>, usize, usize, Option<git2::Oid>), String> {
+fn ahead_behind(
+    repo: &Repository,
+) -> Result<(Option<String>, usize, usize, Option<git2::Oid>), String> {
     let Ok(head) = repo.head() else {
         return Ok((None, 0, 0, None));
     };
@@ -274,11 +276,7 @@ fn ahead_behind(repo: &Repository) -> Result<(Option<String>, usize, usize, Opti
         Err(_) => return Ok((None, 0, 0, None)),
     };
 
-    let upstream_name = upstream
-        .name()
-        .ok()
-        .flatten()
-        .map(|name| name.to_owned());
+    let upstream_name = upstream.name().ok().flatten().map(|name| name.to_owned());
     let Some(upstream_oid) = upstream.get().target() else {
         return Ok((upstream_name, 0, 0, None));
     };
@@ -345,17 +343,29 @@ fn collect_files(repo: &Repository) -> Result<Vec<GitFileChange>, String> {
 }
 
 fn is_amend_rewrite(repo: &Repository, head: git2::Oid, upstream: git2::Oid) -> bool {
+    if head == upstream {
+        return false;
+    }
     let Ok(head_commit) = repo.find_commit(head) else {
         return false;
     };
     let Ok(up_commit) = repo.find_commit(upstream) else {
         return false;
     };
-    if head_commit.parent_count() != 1 || up_commit.parent_count() != 1 {
+    let head_parents = head_commit.parent_count();
+    let up_parents = up_commit.parent_count();
+    if head_parents != up_parents {
+        return false;
+    }
+    // Amended initial (root) commit: both have no parents, different OIDs.
+    if head_parents == 0 {
+        return true;
+    }
+    if head_parents != 1 {
         return false;
     }
     match (head_commit.parent_id(0), up_commit.parent_id(0)) {
-        (Ok(a), Ok(b)) => a == b && head != upstream,
+        (Ok(a), Ok(b)) => a == b,
         _ => false,
     }
 }
@@ -456,6 +466,18 @@ pub fn push(path: &Path) -> Result<GitStatus, String> {
         None => false,
     };
 
+    let (_, ahead, behind, _) = ahead_behind(&repo)?;
+    if !use_force && !(ahead > 0 && behind == 0) {
+        return Err(
+            "cannot push: remote has commits we don't have (not a same-day amend)"
+                .to_owned(),
+        );
+    }
+    if ahead == 0 && !use_force {
+        return status(path);
+    }
+
+    // Daily amend rewrites the pushed tip; a normal push is non-fast-forward.
     let refspec = if use_force {
         format!("+refs/heads/{branch}:refs/heads/{remote_branch}")
     } else {
@@ -472,7 +494,20 @@ pub fn push(path: &Path) -> Result<GitStatus, String> {
 
     remote
         .push(&[refspec.as_str()], Some(&mut options))
-        .map_err(|error| format!("git push failed: {error}"))?;
+        .map_err(|error| {
+            if use_force {
+                format!("git force-push failed: {error}")
+            } else {
+                format!("git push failed: {error}")
+            }
+        })?;
+
+    // Refresh remote-tracking ref so status no longer shows behind after amend push.
+    if let Ok(mut remote) = repo.find_remote(&remote_name) {
+        let mut fetch_opts = git2::FetchOptions::new();
+        fetch_opts.remote_callbacks(remote_callbacks());
+        let _ = remote.fetch(&[remote_branch.as_str()], Some(&mut fetch_opts), None);
+    }
 
     status(path)
 }

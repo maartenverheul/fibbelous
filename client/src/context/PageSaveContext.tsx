@@ -15,17 +15,32 @@ const SAVING_MIN_MS = 1200;
 
 type PageSaveContextValue = {
   status: PageSaveStatus;
-  setStatus: (status: PageSaveStatus) => void;
+  /** Update save status for a specific page; the top-bar indicator aggregates all pages. */
+  setPageStatus: (pageId: string, status: PageSaveStatus) => void;
 };
 
 const PageSaveContext = createContext<PageSaveContextValue | null>(null);
 
+function deriveStatus(pages: Map<string, PageSaveStatus>): PageSaveStatus {
+  let hasUnsaved = false;
+  let hasError = false;
+  for (const status of pages.values()) {
+    if (status === "saving") return "saving";
+    if (status === "error") hasError = true;
+    else if (status === "unsaved") hasUnsaved = true;
+  }
+  if (hasError) return "error";
+  if (hasUnsaved) return "unsaved";
+  return "saved";
+}
+
 export function PageSaveProvider({ children }: { children: ReactNode }) {
+  const pagesRef = useRef(new Map<string, PageSaveStatus>());
   const [status, setStatusState] = useState<PageSaveStatus>("saved");
   const savingStartedAtRef = useRef<number | null>(null);
   const releaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const setStatus = useCallback((next: PageSaveStatus) => {
+  const publish = useCallback((next: PageSaveStatus) => {
     if (next === "saving") {
       if (releaseTimerRef.current) {
         clearTimeout(releaseTimerRef.current);
@@ -59,7 +74,7 @@ export function PageSaveProvider({ children }: { children: ReactNode }) {
         releaseTimerRef.current = setTimeout(() => {
           savingStartedAtRef.current = null;
           releaseTimerRef.current = null;
-          setStatusState("saved");
+          setStatusState(deriveStatus(pagesRef.current));
         }, remaining);
 
         return current;
@@ -75,6 +90,21 @@ export function PageSaveProvider({ children }: { children: ReactNode }) {
     setStatusState(next);
   }, []);
 
+  const setPageStatus = useCallback(
+    (pageId: string, next: PageSaveStatus) => {
+      if (!pageId) return;
+
+      if (next === "saved") {
+        pagesRef.current.delete(pageId);
+      } else {
+        pagesRef.current.set(pageId, next);
+      }
+
+      publish(deriveStatus(pagesRef.current));
+    },
+    [publish],
+  );
+
   useEffect(
     () => () => {
       if (releaseTimerRef.current) {
@@ -84,7 +114,10 @@ export function PageSaveProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const value = useMemo(() => ({ status, setStatus }), [status, setStatus]);
+  const value = useMemo(
+    () => ({ status, setPageStatus }),
+    [status, setPageStatus],
+  );
   return (
     <PageSaveContext.Provider value={value}>{children}</PageSaveContext.Provider>
   );

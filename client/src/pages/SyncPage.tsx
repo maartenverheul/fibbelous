@@ -259,7 +259,11 @@ export function SyncPage() {
                   "hover:bg-stone-100 disabled:opacity-50 dark:text-stone-200 dark:hover:bg-stone-800",
                 )}
               >
-                {busy === "push" ? "Pushing…" : "Push"}
+                {busy === "push"
+                  ? "Pushing…"
+                  : status.behind > 0
+                    ? "Force push"
+                    : "Push"}
               </button>
             </div>
           </section>

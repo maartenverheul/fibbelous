@@ -291,13 +291,14 @@ export function PageView() {
     connectionStatus,
   } = useWorkspacePages();
   const { navigateInTab } = useTabs();
-  const { setStatus } = usePageSave();
+  const { setPageStatus } = usePageSave();
   const pageId = pagePath ? parsePageIdFromSegment(pagePath) : null;
   const cachedPage = pageId ? findPageById(pageId) : undefined;
   const cachedDetail = pageId ? getPageDetailById(pageId) : undefined;
   const draftsRef = useRef(new Map<string, PageDraft>());
   const dirtyPageIdsRef = useRef(new Set<string>());
   const syncedBodyByPageIdRef = useRef(new Map<string, SyncedBody>());
+  const detailByPageIdRef = useRef(new Map<string, WorkspacePageDetail>());
   const [editorPageId, setEditorPageId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -384,6 +385,7 @@ export function PageView() {
     detail?.id === pageId ? detail : cachedDetail ?? undefined;
   if (activeDetail) {
     detailRef.current = activeDetail;
+    detailByPageIdRef.current.set(activeDetail.id, activeDetail);
   }
   const isTrashed = trashedDetail?.id === pageId;
   const page = isTrashed ? trashedDetail : (activeDetail ?? cachedPage);
@@ -419,18 +421,21 @@ export function PageView() {
         body: nextDetail.body,
         hash: nextDetail.bodyHash,
       });
+      detailByPageIdRef.current.set(forPageId, nextDetail);
       if (!dirtyPageIdsRef.current.has(forPageId)) {
         draftsRef.current.set(forPageId, nextDraft);
-        if (forPageId === pageId) {
+        if (forPageId === pageIdRef.current) {
           setTitle(nextDraft.title);
           setBody(nextDraft.body);
           setAttributes(nextDraft.attributes);
         }
       }
-      setDetail(nextDetail);
-      setTrashedDetail(null);
+      if (forPageId === pageIdRef.current) {
+        setDetail(nextDetail);
+        setTrashedDetail(null);
+      }
     },
-    [pageId],
+    [],
   );
 
   const applyTrashed = useCallback(
@@ -438,15 +443,17 @@ export function PageView() {
       const nextDraft = draftFromTrashed(trashed);
       dirtyPageIdsRef.current.delete(forPageId);
       draftsRef.current.set(forPageId, nextDraft);
+      if (forPageId) {
+        setPageStatus(forPageId, "saved");
+      }
       if (forPageId === pageId) {
         setTitle(nextDraft.title);
         setBody(nextDraft.body);
-        setStatus("saved");
       }
       setDetail(null);
       setTrashedDetail(trashed);
     },
-    [pageId, setStatus],
+    [pageId, setPageStatus],
   );
 
   // When the live page leaves the workspace cache (e.g. moved to trash),
@@ -526,13 +533,6 @@ export function PageView() {
     applyTrashed,
   ]);
 
-  useLayoutEffect(() => {
-    if (!pageId) return;
-    if (!dirtyPageIdsRef.current.has(pageId)) {
-      setStatus("saved");
-    }
-  }, [pageId, setStatus]);
-
   // Keep a sync base for diff saves even if the layout-effect path was skipped.
   useEffect(() => {
     if (!activeDetail?.id || activeDetail.bodyHash == null) return;
@@ -543,6 +543,181 @@ export function PageView() {
       hash: activeDetail.bodyHash,
     });
   }, [activeDetail]);
+
+  const getPageDetailByIdRef = useRef(getPageDetailById);
+  getPageDetailByIdRef.current = getPageDetailById;
+  const updatePageRef = useRef(updatePage);
+  updatePageRef.current = updatePage;
+  const findPageByIdRef = useRef(findPageById);
+  findPageByIdRef.current = findPageById;
+  const navigateInTabRef = useRef(navigateInTab);
+  navigateInTabRef.current = navigateInTab;
+  const applyDetailRef = useRef(applyDetail);
+  applyDetailRef.current = applyDetail;
+  const setPageStatusRef = useRef(setPageStatus);
+  setPageStatusRef.current = setPageStatus;
+
+  const persistPageDraft = useCallback((pageIdForSave: string) => {
+    saveChainRef.current = saveChainRef.current
+      .catch(() => {
+        // Previous save failed; continue the chain.
+      })
+      .then(async () => {
+        const draft = draftsRef.current.get(pageIdForSave);
+        if (!draft || !dirtyPageIdsRef.current.has(pageIdForSave)) return;
+
+        const detailForSave =
+          (detailRef.current?.id === pageIdForSave
+            ? detailRef.current
+            : undefined) ??
+          getPageDetailByIdRef.current(pageIdForSave) ??
+          detailByPageIdRef.current.get(pageIdForSave);
+        if (!detailForSave) return;
+
+        const titleToSave = draft.title;
+        const bodyToSave = draft.body;
+        const attributesToSave = draft.attributes;
+
+        const baselineTitle = pageTitleValue(detailForSave);
+        const baselineBody = detailForSave.body;
+        const baselineAttributes = detailForSave.attributes ?? {};
+        const titleChanged = titleToSave !== baselineTitle;
+        const bodyChanged = !bodyMatchesStored(bodyToSave, baselineBody);
+        const attrsChanged = !attributesEqual(
+          attributesToSave,
+          baselineAttributes,
+        );
+
+        if (!titleChanged && !bodyChanged && !attrsChanged) {
+          dirtyPageIdsRef.current.delete(pageIdForSave);
+          setPageStatusRef.current(pageIdForSave, "saved");
+          return;
+        }
+
+        setPageStatusRef.current(pageIdForSave, "saving");
+
+        const meta = titleChanged
+          ? { title: titleToSave, slug: slugifyPageTitle(titleToSave) }
+          : {};
+
+        let bodyFields: { body?: string; bodyPatch?: BodyPatch } = {};
+
+        if (bodyChanged) {
+          const synced =
+            syncedBodyByPageIdRef.current.get(pageIdForSave) ??
+            (detailForSave.bodyHash
+              ? {
+                  body: detailForSave.body,
+                  hash: detailForSave.bodyHash,
+                }
+              : undefined);
+
+          if (synced) {
+            const patch = await buildBodyPatch(synced.body, bodyToSave);
+            if (shouldSendBodyPatch(patch, bodyToSave)) {
+              bodyFields = { bodyPatch: patch };
+            } else {
+              bodyFields = { body: bodyToSave };
+            }
+          } else {
+            bodyFields = { body: bodyToSave };
+          }
+        }
+
+        const finishSave = (updated: WorkspacePageDetail) => {
+          syncedBodyByPageIdRef.current.set(pageIdForSave, {
+            body: updated.body,
+            hash: updated.bodyHash,
+          });
+          detailByPageIdRef.current.set(pageIdForSave, updated);
+          if (pageIdRef.current === pageIdForSave) {
+            detailRef.current = updated;
+          }
+
+          const latestDraft = draftsRef.current.get(pageIdForSave);
+          const draftMatchesSave =
+            latestDraft !== undefined &&
+            latestDraft.title === titleToSave &&
+            bodyMatchesStored(latestDraft.body, bodyToSave) &&
+            attributesEqual(latestDraft.attributes, attributesToSave);
+
+          if (draftMatchesSave) {
+            dirtyPageIdsRef.current.delete(pageIdForSave);
+          }
+
+          applyDetailRef.current(updated, pageIdForSave);
+
+          if (draftMatchesSave) {
+            setPageStatusRef.current(pageIdForSave, "saved");
+          } else {
+            setPageStatusRef.current(pageIdForSave, "unsaved");
+          }
+
+          if (pageIdRef.current === pageIdForSave) {
+            const previousSegment = buildPageSegment(
+              detailForSave,
+              findPageByIdRef.current,
+            );
+            const newSegment = buildPageSegment(
+              updated,
+              findPageByIdRef.current,
+            );
+            if (newSegment !== previousSegment) {
+              navigateInTabRef.current(newSegment, {
+                label: pageLabel(updated),
+                icon: updated.icon,
+                pageId: updated.id,
+              });
+            }
+          }
+        };
+
+        try {
+          const updated = await updatePageRef.current(pageIdForSave, {
+            ...meta,
+            ...bodyFields,
+            ...(attrsChanged ? { attributes: attributesToSave } : {}),
+          });
+          finishSave(updated);
+        } catch (error) {
+          if (
+            bodyChanged &&
+            bodyFields.bodyPatch &&
+            isBodyHashMismatchError(error)
+          ) {
+            try {
+              const fresh = await fetchPageDetailRef.current(pageIdForSave);
+              if (fresh) {
+                syncedBodyByPageIdRef.current.set(pageIdForSave, {
+                  body: fresh.body,
+                  hash: fresh.bodyHash,
+                });
+                detailByPageIdRef.current.set(pageIdForSave, fresh);
+                if (pageIdRef.current === pageIdForSave) {
+                  detailRef.current = fresh;
+                }
+              }
+              const updated = await updatePageRef.current(pageIdForSave, {
+                ...meta,
+                body: bodyToSave,
+                ...(attrsChanged ? { attributes: attributesToSave } : {}),
+              });
+              finishSave(updated);
+              return;
+            } catch (retryError) {
+              console.error(retryError);
+              setPageStatusRef.current(pageIdForSave, "error");
+              return;
+            }
+          }
+          console.error(error);
+          setPageStatusRef.current(pageIdForSave, "error");
+        }
+      });
+  }, []);
+
+  const persistPageDraftRef = useRef(persistPageDraft);
+  persistPageDraftRef.current = persistPageDraft;
 
   useEffect(() => {
     if (isTrashed || !page || !activeDetail || pageId !== editorPageId) {
@@ -562,11 +737,11 @@ export function PageView() {
         clearTimeout(saveTimerRef.current);
         saveTimerRef.current = null;
       }
-      setStatus("saved");
+      setPageStatus(page.id, "saved");
       return;
     }
 
-    setStatus("unsaved");
+    setPageStatus(page.id, "unsaved");
 
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);
@@ -576,152 +751,13 @@ export function PageView() {
 
     saveTimerRef.current = setTimeout(() => {
       saveTimerRef.current = null;
-
-      saveChainRef.current = saveChainRef.current
-        .catch(() => {
-          // Previous save failed; continue the chain.
-        })
-        .then(async () => {
-          // Skip if the user navigated away before this queued save ran.
-          if (pageIdRef.current !== pageIdForSave) return;
-
-          const titleToSave = titleRef.current;
-          const bodyToSave = bodyRef.current;
-          const attributesToSave = attributesRef.current;
-          const detailForSave =
-            detailRef.current?.id === pageIdForSave
-              ? detailRef.current
-              : undefined;
-          if (!detailForSave) return;
-
-          const baselineTitle = pageTitleValue(detailForSave);
-          const baselineBody = detailForSave.body;
-          const baselineAttributes = detailForSave.attributes ?? {};
-          const titleChanged = titleToSave !== baselineTitle;
-          const bodyChanged = !bodyMatchesStored(bodyToSave, baselineBody);
-          const attrsChanged = !attributesEqual(
-            attributesToSave,
-            baselineAttributes,
-          );
-
-          if (!titleChanged && !bodyChanged && !attrsChanged) {
-            dirtyPageIdsRef.current.delete(pageIdForSave);
-            setStatus("saved");
-            return;
-          }
-
-          setStatus("saving");
-
-          const meta = titleChanged
-            ? { title: titleToSave, slug: slugifyPageTitle(titleToSave) }
-            : {};
-
-          let bodyFields: { body?: string; bodyPatch?: BodyPatch } = {};
-
-          if (bodyChanged) {
-            const synced =
-              syncedBodyByPageIdRef.current.get(pageIdForSave) ??
-              (detailForSave.bodyHash
-                ? {
-                  body: detailForSave.body,
-                  hash: detailForSave.bodyHash,
-                }
-                : undefined);
-
-            if (synced) {
-              const patch = await buildBodyPatch(synced.body, bodyToSave);
-              if (shouldSendBodyPatch(patch, bodyToSave)) {
-                bodyFields = { bodyPatch: patch };
-              } else {
-                bodyFields = { body: bodyToSave };
-              }
-            } else {
-              bodyFields = { body: bodyToSave };
-            }
-          }
-
-          const finishSave = (updated: WorkspacePageDetail) => {
-            syncedBodyByPageIdRef.current.set(pageIdForSave, {
-              body: updated.body,
-              hash: updated.bodyHash,
-            });
-            detailRef.current = updated;
-
-            const draftMatchesSave =
-              titleRef.current === titleToSave &&
-              bodyMatchesStored(bodyRef.current, bodyToSave) &&
-              attributesEqual(attributesRef.current, attributesToSave);
-
-            if (draftMatchesSave) {
-              dirtyPageIdsRef.current.delete(pageIdForSave);
-            }
-
-            applyDetail(updated, pageIdForSave);
-
-            if (draftMatchesSave) {
-              setStatus("saved");
-            } else {
-              setStatus("unsaved");
-            }
-
-            const previousSegment = buildPageSegment(
-              detailForSave,
-              findPageById,
-            );
-            const newSegment = buildPageSegment(updated, findPageById);
-            if (newSegment !== previousSegment) {
-              navigateInTab(newSegment, {
-                label: pageLabel(updated),
-                icon: updated.icon,
-                pageId: updated.id,
-              });
-            }
-          };
-
-          try {
-            const updated = await updatePage(pageIdForSave, {
-              ...meta,
-              ...bodyFields,
-              ...(attrsChanged ? { attributes: attributesToSave } : {}),
-            });
-            finishSave(updated);
-          } catch (error) {
-            if (
-              bodyChanged &&
-              bodyFields.bodyPatch &&
-              isBodyHashMismatchError(error)
-            ) {
-              try {
-                const fresh = await fetchPageDetailRef.current(pageIdForSave);
-                if (fresh) {
-                  syncedBodyByPageIdRef.current.set(pageIdForSave, {
-                    body: fresh.body,
-                    hash: fresh.bodyHash,
-                  });
-                  detailRef.current = fresh;
-                }
-                const updated = await updatePage(pageIdForSave, {
-                  ...meta,
-                  body: bodyToSave,
-                  ...(attrsChanged ? { attributes: attributesToSave } : {}),
-                });
-                finishSave(updated);
-                return;
-              } catch (retryError) {
-                console.error(retryError);
-                setStatus("error");
-                return;
-              }
-            }
-            console.error(error);
-            setStatus("error");
-          }
-        });
+      persistPageDraftRef.current(pageIdForSave);
     }, PAGE_SAVE_DEBOUNCE_MS);
 
     return () => {
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
       }
     };
   }, [
@@ -733,12 +769,22 @@ export function PageView() {
     editorPageId,
     activeDetail,
     isTrashed,
-    updatePage,
-    findPageById,
-    navigateInTab,
-    setStatus,
-    applyDetail,
+    setPageStatus,
   ]);
+
+  // Always flush a pending/dirty draft when leaving a page (or unmounting).
+  useEffect(() => {
+    const id = pageId;
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      if (id && dirtyPageIdsRef.current.has(id)) {
+        persistPageDraftRef.current(id);
+      }
+    };
+  }, [pageId]);
 
   const handleIconChange = useCallback(
     async (icon: string) => {
