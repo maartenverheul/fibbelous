@@ -102,6 +102,78 @@ fn remote_callbacks() -> RemoteCallbacks<'static> {
     callbacks
 }
 
+/// True for filesystem remotes (absolute/relative paths), including Windows
+/// drive paths that libgit2 would otherwise treat as a URL scheme (`D:`).
+fn is_local_path_remote(url: &str) -> bool {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    if trimmed.starts_with("file://") {
+        return true;
+    }
+    if trimmed.contains("://") {
+        return false;
+    }
+    // scp-like SSH: git@host:path (not a Windows drive)
+    if trimmed.contains('@') {
+        return false;
+    }
+    // Windows drive: C:\... or C:/...
+    let bytes = trimmed.as_bytes();
+    if bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' {
+        return true;
+    }
+    // UNC or unix absolute / relative filesystem path
+    trimmed.starts_with("\\\\")
+        || trimmed.starts_with("//")
+        || trimmed.starts_with('/')
+        || trimmed.starts_with('.')
+        || trimmed.contains('\\')
+        || Path::new(trimmed).is_absolute()
+}
+
+fn path_to_file_url(path: &Path) -> String {
+    let abs = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let mut normalized = abs.to_string_lossy().replace('\\', "/");
+    // Strip Windows verbatim prefix from canonicalize: //?/C:/...
+    if let Some(rest) = normalized.strip_prefix("//?/") {
+        normalized = rest.to_owned();
+    }
+    if normalized.starts_with('/') {
+        format!("file://{normalized}")
+    } else {
+        format!("file:///{normalized}")
+    }
+}
+
+/// Convert local folder remotes to `file://` URLs so libgit2 does not treat
+/// Windows drive letters (e.g. `D:`) as an unsupported protocol.
+fn normalize_remote_url(url: &str, base: Option<&Path>) -> String {
+    let trimmed = url.trim();
+    if trimmed.starts_with("file://") || !is_local_path_remote(trimmed) {
+        return trimmed.to_owned();
+    }
+
+    let path = PathBuf::from(trimmed);
+    let resolved = if path.is_absolute() {
+        path
+    } else if let Some(base) = base {
+        base.join(path)
+    } else {
+        std::env::current_dir()
+            .map(|cwd| cwd.join(path))
+            .unwrap_or_else(|_| PathBuf::from(trimmed))
+    };
+    path_to_file_url(&resolved)
+}
+
+fn repo_path_base(repo: &Repository) -> PathBuf {
+    repo.workdir()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| repo.path().to_path_buf())
+}
+
 pub fn is_git_repo(path: &Path) -> bool {
     Repository::open(path).is_ok()
 }
@@ -225,13 +297,14 @@ pub fn clone_repo(url: &str, dest: &Path) -> Result<(), String> {
         std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
 
+    let clone_url = normalize_remote_url(url, None);
     let callbacks = remote_callbacks();
     let mut fetch_options = git2::FetchOptions::new();
     fetch_options.remote_callbacks(callbacks);
 
     RepoBuilder::new()
         .fetch_options(fetch_options)
-        .clone(url, dest)
+        .clone(&clone_url, dest)
         .map_err(|error| format!("git clone failed: {error}"))?;
 
     ensure_workspace_gitignore(dest).map_err(|error| error.to_string())?;
@@ -488,25 +561,46 @@ pub fn push(path: &Path) -> Result<GitStatus, String> {
         .find_remote(&remote_name)
         .map_err(|error| error.to_string())?;
 
+    let original_url = remote
+        .url()
+        .ok_or_else(|| format!("remote '{remote_name}' has no URL"))?
+        .to_owned();
+    let push_url = normalize_remote_url(&original_url, Some(&repo_path_base(&repo)));
+
     let callbacks = remote_callbacks();
     let mut options = PushOptions::new();
     options.remote_callbacks(callbacks);
 
-    remote
-        .push(&[refspec.as_str()], Some(&mut options))
-        .map_err(|error| {
-            if use_force {
-                format!("git force-push failed: {error}")
-            } else {
-                format!("git push failed: {error}")
-            }
-        })?;
+    let push_result = if push_url == original_url {
+        remote.push(&[refspec.as_str()], Some(&mut options))
+    } else {
+        // Local folder remotes (esp. Windows `D:\...`) must use file:// for libgit2.
+        // Use an anonymous remote so we don't rewrite the user's configured URL.
+        let mut anon = repo
+            .remote_anonymous(&push_url)
+            .map_err(|error| format!("failed to open local remote: {error}"))?;
+        anon.push(&[refspec.as_str()], Some(&mut options))
+    };
+
+    push_result.map_err(|error| {
+        let detail = format!("{error} (remote: {push_url})");
+        if use_force {
+            format!("git force-push failed: {detail}")
+        } else {
+            format!("git push failed: {detail}")
+        }
+    })?;
 
     // Refresh remote-tracking ref so status no longer shows behind after amend push.
-    if let Ok(mut remote) = repo.find_remote(&remote_name) {
-        let mut fetch_opts = git2::FetchOptions::new();
-        fetch_opts.remote_callbacks(remote_callbacks());
-        let _ = remote.fetch(&[remote_branch.as_str()], Some(&mut fetch_opts), None);
+    if push_url == original_url {
+        if let Ok(mut remote) = repo.find_remote(&remote_name) {
+            let mut fetch_opts = git2::FetchOptions::new();
+            fetch_opts.remote_callbacks(remote_callbacks());
+            let _ = remote.fetch(&[remote_branch.as_str()], Some(&mut fetch_opts), None);
+        }
+    } else {
+        let tracking = format!("refs/remotes/{remote_name}/{remote_branch}");
+        let _ = repo.reference(&tracking, head_oid, true, "update after local push");
     }
 
     status(path)
