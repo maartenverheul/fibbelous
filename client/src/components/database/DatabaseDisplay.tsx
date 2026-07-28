@@ -20,7 +20,7 @@ import {
   updateDatabaseView,
   type DatabaseViewUpdate,
 } from "../../lib/database/fetch";
-import { openWorkspacePage } from "../../lib/page/navigate";
+import { openWorkspacePage, findWorkspacePageById } from "../../lib/page/navigate";
 import { resolveDatabaseViewId } from "../../lib/database/block";
 import {
   getStoredDatabaseViewId,
@@ -38,7 +38,9 @@ import {
   dbListItems,
   dbMutedText,
   dbRoot,
+  dbRootInline,
   dbScroll,
+  dbScrollInline,
   dbSentinel,
   dbTable,
   dbTd,
@@ -52,6 +54,7 @@ import {
 } from "../../lib/database/ui";
 import { cn, getScrollParent, isInVerticalScrollport } from "../../lib/utils";
 import {
+  databaseDisplayIcon,
   databaseDisplayTitle,
   databaseViewProperties,
   pageFromDatabaseRow,
@@ -65,6 +68,7 @@ import {
 } from "../../lib/database/types";
 import { pageLabel } from "../../lib/page/types";
 import { EmojiIcon } from "../emoji/EmojiIcon";
+import { isIconUrl } from "../../lib/emojiIcon";
 import {
   DatabaseSelectChips,
   isSelectPropertyType,
@@ -77,15 +81,19 @@ import { resolveSelectTokens } from "../../lib/database/select";
 
 const ROW_PAGE_SIZE = 50;
 
+export type DatabaseHostVariant = "page" | "inline";
+
 type DatabaseDisplayProps = {
   detail: WorkspaceDatabaseDetail;
   schema: DatabaseSchema;
+  variant?: DatabaseHostVariant;
   className?: string;
 };
 
 export function DatabaseDisplay({
   detail: detailProp,
   schema: schemaProp,
+  variant = "page",
   className,
 }: DatabaseDisplayProps) {
   const [detail, setDetail] = useState(detailProp);
@@ -103,6 +111,9 @@ export function DatabaseDisplay({
   const title = databaseDisplayTitle(detail, schema);
   const activeSort = activeView?.settings.sort ?? null;
   const viewProperties = databaseViewProperties(schema.properties);
+  const hostPage = findWorkspacePageById(schema.id);
+  const icon = databaseDisplayIcon(schema, hostPage?.icon);
+  const inline = variant === "inline";
 
   useEffect(() => {
     setDetail(detailProp);
@@ -189,16 +200,26 @@ export function DatabaseDisplay({
 
   return (
     <div
-      className={cn(dbRoot, className)}
+      className={cn(inline ? dbRootInline : dbRoot, className)}
       data-database-id={schema.id}
       title={detail.path}
     >
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+      <div
+        className={cn(
+          "mb-3 gap-x-4 gap-y-2",
+          inline
+            ? "grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center"
+            : "flex flex-wrap items-center justify-between",
+        )}
+      >
         <DatabaseViewTabs
           views={schema.views}
           activeViewId={activeView?.id ?? ""}
           onSelect={selectView}
         />
+        {inline ? (
+          <DatabaseInlineHeading title={title} icon={icon} />
+        ) : null}
         <DatabaseViewControls
           creating={creating}
           savingView={savingView}
@@ -208,6 +229,7 @@ export function DatabaseDisplay({
           onSortChange={(next) => void applySort(next)}
           onNameChange={(name) => applyName(name)}
           onNew={() => void handleNew()}
+          className={inline ? "justify-self-end" : undefined}
         />
       </div>
       {!activeView || viewProperties.length === 0 ? (
@@ -223,8 +245,40 @@ export function DatabaseDisplay({
           properties={viewProperties}
           title={title}
           sort={activeSort}
+          scrollClassName={inline ? dbScrollInline : dbScroll}
         />
       )}
+    </div>
+  );
+}
+
+function DatabaseInlineHeading({
+  title,
+  icon,
+}: {
+  title: string;
+  icon: string | null;
+}) {
+  return (
+    <div className="flex min-w-0 items-center justify-center gap-2 justify-self-center px-1 text-center">
+      <span
+        className="inline-flex size-5 shrink-0 items-center justify-center text-[1.05rem] leading-none text-app-fg-muted"
+        aria-hidden
+      >
+        {icon && isIconUrl(icon) ? (
+          <img src={icon} alt="" className="size-5 object-contain" />
+        ) : icon ? (
+          icon
+        ) : (
+          <PiTable className="size-5" />
+        )}
+      </span>
+      <span
+        className="min-w-0 truncate text-sm font-semibold text-app-fg"
+        title={title}
+      >
+        {title}
+      </span>
     </div>
   );
 }
@@ -280,6 +334,7 @@ function DatabaseViewControls({
   onSortChange,
   onNameChange,
   onNew,
+  className,
 }: {
   creating: boolean;
   savingView: boolean;
@@ -289,6 +344,7 @@ function DatabaseViewControls({
   onSortChange: (sort: DatabaseViewSort | null) => void;
   onNameChange: (name: string) => Promise<boolean>;
   onNew: () => void;
+  className?: string;
 }) {
   const controlBtnClass = cn(
     "inline-flex size-8 items-center justify-center rounded-md text-app-fg-muted",
@@ -297,7 +353,7 @@ function DatabaseViewControls({
   );
 
   return (
-    <div className="ml-auto flex flex-wrap items-center gap-1.5">
+    <div className={cn("ml-auto flex flex-wrap items-center gap-1.5", className)}>
       <button
         type="button"
         className={controlBtnClass}
@@ -550,12 +606,14 @@ function DatabaseViewBody({
   properties,
   title,
   sort,
+  scrollClassName,
 }: {
   databaseId: string;
   view: DatabaseView;
   properties: DatabasePropertyColumn[];
   title: string;
   sort: DatabaseViewSort | null;
+  scrollClassName: string;
 }) {
   const { rows, status, error, scrollerRef, sentinelRef } = useDatabaseRows(
     databaseId,
@@ -564,7 +622,7 @@ function DatabaseViewBody({
 
   if (view.settings.layout === "list") {
     return (
-      <div aria-label={`${title} · ${view.name}`}>
+      <div className={scrollClassName} ref={scrollerRef} aria-label={`${title} · ${view.name}`}>
         {status === "loading" && rows.length === 0 ? (
           <div className={dbMutedText}>Loading…</div>
         ) : rows.length === 0 ? (
@@ -622,7 +680,7 @@ function DatabaseViewBody({
   }
 
   return (
-    <div className={dbScroll} ref={scrollerRef}>
+    <div className={scrollClassName} ref={scrollerRef}>
       <table className={dbTable} aria-label={`${title} · ${view.name}`}>
         <thead>
           <tr>

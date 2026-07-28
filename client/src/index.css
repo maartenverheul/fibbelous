@@ -190,6 +190,41 @@
   user-select: none;
 }
 
+/* <Database id="…" /> — keep wide tables inside the page column.
+   BlockNote uses flex for .bn-block / .bn-block-content; without min-width:0
+   a min-w-max table expands the editor past max-w-3xl. */
+.page-body-editor .bn-block-outer:has(> .bn-block > .bn-block-content[data-content-type="database"]),
+.page-body-editor .bn-block:has(> .bn-block-content[data-content-type="database"]) {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.page-body-editor .bn-block-content[data-content-type="database"] {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.page-body-editor .bn-block-content[data-content-type="database"] > * {
+  box-sizing: border-box;
+  flex: 1 1 0%;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.page-body-editor .bn-mdx-database {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
 /* <bookmark url="…" /> — full-width external link */
 .page-body-editor .bn-mdx-bookmark {
   margin-block: 0.5rem;

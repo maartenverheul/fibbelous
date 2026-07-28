@@ -5,7 +5,7 @@ export const dbRoot =
 
 /** Inline embed chrome: rounded border + padding. */
 export const dbRootInline =
-  "my-2 w-full overflow-hidden rounded-lg border border-app-border bg-transparent p-3 select-none";
+  "my-2 w-full min-w-0 max-w-full overflow-hidden rounded-lg border border-app-border bg-transparent p-3 select-none";
 
 export const dbRootPage =
   "my-0 w-full overflow-hidden bg-transparent select-none";
@@ -19,7 +19,7 @@ export const dbScroll = "w-full overflow-x-auto overflow-y-hidden";
 
 /** Inline embed: capped height with both-axis scroll. */
 export const dbScrollInline =
-  "app-scroll w-full max-h-80 overflow-auto overscroll-contain";
+  "app-scroll w-full min-w-0 max-w-full max-h-80 overflow-auto overscroll-contain";
 
 export const dbTable =
   "w-full min-w-max border-collapse table-auto border border-app-border";
