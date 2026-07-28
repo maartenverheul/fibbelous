@@ -24,6 +24,7 @@ import {
   pageTitleValue,
   parsePageIdFromSegment,
   slugifyPageTitle,
+  titleMatchesSaved,
   type BodyPatch,
   type ReferencedPage,
   type TrashedPageDetail,
@@ -426,11 +427,18 @@ export function PageView() {
       });
       detailByPageIdRef.current.set(forPageId, nextDetail);
       if (!dirtyPageIdsRef.current.has(forPageId)) {
-        draftsRef.current.set(forPageId, nextDraft);
+        // Keep the text-input title when it only differs by whitespace the
+        // server trimmed — sync against the server value, don't rewrite the input.
+        const existing = draftsRef.current.get(forPageId);
+        const draft =
+          existing && titleMatchesSaved(existing.title, nextDraft.title)
+            ? { ...nextDraft, title: existing.title }
+            : nextDraft;
+        draftsRef.current.set(forPageId, draft);
         if (forPageId === pageIdRef.current) {
-          setTitle(nextDraft.title);
-          setBody(nextDraft.body);
-          setAttributes(nextDraft.attributes);
+          setTitle(draft.title);
+          setBody(draft.body);
+          setAttributes(draft.attributes);
         }
       }
       if (forPageId === pageIdRef.current) {
@@ -586,7 +594,7 @@ export function PageView() {
         const baselineTitle = pageTitleValue(detailForSave);
         const baselineBody = detailForSave.body;
         const baselineAttributes = detailForSave.attributes ?? {};
-        const titleChanged = titleToSave !== baselineTitle;
+        const titleChanged = !titleMatchesSaved(titleToSave, baselineTitle);
         const bodyChanged = !bodyMatchesStored(bodyToSave, baselineBody);
         const attrsChanged = !attributesEqual(
           attributesToSave,
@@ -753,7 +761,7 @@ export function PageView() {
     const savedAttributes = activeDetail.attributes ?? {};
     const attributesChanged = !attributesEqual(attributes, savedAttributes);
     if (
-      title === savedTitle &&
+      titleMatchesSaved(title, savedTitle) &&
       bodyMatchesStored(body, savedBody) &&
       !attributesChanged
     ) {

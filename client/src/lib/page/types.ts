@@ -172,8 +172,9 @@ export function applyDraftTitleToPage<
     return page;
   }
   const draft = draftTitlesById[page.id];
+  // Keep the text-input draft as-is; only normalize the server title for equality.
+  if (titleMatchesSaved(draft, pageTitleValue(page))) return page;
   const title = draft.trim() ? draft : null;
-  if (page.title === title) return page;
   return { ...page, title };
 }
 
@@ -196,6 +197,16 @@ export function pageTitleValue(page: { title: string | null | undefined }) {
   const title = page.title?.trim() ?? "";
   if (!title || title === "Untitled") return "";
   return title;
+}
+
+/**
+ * Whether a local title draft matches the saved/server title.
+ * `savedTitle` should already be normalized via `pageTitleValue` (trimmed server
+ * value). The draft is only normalized for the comparison — the text input is
+ * left unchanged.
+ */
+export function titleMatchesSaved(draftTitle: string, savedTitle: string) {
+  return pageTitleValue({ title: draftTitle }) === savedTitle;
 }
 
 export function humanizeSlug(slug: string) {
