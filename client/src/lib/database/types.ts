@@ -169,20 +169,25 @@ export type DatabaseViewSort = {
   direction: DatabaseSortDirection;
 };
 
-/**
- * A named layout over database rows.
- * `filter` is reserved for later; stored but unused for now.
- */
-export type DatabaseViewSettings = {
-  layout: DatabaseViewLayout;
-  sort?: DatabaseViewSort | null;
-  filter?: unknown;
+/** Per-view property order + visibility entry in `database.json`. */
+export type DatabaseViewProperty = {
+  id: string;
+  visible: boolean;
 };
 
+/**
+ * A named layout over database rows.
+ * Fields live on the view object (no nested `settings` key).
+ * `filter` is reserved for later; stored but unused for now.
+ */
 export type DatabaseView = {
   id: string;
   name: string;
-  settings: DatabaseViewSettings;
+  layout: DatabaseViewLayout;
+  sort?: DatabaseViewSort | null;
+  filter?: unknown;
+  /** Ordered visibility list; absent = all non-disabled schema props shown. */
+  properties?: DatabaseViewProperty[] | null;
 };
 
 export type DatabaseSchema = {
@@ -197,17 +202,13 @@ export type DatabaseSchema = {
 export const DEFAULT_DATABASE_VIEW: DatabaseView = {
   id: "default",
   name: "All",
-  settings: {
-    layout: "table",
-  },
+  layout: "table",
 };
 
 export const DEFAULT_DATABASE_LIST_VIEW: DatabaseView = {
   id: "default-list",
   name: "List",
-  settings: {
-    layout: "list",
-  },
+  layout: "list",
 };
 
 export const DEFAULT_DATABASE_VIEWS: DatabaseView[] = [
@@ -230,29 +231,38 @@ function parseViewLayout(value: unknown): DatabaseViewLayout {
   return value === "list" ? "list" : "table";
 }
 
+function parseViewProperty(raw: unknown): DatabaseViewProperty | null {
+  const record = asRecord(raw);
+  if (!record) return null;
+  const id = readString(record.id);
+  if (!id) return null;
+  return { id, visible: record.visible !== false };
+}
+
+function parseViewProperties(raw: unknown): DatabaseViewProperty[] | null {
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const parsed = raw
+    .map(parseViewProperty)
+    .filter((item): item is DatabaseViewProperty => item !== null);
+  return parsed.length > 0 ? parsed : null;
+}
+
 function parseView(raw: unknown, index: number): DatabaseView | null {
   const record = asRecord(raw);
   if (!record) return null;
 
-  const settingsRoot = asRecord(record.settings) ?? {};
-  const layout = parseViewLayout(
-    settingsRoot.layout ?? record.layout,
-  );
-
   const id = readString(record.id) ?? `view-${index + 1}`;
-  const name =
-    readString(record.name) ??
-    readString(settingsRoot.name) ??
-    `View ${index + 1}`;
+  const name = readString(record.name) ?? `View ${index + 1}`;
+  const layout = parseViewLayout(record.layout);
 
-  const settings: DatabaseViewSettings = {
-    layout,
-  };
-  const sort = parseViewSort(settingsRoot.sort);
-  if (sort) settings.sort = sort;
-  if ("filter" in settingsRoot) settings.filter = settingsRoot.filter;
+  const view: DatabaseView = { id, name, layout };
+  const sort = parseViewSort(record.sort);
+  if (sort) view.sort = sort;
+  if ("filter" in record) view.filter = record.filter;
+  const properties = parseViewProperties(record.properties);
+  if (properties) view.properties = properties;
 
-  return { id, name, settings };
+  return view;
 }
 
 function parseViewSort(raw: unknown): DatabaseViewSort | null {
@@ -267,10 +277,7 @@ function parseViewSort(raw: unknown): DatabaseViewSort | null {
 /** Resolve views from JSON, or default table + list views when none are defined. */
 export function parseDatabaseViews(raw: unknown): DatabaseView[] {
   if (!Array.isArray(raw) || raw.length === 0) {
-    return DEFAULT_DATABASE_VIEWS.map((view) => ({
-      ...view,
-      settings: { ...view.settings },
-    }));
+    return DEFAULT_DATABASE_VIEWS.map((view) => ({ ...view }));
   }
 
   const views = raw
@@ -278,10 +285,7 @@ export function parseDatabaseViews(raw: unknown): DatabaseView[] {
     .filter((view): view is DatabaseView => view !== null);
 
   if (views.length === 0) {
-    return DEFAULT_DATABASE_VIEWS.map((view) => ({
-      ...view,
-      settings: { ...view.settings },
-    }));
+    return DEFAULT_DATABASE_VIEWS.map((view) => ({ ...view }));
   }
 
   return views;
@@ -370,11 +374,92 @@ export function parseDatabaseSchema(json: unknown): DatabaseSchema | null {
   };
 }
 
-/** Properties shown as columns in table/list views (`disable: true` excluded). */
+/** Properties eligible for a view (`disable: true` excluded). */
 export function databaseViewProperties(
   properties: DatabasePropertyColumn[],
 ): DatabasePropertyColumn[] {
   return properties.filter((property) => !property.disable);
+}
+
+/**
+ * Resolve ordered shown/hidden property lists for a view.
+ * New schema props (not yet in the stored list) append; created/edited
+ * timestamp properties default to hidden.
+ * Title always stays shown and locked first.
+ */
+export function resolveViewPropertyEntries(
+  properties: DatabasePropertyColumn[],
+  stored: DatabaseViewProperty[] | null | undefined,
+): DatabaseViewProperty[] {
+  const eligible = databaseViewProperties(properties);
+  const byId = new Map(eligible.map((property) => [property.id, property]));
+  const titleId =
+    eligible.find((property) => property.type === "title")?.id ?? null;
+
+  const seen = new Set<string>();
+  const ordered: DatabaseViewProperty[] = [];
+
+  if (stored) {
+    for (const entry of stored) {
+      if (!byId.has(entry.id) || seen.has(entry.id)) continue;
+      seen.add(entry.id);
+      const visible =
+        titleId !== null && entry.id === titleId ? true : entry.visible;
+      ordered.push({ id: entry.id, visible });
+    }
+  }
+
+  for (const property of eligible) {
+    if (seen.has(property.id)) continue;
+    ordered.push({
+      id: property.id,
+      visible: !isViewPropertyHiddenByDefault(property),
+    });
+  }
+
+  return pinTitlePropertyFirst(ordered, titleId);
+}
+
+/** Keep the title property visible and first in the view property list. */
+export function pinTitlePropertyFirst(
+  entries: DatabaseViewProperty[],
+  titleId: string | null,
+): DatabaseViewProperty[] {
+  if (!titleId) return entries;
+  const rest = entries.filter((entry) => entry.id !== titleId);
+  const shown = rest.filter((entry) => entry.visible);
+  const hidden = rest.filter((entry) => !entry.visible);
+  return [
+    { id: titleId, visible: true },
+    ...shown,
+    ...hidden,
+  ];
+}
+
+/** Created / edited timestamp columns start hidden on new views. */
+export function isViewPropertyHiddenByDefault(
+  property: Pick<DatabasePropertyColumn, "type">,
+): boolean {
+  return (
+    property.type === "created_time" || property.type === "last_edited_time"
+  );
+}
+
+/** Visible properties for table/list rendering, in view order. */
+export function resolveViewProperties(
+  properties: DatabasePropertyColumn[],
+  stored: DatabaseViewProperty[] | null | undefined,
+): DatabasePropertyColumn[] {
+  const byId = new Map(
+    databaseViewProperties(properties).map((property) => [
+      property.id,
+      property,
+    ]),
+  );
+  return resolveViewPropertyEntries(properties, stored)
+    .filter((entry) => entry.visible)
+    .map((entry) => byId.get(entry.id))
+    .filter((property): property is DatabasePropertyColumn => property != null);
 }
 
 export function databaseDisplayTitle(

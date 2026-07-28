@@ -349,6 +349,40 @@ impl Workspace {
         result
     }
 
+    pub fn create_database_view(
+        &self,
+        database_id: &str,
+        input: crate::databases::CreateDatabaseViewInput,
+    ) -> Result<Option<crate::databases::CreateDatabaseViewResult>, String> {
+        let mut cache = self
+            .cache
+            .lock()
+            .map_err(|_| "cache mutex poisoned".to_string())?;
+        let result =
+            databases::create_database_view(&self.path, &mut cache, database_id, input);
+        if matches!(result, Ok(Some(_))) {
+            self.flush.mark(DirtyKey::Database(database_id.to_owned()));
+        }
+        result
+    }
+
+    pub fn delete_database_view(
+        &self,
+        database_id: &str,
+        view_id: &str,
+    ) -> Result<Option<crate::cache::DatabaseDetail>, String> {
+        let mut cache = self
+            .cache
+            .lock()
+            .map_err(|_| "cache mutex poisoned".to_string())?;
+        let result =
+            databases::delete_database_view(&self.path, &mut cache, database_id, view_id);
+        if matches!(result, Ok(Some(_))) {
+            self.flush.mark(DirtyKey::Database(database_id.to_owned()));
+        }
+        result
+    }
+
     pub fn create_database_row(
         &self,
         database_id: &str,

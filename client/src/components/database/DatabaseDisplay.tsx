@@ -1,14 +1,40 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import * as Popover from "@radix-ui/react-popover";
 import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
+  type UniqueIdentifier,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   PiArrowDown,
+  PiArrowLeft,
   PiArrowUp,
   PiArrowsDownUp,
+  PiCaretRight,
+  PiDotsSixVertical,
+  PiEye,
+  PiEyeSlash,
   PiFunnel,
   PiGear,
   PiListBullets,
   PiPlus,
   PiTable,
+  PiTrash,
 } from "react-icons/pi";
 import {
   formatDatabaseTimestamp,
@@ -16,6 +42,8 @@ import {
 } from "../../lib/database/attributes";
 import {
   createDatabaseRow,
+  createDatabaseView,
+  deleteDatabaseView,
   fetchDatabaseRows,
   updateDatabaseView,
   type DatabaseViewUpdate,
@@ -59,13 +87,19 @@ import {
   databaseViewProperties,
   pageFromDatabaseRow,
   parseDatabaseSchema,
+  pinTitlePropertyFirst,
+  resolveViewProperties,
+  resolveViewPropertyEntries,
   type DatabasePropertyColumn,
   type DatabaseRowSummary,
   type DatabaseSchema,
   type DatabaseView,
+  type DatabaseViewLayout,
+  type DatabaseViewProperty,
   type DatabaseViewSort,
   type WorkspaceDatabaseDetail,
 } from "../../lib/database/types";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { pageLabel } from "../../lib/page/types";
 import { EmojiIcon } from "../emoji/EmojiIcon";
 import { isIconUrl } from "../../lib/emojiIcon";
@@ -106,14 +140,30 @@ export function DatabaseDisplay({
   );
   const [creating, setCreating] = useState(false);
   const [savingView, setSavingView] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [deletingView, setDeletingView] = useState(false);
   const activeView =
     schema.views.find((view) => view.id === activeViewId) ?? schema.views[0];
   const title = databaseDisplayTitle(detail, schema);
-  const activeSort = activeView?.settings.sort ?? null;
-  const viewProperties = databaseViewProperties(schema.properties);
+  const activeSort = activeView?.sort ?? null;
+  const allProperties = databaseViewProperties(schema.properties);
+  const viewProperties = resolveViewProperties(
+    schema.properties,
+    activeView?.properties,
+  );
   const hostPage = findWorkspacePageById(schema.id);
   const icon = databaseDisplayIcon(schema, hostPage?.icon);
   const inline = variant === "inline";
+  const pendingPropertiesRef = useRef<{
+    viewId: string;
+    properties: DatabaseViewProperty[];
+  } | null>(null);
+  const propertiesPersistTimerRef = useRef<number | null>(null);
+  const databaseIdRef = useRef(schema.id);
+  databaseIdRef.current = schema.id;
 
   useEffect(() => {
     setDetail(detailProp);
@@ -129,6 +179,14 @@ export function DatabaseDisplay({
   useEffect(() => {
     setActiveViewId((prev) => resolveDatabaseViewId(schema.views, prev));
   }, [schema.views]);
+
+  useEffect(() => {
+    return () => {
+      if (propertiesPersistTimerRef.current != null) {
+        window.clearTimeout(propertiesPersistTimerRef.current);
+      }
+    };
+  }, []);
 
   const selectView = (id: string) => {
     if (id === activeViewId) return;
@@ -198,6 +256,128 @@ export function DatabaseDisplay({
     return applyViewUpdate({ name: trimmed });
   };
 
+  const applyLayout = async (layout: DatabaseViewLayout) => {
+    if (!activeView || savingView) return;
+    if (activeView.layout === layout) return;
+    await applyViewUpdate({ layout });
+  };
+
+  const flushPropertiesPersist = async () => {
+    const pending = pendingPropertiesRef.current;
+    if (!pending) return;
+    pendingPropertiesRef.current = null;
+    try {
+      const nextDetail = await updateDatabaseView(
+        databaseIdRef.current,
+        pending.viewId,
+        { properties: pending.properties },
+      );
+      // A newer edit may have queued while we were saving.
+      if (pendingPropertiesRef.current) return;
+      const nextSchema = parseDatabaseSchema(nextDetail.json);
+      if (!nextSchema) {
+        throw new Error("Invalid database.json");
+      }
+      setDetail(nextDetail);
+      setSchema(nextSchema);
+    } catch (error) {
+      console.error(error);
+      alert(
+        error instanceof Error ? error.message : "Failed to update view",
+      );
+    }
+  };
+
+  const applyProperties = (properties: DatabaseViewProperty[]) => {
+    if (!activeView) return;
+    const viewId = activeView.id;
+
+    // Optimistic local update — keep the editor snappy.
+    setSchema((prev) => ({
+      ...prev,
+      views: prev.views.map((view) =>
+        view.id === viewId ? { ...view, properties } : view,
+      ),
+    }));
+
+    pendingPropertiesRef.current = { viewId, properties };
+    if (propertiesPersistTimerRef.current != null) {
+      window.clearTimeout(propertiesPersistTimerRef.current);
+    }
+    propertiesPersistTimerRef.current = window.setTimeout(() => {
+      propertiesPersistTimerRef.current = null;
+      void flushPropertiesPersist();
+    }, 200);
+  };
+
+  const applyCreatedView = (
+    nextDetail: WorkspaceDatabaseDetail,
+    viewId: string,
+  ) => {
+    const nextSchema = parseDatabaseSchema(nextDetail.json);
+    if (!nextSchema) {
+      throw new Error("Invalid database.json");
+    }
+    setDetail(nextDetail);
+    setSchema(nextSchema);
+    setActiveViewId(viewId);
+    setStoredDatabaseViewId(schema.id, viewId);
+  };
+
+  const createView = async () => {
+    if (!activeView || savingView) return;
+    setSavingView(true);
+    try {
+      const result = await createDatabaseView(schema.id, {
+        layout: activeView.layout,
+        copyFromViewId: activeView.id,
+      });
+      applyCreatedView(result.database, result.viewId);
+    } catch (error) {
+      console.error(error);
+      alert(
+        error instanceof Error ? error.message : "Failed to create view",
+      );
+    } finally {
+      setSavingView(false);
+    }
+  };
+
+  const requestDeleteView = () => {
+    if (!activeView || savingView || deletingView) return;
+    if (schema.views.length <= 1) return;
+    setDeleteConfirm({ id: activeView.id, name: activeView.name });
+  };
+
+  const confirmDeleteView = async () => {
+    if (!deleteConfirm || deletingView) return;
+
+    const deletedId = deleteConfirm.id;
+    const fallback =
+      schema.views.find((view) => view.id !== deletedId)?.id ?? "";
+    setDeletingView(true);
+    try {
+      const nextDetail = await deleteDatabaseView(schema.id, deletedId);
+      const nextSchema = parseDatabaseSchema(nextDetail.json);
+      if (!nextSchema) {
+        throw new Error("Invalid database.json");
+      }
+      setDetail(nextDetail);
+      setSchema(nextSchema);
+      const nextViewId = resolveDatabaseViewId(nextSchema.views, fallback);
+      setActiveViewId(nextViewId);
+      setStoredDatabaseViewId(schema.id, nextViewId);
+      setDeleteConfirm(null);
+    } catch (error) {
+      console.error(error);
+      alert(
+        error instanceof Error ? error.message : "Failed to delete view",
+      );
+    } finally {
+      setDeletingView(false);
+    }
+  };
+
   return (
     <div
       className={cn(inline ? dbRootInline : dbRoot, className)}
@@ -223,11 +403,17 @@ export function DatabaseDisplay({
         <DatabaseViewControls
           creating={creating}
           savingView={savingView}
-          properties={viewProperties}
-          viewName={activeView?.name ?? ""}
+          sortProperties={allProperties}
+          schemaProperties={schema.properties}
+          view={activeView}
+          viewCount={schema.views.length}
           sort={activeSort}
           onSortChange={(next) => void applySort(next)}
           onNameChange={(name) => applyName(name)}
+          onLayoutChange={(layout) => void applyLayout(layout)}
+          onPropertiesChange={(properties) => void applyProperties(properties)}
+          onCreateView={() => void createView()}
+          onDeleteView={requestDeleteView}
           onNew={() => void handleNew()}
           className={inline ? "justify-self-end" : undefined}
         />
@@ -248,6 +434,22 @@ export function DatabaseDisplay({
           scrollClassName={inline ? dbScrollInline : dbScroll}
         />
       )}
+      <ConfirmDialog
+        open={deleteConfirm != null}
+        onOpenChange={(open) => {
+          if (!open && !deletingView) setDeleteConfirm(null);
+        }}
+        title="Delete view?"
+        description={
+          deleteConfirm
+            ? `“${deleteConfirm.name}” will be removed from this database. Rows stay intact — only this view layout is deleted.`
+            : ""
+        }
+        confirmLabel="Delete view"
+        cancelLabel="Cancel"
+        confirming={deletingView}
+        onConfirm={confirmDeleteView}
+      />
     </div>
   );
 }
@@ -300,8 +502,7 @@ function DatabaseViewTabs({
     >
       {views.map((view) => {
         const selected = view.id === activeViewId;
-        const Icon =
-          view.settings.layout === "list" ? PiListBullets : PiTable;
+        const Icon = view.layout === "list" ? PiListBullets : PiTable;
         return (
           <button
             key={view.id}
@@ -328,21 +529,33 @@ function DatabaseViewTabs({
 function DatabaseViewControls({
   creating,
   savingView,
-  properties,
-  viewName,
+  sortProperties,
+  schemaProperties,
+  view,
+  viewCount,
   sort,
   onSortChange,
   onNameChange,
+  onLayoutChange,
+  onPropertiesChange,
+  onCreateView,
+  onDeleteView,
   onNew,
   className,
 }: {
   creating: boolean;
   savingView: boolean;
-  properties: DatabasePropertyColumn[];
-  viewName: string;
+  sortProperties: DatabasePropertyColumn[];
+  schemaProperties: DatabasePropertyColumn[];
+  view: DatabaseView | undefined;
+  viewCount: number;
   sort: DatabaseViewSort | null;
   onSortChange: (sort: DatabaseViewSort | null) => void;
   onNameChange: (name: string) => Promise<boolean>;
+  onLayoutChange: (layout: DatabaseViewLayout) => void;
+  onPropertiesChange: (properties: DatabaseViewProperty[]) => void;
+  onCreateView: () => void;
+  onDeleteView: () => void;
   onNew: () => void;
   className?: string;
 }) {
@@ -364,16 +577,23 @@ function DatabaseViewControls({
         <PiFunnel className="size-[1.05rem] shrink-0" aria-hidden />
       </button>
       <DatabaseSortPopover
-        properties={properties}
+        properties={sortProperties}
         sort={sort}
-        disabled={savingView || properties.length === 0}
+        disabled={savingView || sortProperties.length === 0}
         onSortChange={onSortChange}
         triggerClassName={controlBtnClass}
       />
       <DatabaseSettingsPopover
-        viewName={viewName}
-        disabled={savingView}
+        view={view}
+        schemaProperties={schemaProperties}
+        viewCount={viewCount}
+        disabled={!view}
+        saving={savingView}
         onNameChange={onNameChange}
+        onLayoutChange={onLayoutChange}
+        onPropertiesChange={onPropertiesChange}
+        onCreateView={onCreateView}
+        onDeleteView={onDeleteView}
         triggerClassName={controlBtnClass}
       />
       <button
@@ -392,37 +612,65 @@ function DatabaseViewControls({
   );
 }
 
+type SettingsPage = "main" | "layout" | "properties";
+
 function DatabaseSettingsPopover({
-  viewName,
+  view,
+  schemaProperties,
+  viewCount,
   disabled,
+  saving: savingRemote,
   onNameChange,
+  onLayoutChange,
+  onPropertiesChange,
+  onCreateView,
+  onDeleteView,
   triggerClassName,
 }: {
-  viewName: string;
+  view: DatabaseView | undefined;
+  schemaProperties: DatabasePropertyColumn[];
+  viewCount: number;
   disabled: boolean;
+  saving: boolean;
   onNameChange: (name: string) => Promise<boolean>;
+  onLayoutChange: (layout: DatabaseViewLayout) => void;
+  onPropertiesChange: (properties: DatabaseViewProperty[]) => void;
+  onCreateView: () => void;
+  onDeleteView: () => void;
   triggerClassName: string;
 }) {
   const [open, setOpen] = useState(false);
-  const [draftName, setDraftName] = useState(viewName);
-  const [saving, setSaving] = useState(false);
+  const [page, setPage] = useState<SettingsPage>("main");
+  const [draftName, setDraftName] = useState(view?.name ?? "");
+  const [savingName, setSavingName] = useState(false);
+  const nameBusy = savingName || savingRemote;
+  const canDelete = viewCount > 1;
+  const visiblePropertyCount = resolveViewProperties(
+    schemaProperties,
+    view?.properties,
+  ).length;
+  const layoutLabel = view?.layout === "list" ? "List" : "Table";
 
   useEffect(() => {
-    if (open) setDraftName(viewName);
-  }, [open, viewName]);
+    if (open) {
+      setDraftName(view?.name ?? "");
+      setPage("main");
+    }
+  }, [open, view?.name]);
 
   const commitName = async () => {
+    if (!view) return;
     const trimmed = draftName.trim();
-    if (!trimmed || trimmed === viewName || saving || disabled) {
-      setDraftName(viewName);
+    if (!trimmed || trimmed === view.name || nameBusy || disabled) {
+      setDraftName(view.name);
       return;
     }
-    setSaving(true);
+    setSavingName(true);
     try {
       const ok = await onNameChange(trimmed);
-      if (!ok) setDraftName(viewName);
+      if (!ok) setDraftName(view.name);
     } finally {
-      setSaving(false);
+      setSavingName(false);
     }
   };
 
@@ -433,8 +681,7 @@ function DatabaseSettingsPopover({
           type="button"
           className={cn(
             triggerClassName,
-            open &&
-              "bg-app-border/45 text-app-fg",
+            open && "bg-app-border/45 text-app-fg",
           )}
           aria-label="View settings"
           title="View settings"
@@ -449,49 +696,756 @@ function DatabaseSettingsPopover({
           align="end"
           sideOffset={6}
           className={cn(
-            "z-50 w-64 rounded-lg border border-app-border bg-app-surface p-3",
+            "z-50 rounded-lg border border-app-border bg-app-surface p-3",
             "shadow-lg outline-none",
+            page === "properties" ? "w-72" : "w-64",
           )}
           onOpenAutoFocus={(event) => event.preventDefault()}
         >
-          <section className="space-y-2">
-            <h3 className="text-sm font-medium text-app-fg">
-              View settings
-            </h3>
-            <label className="block space-y-1">
-              <span className="text-xs font-medium text-app-fg-muted">
-                Name
-              </span>
-              <input
-                type="text"
-                value={draftName}
-                disabled={saving || disabled}
-                onChange={(event) => setDraftName(event.target.value)}
-                onBlur={() => void commitName()}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    void commitName();
-                  }
-                  if (event.key === "Escape") {
-                    event.preventDefault();
-                    setDraftName(viewName);
+          {page === "main" && view ? (
+            <section className="space-y-2">
+              <h3 className="text-sm font-medium text-app-fg">View settings</h3>
+              <label className="block space-y-1">
+                <span className="text-xs font-medium text-app-fg-muted">
+                  Name
+                </span>
+                <input
+                  type="text"
+                  value={draftName}
+                  disabled={nameBusy || disabled}
+                  onChange={(event) => setDraftName(event.target.value)}
+                  onBlur={() => void commitName()}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      void commitName();
+                    }
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      setDraftName(view.name);
+                      setOpen(false);
+                    }
+                  }}
+                  className={cn(
+                    "w-full rounded-md border border-app-border bg-app-bg px-2.5 py-1.5",
+                    "text-base text-app-fg outline-none",
+                    "focus:border-blue-500 focus:ring-1 focus:ring-blue-500",
+                    "disabled:opacity-60",
+                  )}
+                />
+              </label>
+              <div className="space-y-0.5 pt-1">
+                <SettingsNavRow
+                  label="Layout"
+                  value={layoutLabel}
+                  onClick={() => setPage("layout")}
+                />
+                <SettingsNavRow
+                  label="Properties"
+                  value={String(visiblePropertyCount)}
+                  onClick={() => setPage("properties")}
+                />
+              </div>
+              <div className="space-y-0.5 border-t border-app-border pt-2">
+                <button
+                  type="button"
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm",
+                    "text-app-fg hover:bg-app-border/45",
+                    "disabled:cursor-not-allowed disabled:opacity-45",
+                  )}
+                  disabled={disabled || savingRemote}
+                  onClick={() => {
+                    onCreateView();
                     setOpen(false);
+                  }}
+                >
+                  <PiPlus className="size-3.5 shrink-0" aria-hidden />
+                  <span className="font-medium">New view</span>
+                </button>
+                <button
+                  type="button"
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm",
+                    canDelete
+                      ? "text-red-600 hover:bg-red-500/10 dark:text-red-400"
+                      : "text-app-fg-muted",
+                    "disabled:cursor-not-allowed disabled:opacity-45",
+                  )}
+                  disabled={disabled || savingRemote || !canDelete}
+                  title={
+                    canDelete
+                      ? "Delete this view"
+                      : "At least one view is required"
                   }
-                }}
-                className={cn(
-                  "w-full rounded-md border border-app-border bg-app-bg px-2.5 py-1.5",
-                  "text-base text-app-fg outline-none",
-                  "focus:border-blue-500 focus:ring-1 focus:ring-blue-500",
-                  "disabled:opacity-60",
-                )}
+                  onClick={() => {
+                    onDeleteView();
+                    setOpen(false);
+                  }}
+                >
+                  <PiTrash className="size-3.5 shrink-0" aria-hidden />
+                  <span className="font-medium">Delete view</span>
+                </button>
+              </div>
+            </section>
+          ) : null}
+
+          {page === "layout" && view ? (
+            <SettingsSubpage
+              title="Layout"
+              onBack={() => setPage("main")}
+            >
+              <div className="space-y-0.5">
+                <SettingsChoiceRow
+                  label="Table"
+                  icon={<PiTable className="size-4 shrink-0" aria-hidden />}
+                  selected={view.layout === "table"}
+                  disabled={disabled || savingRemote}
+                  onClick={() => onLayoutChange("table")}
+                />
+                <SettingsChoiceRow
+                  label="List"
+                  icon={
+                    <PiListBullets className="size-4 shrink-0" aria-hidden />
+                  }
+                  selected={view.layout === "list"}
+                  disabled={disabled || savingRemote}
+                  onClick={() => onLayoutChange("list")}
+                />
+              </div>
+            </SettingsSubpage>
+          ) : null}
+
+          {page === "properties" && view ? (
+            <SettingsSubpage
+              title="Properties"
+              onBack={() => setPage("main")}
+            >
+              <ViewPropertiesEditor
+                schemaProperties={schemaProperties}
+                stored={view.properties}
+                disabled={disabled}
+                onChange={onPropertiesChange}
               />
-            </label>
-          </section>
+            </SettingsSubpage>
+          ) : null}
+
           <Popover.Arrow className="fill-app-surface" />
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
+  );
+}
+
+function SettingsSubpage({
+  title,
+  onBack,
+  children,
+}: {
+  title: string;
+  onBack: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <section className="space-y-2">
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          className={cn(
+            "inline-flex size-7 items-center justify-center rounded-md",
+            "text-app-fg-muted hover:bg-app-border/45 hover:text-app-fg",
+          )}
+          aria-label="Back"
+          onClick={onBack}
+        >
+          <PiArrowLeft className="size-4" aria-hidden />
+        </button>
+        <h3 className="text-sm font-medium text-app-fg">{title}</h3>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function SettingsNavRow({
+  label,
+  value,
+  onClick,
+}: {
+  label: string;
+  value?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm",
+        "text-app-fg hover:bg-app-border/45",
+      )}
+      onClick={onClick}
+    >
+      <span className="min-w-0 flex-1 font-medium">{label}</span>
+      {value ? (
+        <span className="shrink-0 text-xs text-app-fg-muted">{value}</span>
+      ) : null}
+      <PiCaretRight
+        className="size-3.5 shrink-0 text-app-fg-muted"
+        aria-hidden
+      />
+    </button>
+  );
+}
+
+function SettingsChoiceRow({
+  label,
+  icon,
+  selected,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  icon: ReactNode;
+  selected: boolean;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      className={cn(
+        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm",
+        selected
+          ? "bg-blue-500/15 text-blue-700 dark:text-blue-300"
+          : "text-app-fg hover:bg-app-border/45",
+        "disabled:opacity-60",
+      )}
+      onClick={onClick}
+    >
+      {icon}
+      <span className="min-w-0 flex-1 font-medium">{label}</span>
+    </button>
+  );
+}
+
+type PropertySectionId = "shown" | "hidden";
+
+function packViewProperties(
+  shownIds: string[],
+  hiddenIds: string[],
+  titleId: string | null = null,
+): DatabaseViewProperty[] {
+  return pinTitlePropertyFirst(
+    [
+      ...shownIds.map((id) => ({ id, visible: true as const })),
+      ...hiddenIds.map((id) => ({ id, visible: false as const })),
+    ],
+    titleId,
+  );
+}
+
+function ViewPropertiesEditor({
+  schemaProperties,
+  stored,
+  disabled,
+  onChange,
+}: {
+  schemaProperties: DatabasePropertyColumn[];
+  stored: DatabaseViewProperty[] | null | undefined;
+  disabled: boolean;
+  onChange: (properties: DatabaseViewProperty[]) => void;
+}) {
+  const [entries, setEntries] = useState(() =>
+    resolveViewPropertyEntries(schemaProperties, stored),
+  );
+  const entriesRef = useRef(entries);
+  entriesRef.current = entries;
+  const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
+  const [overlayPos, setOverlayPos] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const overlayOffsetRef = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    setEntries(resolveViewPropertyEntries(schemaProperties, stored));
+  }, [schemaProperties, stored]);
+
+  useEffect(() => {
+    if (activeId == null) {
+      setOverlayPos(null);
+      return;
+    }
+    const onMove = (event: PointerEvent) => {
+      setOverlayPos({
+        x: event.clientX - overlayOffsetRef.current.x,
+        y: event.clientY - overlayOffsetRef.current.y,
+      });
+    };
+    window.addEventListener("pointermove", onMove);
+    return () => window.removeEventListener("pointermove", onMove);
+  }, [activeId]);
+
+  const byId = new Map(
+    databaseViewProperties(schemaProperties).map((property) => [
+      property.id,
+      property,
+    ]),
+  );
+  const titleId =
+    databaseViewProperties(schemaProperties).find(
+      (property) => property.type === "title",
+    )?.id ?? null;
+
+  const shownIds = entries.filter((e) => e.visible).map((e) => e.id);
+  const hiddenIds = entries.filter((e) => !e.visible).map((e) => e.id);
+  const activeProperty = activeId
+    ? (byId.get(String(activeId)) ?? null)
+    : null;
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+  );
+
+  const toggleVisibility = (propertyId: string) => {
+    if (disabled) return;
+    if (titleId !== null && propertyId === titleId) return;
+
+    const prev = entriesRef.current;
+    const shown = prev.filter((e) => e.visible).map((e) => e.id);
+    const hidden = prev.filter((e) => !e.visible).map((e) => e.id);
+    const inShown = shown.includes(propertyId);
+    if (inShown) {
+      const next = packViewProperties(
+        shown.filter((id) => id !== propertyId),
+        [...hidden, propertyId],
+        titleId,
+      );
+      setEntries(next);
+      onChange(next);
+      return;
+    }
+    const next = packViewProperties(
+      [...shown, propertyId],
+      hidden.filter((id) => id !== propertyId),
+      titleId,
+    );
+    setEntries(next);
+    onChange(next);
+  };
+
+  const sectionOf = (
+    id: UniqueIdentifier,
+    shown: string[],
+    hidden: string[],
+  ): PropertySectionId | null => {
+    const key = String(id);
+    if (key === "shown" || shown.includes(key)) return "shown";
+    if (key === "hidden" || hidden.includes(key)) return "hidden";
+    return null;
+  };
+
+  const handleDragStart = (event: DragStartEvent) => {
+    if (titleId !== null && String(event.active.id) === titleId) return;
+
+    setActiveId(event.active.id);
+    const activator = event.activatorEvent;
+    const rect = event.active.rect.current.initial;
+    const clientX =
+      activator instanceof PointerEvent || activator instanceof MouseEvent
+        ? activator.clientX
+        : activator instanceof TouchEvent
+          ? activator.touches[0]?.clientX
+          : undefined;
+    const clientY =
+      activator instanceof PointerEvent || activator instanceof MouseEvent
+        ? activator.clientY
+        : activator instanceof TouchEvent
+          ? activator.touches[0]?.clientY
+          : undefined;
+    if (rect && clientX != null && clientY != null) {
+      overlayOffsetRef.current = {
+        x: clientX - rect.left,
+        y: clientY - rect.top,
+      };
+      setOverlayPos({ x: rect.left, y: rect.top });
+    } else if (rect) {
+      overlayOffsetRef.current = { x: 12, y: 12 };
+      setOverlayPos({ x: rect.left, y: rect.top });
+    }
+  };
+
+  const handleDragOver = (event: DragOverEvent) => {
+    const { active, over } = event;
+    if (!over || disabled) return;
+
+    const activeKey = String(active.id);
+    if (titleId !== null && activeKey === titleId) return;
+
+    setEntries((prev) => {
+      const shown = prev.filter((e) => e.visible).map((e) => e.id);
+      const hidden = prev.filter((e) => !e.visible).map((e) => e.id);
+      const from = sectionOf(active.id, shown, hidden);
+      const to = sectionOf(over.id, shown, hidden);
+      if (!from || !to || from === to) return prev;
+
+      const fromList = from === "shown" ? shown : hidden;
+      const toList = to === "shown" ? shown : hidden;
+      const fromIndex = fromList.indexOf(activeKey);
+      if (fromIndex < 0) return prev;
+
+      fromList.splice(fromIndex, 1);
+      const overKey = String(over.id);
+      let insertAt = toList.length;
+      if (overKey !== "shown" && overKey !== "hidden") {
+        const idx = toList.indexOf(overKey);
+        if (idx >= 0) insertAt = idx;
+      }
+      // Never insert above the locked title in Shown.
+      if (to === "shown" && titleId !== null) {
+        const titleIndex = toList.indexOf(titleId);
+        if (titleIndex >= 0) {
+          insertAt = Math.max(insertAt, titleIndex + 1);
+        }
+      }
+      toList.splice(insertAt, 0, activeKey);
+
+      return packViewProperties(
+        from === "shown" ? fromList : toList,
+        from === "shown" ? toList : fromList,
+        titleId,
+      );
+    });
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveId(null);
+    setOverlayPos(null);
+    if (!over || disabled) {
+      setEntries(resolveViewPropertyEntries(schemaProperties, stored));
+      return;
+    }
+
+    const activeKey = String(active.id);
+    if (titleId !== null && activeKey === titleId) {
+      setEntries(resolveViewPropertyEntries(schemaProperties, stored));
+      return;
+    }
+
+    const prev = entriesRef.current;
+    const shown = prev.filter((e) => e.visible).map((e) => e.id);
+    const hidden = prev.filter((e) => !e.visible).map((e) => e.id);
+    const overKey = String(over.id);
+
+    const section = sectionOf(active.id, shown, hidden);
+    if (!section) {
+      onChange(pinTitlePropertyFirst(prev, titleId));
+      return;
+    }
+
+    const list = section === "shown" ? [...shown] : [...hidden];
+    const other = section === "shown" ? hidden : shown;
+    const oldIndex = list.indexOf(activeKey);
+    if (oldIndex < 0) {
+      onChange(pinTitlePropertyFirst(prev, titleId));
+      return;
+    }
+
+    let newIndex = list.indexOf(overKey);
+    if (overKey === "shown" || overKey === "hidden") {
+      newIndex = list.length - 1;
+    }
+    if (newIndex < 0) {
+      // Dropped on the other section — dragOver already updated lists
+      const next = packViewProperties(shown, hidden, titleId);
+      setEntries(next);
+      onChange(next);
+      return;
+    }
+
+    if (section === "shown" && titleId !== null) {
+      const titleIndex = list.indexOf(titleId);
+      if (titleIndex >= 0 && newIndex <= titleIndex) {
+        newIndex = titleIndex + 1;
+      }
+      if (newIndex >= list.length) newIndex = list.length - 1;
+    }
+
+    const moved = arrayMove(list, oldIndex, newIndex);
+    const next =
+      section === "shown"
+        ? packViewProperties(moved, other, titleId)
+        : packViewProperties(other, moved, titleId);
+    setEntries(next);
+    onChange(next);
+  };
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragEnd={handleDragEnd}
+      onDragCancel={() => {
+        setActiveId(null);
+        setOverlayPos(null);
+        setEntries(resolveViewPropertyEntries(schemaProperties, stored));
+      }}
+    >
+      <PropertySection
+        id="shown"
+        title="Shown"
+        ids={shownIds}
+        byId={byId}
+        titleId={titleId}
+        disabled={disabled}
+        onToggleVisibility={toggleVisibility}
+      />
+      <PropertySection
+        id="hidden"
+        title="Hidden"
+        ids={hiddenIds}
+        byId={byId}
+        titleId={titleId}
+        disabled={disabled}
+        onToggleVisibility={toggleVisibility}
+        className="mt-2"
+      />
+      {activeProperty && overlayPos
+        ? createPortal(
+            <div
+              className="pointer-events-none fixed z-200"
+              style={{ left: overlayPos.x, top: overlayPos.y }}
+            >
+              <PropertyRowContent
+                property={activeProperty}
+                visible
+                dragging
+              />
+            </div>,
+            document.body,
+          )
+        : null}
+    </DndContext>
+  );
+}
+
+function PropertySection({
+  id,
+  title,
+  ids,
+  byId,
+  titleId,
+  disabled,
+  onToggleVisibility,
+  className,
+}: {
+  id: PropertySectionId;
+  title: string;
+  ids: string[];
+  byId: Map<string, DatabasePropertyColumn>;
+  titleId: string | null;
+  disabled: boolean;
+  onToggleVisibility: (propertyId: string) => void;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <div className="mb-1 px-1 text-[0.7rem] font-semibold tracking-wide text-app-fg-muted uppercase">
+        {title}
+      </div>
+      <SortableContext
+        items={ids}
+        strategy={verticalListSortingStrategy}
+        disabled={disabled}
+      >
+        <PropertySectionList id={id} empty={ids.length === 0}>
+          {ids.length === 0 ? (
+            <li className="px-1 text-xs text-app-fg-muted">None</li>
+          ) : (
+            ids.map((propertyId) => {
+              const property = byId.get(propertyId);
+              if (!property) return null;
+              const visible = id === "shown";
+              const locked = titleId !== null && propertyId === titleId;
+              return (
+                <SortablePropertyRow
+                  key={propertyId}
+                  property={property}
+                  visible={visible}
+                  canHide={!locked}
+                  locked={locked}
+                  disabled={disabled}
+                  onToggleVisibility={() => onToggleVisibility(propertyId)}
+                />
+              );
+            })
+          )}
+        </PropertySectionList>
+      </SortableContext>
+    </div>
+  );
+}
+
+function PropertySectionList({
+  id,
+  empty,
+  children,
+}: {
+  id: PropertySectionId;
+  empty: boolean;
+  children: ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+  return (
+    <ul
+      ref={setNodeRef}
+      className={cn(
+        "min-h-8 space-y-0.5 rounded-md",
+        empty && "border border-dashed border-app-border/70 p-2",
+        isOver && "bg-app-border/25",
+      )}
+      data-section={id}
+    >
+      {children}
+    </ul>
+  );
+}
+
+function SortablePropertyRow({
+  property,
+  visible,
+  canHide,
+  locked,
+  disabled,
+  onToggleVisibility,
+}: {
+  property: DatabasePropertyColumn;
+  visible: boolean;
+  canHide: boolean;
+  locked: boolean;
+  disabled: boolean;
+  onToggleVisibility: () => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: property.id, disabled: disabled || locked });
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={{
+        // Keep layout animations for siblings; the active row is hidden and
+        // shown via the pointer portal (Radix popover transform breaks it).
+        transform: isDragging ? undefined : CSS.Transform.toString(transform),
+        transition,
+      }}
+      className={cn(isDragging && "opacity-0")}
+    >
+      <PropertyRowContent
+        property={property}
+        visible={visible}
+        canHide={canHide}
+        locked={locked}
+        disabled={disabled}
+        onToggleVisibility={onToggleVisibility}
+        handleProps={locked ? undefined : { ...attributes, ...listeners }}
+      />
+    </li>
+  );
+}
+
+function PropertyRowContent({
+  property,
+  visible = true,
+  canHide = true,
+  locked = false,
+  disabled,
+  onToggleVisibility,
+  handleProps,
+  dragging,
+}: {
+  property: DatabasePropertyColumn;
+  visible?: boolean;
+  canHide?: boolean;
+  locked?: boolean;
+  disabled?: boolean;
+  onToggleVisibility?: () => void;
+  handleProps?: Record<string, unknown>;
+  dragging?: boolean;
+}) {
+  const TypeIcon = databasePropertyTypeIcon(property.type);
+  const EyeIcon = visible ? PiEye : PiEyeSlash;
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-1.5 rounded-md px-1.5 py-1 text-sm text-app-fg",
+        dragging && "border border-app-border bg-app-surface shadow-md",
+        !dragging && "hover:bg-app-border/35",
+      )}
+    >
+      {locked ? (
+        <span
+          className="inline-flex size-6 shrink-0 items-center justify-center text-app-fg-muted/45"
+          aria-hidden
+          title="Name is always first"
+        >
+          <PiDotsSixVertical className="size-3.5" />
+        </span>
+      ) : (
+        <button
+          type="button"
+          className={cn(
+            "inline-flex size-6 cursor-grab items-center justify-center rounded",
+            "text-app-fg-muted active:cursor-grabbing",
+            "touch-none",
+          )}
+          aria-label={`Reorder ${property.name}`}
+          {...handleProps}
+        >
+          <PiDotsSixVertical className="size-3.5" aria-hidden />
+        </button>
+      )}
+      <TypeIcon className="size-3.5 shrink-0 text-app-fg-muted" aria-hidden />
+      <span className="min-w-0 flex-1 truncate">{property.name}</span>
+      {onToggleVisibility ? (
+        <button
+          type="button"
+          className={cn(
+            "inline-flex size-6 shrink-0 items-center justify-center rounded",
+            "text-app-fg-muted hover:bg-app-border/55 hover:text-app-fg",
+            "disabled:cursor-not-allowed disabled:opacity-40",
+          )}
+          aria-label={
+            visible ? `Hide ${property.name}` : `Show ${property.name}`
+          }
+          title={
+            !canHide
+              ? "Name cannot be hidden"
+              : visible
+                ? "Hide"
+                : "Show"
+          }
+          disabled={disabled || !canHide}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onToggleVisibility();
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <EyeIcon className="size-3.5" aria-hidden />
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -620,7 +1574,7 @@ function DatabaseViewBody({
     sort,
   );
 
-  if (view.settings.layout === "list") {
+  if (view.layout === "list") {
     return (
       <div className={scrollClassName} ref={scrollerRef} aria-label={`${title} · ${view.name}`}>
         {status === "loading" && rows.length === 0 ? (

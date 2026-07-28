@@ -69,6 +69,25 @@ struct UpdateDatabaseViewParams {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct CreateDatabaseViewParams {
+    id: String,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    layout: Option<crate::databases::DatabaseViewLayout>,
+    #[serde(default)]
+    copy_from_view_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DeleteDatabaseViewParams {
+    id: String,
+    view_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct SearchPagesParams {
     query: String,
     #[serde(default)]
@@ -272,6 +291,42 @@ pub fn build_workspace_module(state: WorkspaceRpcState) -> RpcModule<WorkspaceRp
             Ok::<serde_json::Value, ErrorObjectOwned>(serde_json::to_value(database).unwrap())
         })
         .expect("update_database_view method registration");
+
+    module
+        .register_async_method("create_database_view", |params, ctx, _| async move {
+            let request: CreateDatabaseViewParams = params.parse()?;
+            let workspace = ctx.workspace.clone();
+            let database_id = request.id;
+            let input = crate::databases::CreateDatabaseViewInput {
+                name: request.name,
+                layout: request.layout,
+                copy_from_view_id: request.copy_from_view_id,
+            };
+            let result = tokio::task::spawn_blocking(move || {
+                workspace.create_database_view(&database_id, input)
+            })
+            .await
+            .map_err(|error| ErrorObjectOwned::owned(1, error.to_string(), None::<()>))?
+            .map_err(|error| ErrorObjectOwned::owned(2, error, None::<()>))?;
+            Ok::<serde_json::Value, ErrorObjectOwned>(serde_json::to_value(result).unwrap())
+        })
+        .expect("create_database_view method registration");
+
+    module
+        .register_async_method("delete_database_view", |params, ctx, _| async move {
+            let request: DeleteDatabaseViewParams = params.parse()?;
+            let workspace = ctx.workspace.clone();
+            let database_id = request.id;
+            let view_id = request.view_id;
+            let database = tokio::task::spawn_blocking(move || {
+                workspace.delete_database_view(&database_id, &view_id)
+            })
+            .await
+            .map_err(|error| ErrorObjectOwned::owned(1, error.to_string(), None::<()>))?
+            .map_err(|error| ErrorObjectOwned::owned(2, error, None::<()>))?;
+            Ok::<serde_json::Value, ErrorObjectOwned>(serde_json::to_value(database).unwrap())
+        })
+        .expect("delete_database_view method registration");
 
     module
         .register_async_method("create_database_row", |params, ctx, _| async move {
@@ -599,6 +654,38 @@ pub async fn call_workspace_rpc(
             let update = request.update;
             let database = tokio::task::spawn_blocking(move || {
                 workspace.update_database_view(&database_id, &view_id, update)
+            })
+            .await
+            .map_err(|error| error.to_string())?
+            .map_err(|error| error)?;
+            serde_json::to_value(database).map_err(|error| error.to_string())
+        }
+        "create_database_view" => {
+            let request: CreateDatabaseViewParams = serde_json::from_value(params_or_null(params))
+                .map_err(|error| error.to_string())?;
+            let workspace = workspace.clone();
+            let database_id = request.id;
+            let input = crate::databases::CreateDatabaseViewInput {
+                name: request.name,
+                layout: request.layout,
+                copy_from_view_id: request.copy_from_view_id,
+            };
+            let result = tokio::task::spawn_blocking(move || {
+                workspace.create_database_view(&database_id, input)
+            })
+            .await
+            .map_err(|error| error.to_string())?
+            .map_err(|error| error)?;
+            serde_json::to_value(result).map_err(|error| error.to_string())
+        }
+        "delete_database_view" => {
+            let request: DeleteDatabaseViewParams = serde_json::from_value(params_or_null(params))
+                .map_err(|error| error.to_string())?;
+            let workspace = workspace.clone();
+            let database_id = request.id;
+            let view_id = request.view_id;
+            let database = tokio::task::spawn_blocking(move || {
+                workspace.delete_database_view(&database_id, &view_id)
             })
             .await
             .map_err(|error| error.to_string())?

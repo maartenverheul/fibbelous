@@ -36,6 +36,8 @@ import {
   registerDatabaseRowCreator,
   registerDatabaseRowsFetcher,
   registerDatabasesLister,
+  registerDatabaseViewCreator,
+  registerDatabaseViewDeleter,
   registerDatabaseViewUpdater,
 } from "../../lib/database/fetch";
 import { useWorkspaceConnection } from "./WorkspaceConnectionProvider";
@@ -320,6 +322,8 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
       registerDatabaseRowsFetcher(null);
       registerDatabaseRowCreator(null);
       registerDatabaseViewUpdater(null);
+      registerDatabaseViewCreator(null);
+      registerDatabaseViewDeleter(null);
       registerDatabasesLister(null);
       registerDatabaseCreator(null);
       return;
@@ -358,6 +362,34 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
       }
       return detail;
     });
+    registerDatabaseViewCreator(async (databaseId, input) => {
+      const result = await rpc.call<{
+        database: WorkspaceDatabaseDetail | null;
+        viewId: string;
+      } | null>("create_database_view", {
+        id: databaseId,
+        name: input?.name,
+        layout: input?.layout,
+        copyFromViewId: input?.copyFromViewId,
+      });
+      if (!result?.database) {
+        throw new Error("Database not found");
+      }
+      return { database: result.database, viewId: result.viewId };
+    });
+    registerDatabaseViewDeleter(async (databaseId, viewId) => {
+      const detail = await rpc.call<WorkspaceDatabaseDetail | null>(
+        "delete_database_view",
+        {
+          id: databaseId,
+          viewId,
+        },
+      );
+      if (!detail) {
+        throw new Error("Database not found");
+      }
+      return detail;
+    });
     registerDatabasesLister(async () => {
       return rpc.call<WorkspaceDatabaseMeta[]>("list_databases", {});
     });
@@ -373,6 +405,8 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
       registerDatabaseRowsFetcher(null);
       registerDatabaseRowCreator(null);
       registerDatabaseViewUpdater(null);
+      registerDatabaseViewCreator(null);
+      registerDatabaseViewDeleter(null);
       registerDatabasesLister(null);
       registerDatabaseCreator(null);
     };

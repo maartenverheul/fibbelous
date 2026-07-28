@@ -153,16 +153,21 @@ pub struct SinglePropertyConfig {
 pub struct DatabaseViewDef {
     pub id: String,
     pub name: String,
-    pub settings: DatabaseViewSettings,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DatabaseViewSettings {
     pub layout: DatabaseViewLayout,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sort: Option<DatabaseViewSort>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filter: Option<Value>,
+    /// Ordered property visibility for this view. Absent = all non-disabled schema props.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub properties: Option<Vec<DatabaseViewProperty>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DatabaseViewProperty {
+    pub id: String,
+    pub visible: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -174,7 +179,7 @@ pub struct DatabaseViewSort {
 }
 
 /// Partial update for a database view. Omitted fields are left unchanged.
-/// For nullable settings (e.g. `sort`), send `null` to clear.
+/// For nullable fields (e.g. `sort`), send `null` to clear.
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct DatabaseViewUpdate {
@@ -184,6 +189,8 @@ pub struct DatabaseViewUpdate {
     pub layout: Option<DatabaseViewLayout>,
     #[serde(default, deserialize_with = "deserialize_present_option")]
     pub sort: Option<Option<DatabaseViewSort>>,
+    #[serde(default)]
+    pub properties: Option<Vec<DatabaseViewProperty>>,
 }
 
 fn deserialize_present_option<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
@@ -209,27 +216,76 @@ pub enum DatabaseViewLayout {
 }
 
 impl DatabaseFile {
-    pub fn default_table_view() -> DatabaseViewDef {
-        DatabaseViewDef {
-            id: "default".to_owned(),
-            name: "All".to_owned(),
-            settings: DatabaseViewSettings {
-                layout: DatabaseViewLayout::Table,
-                sort: None,
-                filter: None,
+    pub fn default_created_property() -> DatabaseProperty {
+        DatabaseProperty {
+            id: "created".to_owned(),
+            name: "Created".to_owned(),
+            description: None,
+            disable: false,
+            config: DatabasePropertyConfig::CreatedTime {
+                created_time: EmptyObject {},
             },
         }
     }
 
-    pub fn default_list_view() -> DatabaseViewDef {
+    pub fn default_edited_property() -> DatabaseProperty {
+        DatabaseProperty {
+            id: "edited".to_owned(),
+            name: "Edited".to_owned(),
+            description: None,
+            disable: false,
+            config: DatabasePropertyConfig::LastEditedTime {
+                last_edited_time: EmptyObject {},
+            },
+        }
+    }
+
+    /// Default view property visibility: created/edited hidden, others shown.
+    pub fn default_view_properties(
+        properties: &IndexMap<String, DatabaseProperty>,
+    ) -> Option<Vec<DatabaseViewProperty>> {
+        if properties.is_empty() {
+            return None;
+        }
+
+        let mut entries = Vec::with_capacity(properties.len());
+        for property in properties.values() {
+            let visible = !matches!(
+                property.config,
+                DatabasePropertyConfig::CreatedTime { .. }
+                    | DatabasePropertyConfig::LastEditedTime { .. }
+            );
+            entries.push(DatabaseViewProperty {
+                id: property.id.clone(),
+                visible,
+            });
+        }
+        Some(entries)
+    }
+
+    pub fn default_table_view(
+        properties: &IndexMap<String, DatabaseProperty>,
+    ) -> DatabaseViewDef {
+        DatabaseViewDef {
+            id: "default".to_owned(),
+            name: "All".to_owned(),
+            layout: DatabaseViewLayout::Table,
+            sort: None,
+            filter: None,
+            properties: Self::default_view_properties(properties),
+        }
+    }
+
+    pub fn default_list_view(
+        properties: &IndexMap<String, DatabaseProperty>,
+    ) -> DatabaseViewDef {
         DatabaseViewDef {
             id: "default-list".to_owned(),
             name: "List".to_owned(),
-            settings: DatabaseViewSettings {
-                layout: DatabaseViewLayout::List,
-                sort: None,
-                filter: None,
-            },
+            layout: DatabaseViewLayout::List,
+            sort: None,
+            filter: None,
+            properties: Self::default_view_properties(properties),
         }
     }
 
@@ -238,16 +294,19 @@ impl DatabaseFile {
     /// Returns true when the file was modified.
     pub fn ensure_default_views(&mut self) -> bool {
         if self.views.is_empty() {
-            self.views.push(Self::default_table_view());
-            self.views.push(Self::default_list_view());
+            self.views
+                .push(Self::default_table_view(&self.properties));
+            self.views
+                .push(Self::default_list_view(&self.properties));
             return true;
         }
 
         let only_default_table = self.views.len() == 1
             && self.views[0].id == "default"
-            && self.views[0].settings.layout == DatabaseViewLayout::Table;
+            && self.views[0].layout == DatabaseViewLayout::Table;
         if only_default_table {
-            self.views.push(Self::default_list_view());
+            self.views
+                .push(Self::default_list_view(&self.properties));
             return true;
         }
 
@@ -367,12 +426,181 @@ pub fn update_database_view(
             view.name = name;
         }
         if let Some(layout) = update.layout {
-            view.settings.layout = layout;
+            view.layout = layout;
         }
         if let Some(sort) = update.sort {
-            view.settings.sort = sort;
+            view.sort = sort;
+        }
+        if let Some(properties) = update.properties {
+            view.properties = if properties.is_empty() {
+                None
+            } else {
+                Some(properties)
+            };
         }
         Ok(())
+    })
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateDatabaseViewInput {
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub layout: Option<DatabaseViewLayout>,
+    /// When set, copy layout/sort/filter/properties from this view (layout/name still overridable).
+    #[serde(default)]
+    pub copy_from_view_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateDatabaseViewResult {
+    pub database: DatabaseDetail,
+    pub view_id: String,
+}
+
+pub fn create_database_view(
+    _workspace_path: &Path,
+    cache: &mut CacheDb,
+    database_id: &str,
+    input: CreateDatabaseViewInput,
+) -> Result<Option<CreateDatabaseViewResult>, String> {
+    let Some(meta) = cache
+        .get_database_by_id(database_id)
+        .map_err(|error| error.to_string())?
+    else {
+        return Ok(None);
+    };
+
+    let contents = cache
+        .get_database_content(database_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "database content not found".to_owned())?;
+    let mut database: DatabaseFile =
+        serde_json::from_str(&contents).map_err(|error| error.to_string())?;
+
+    database.ensure_default_views();
+
+    let template = input
+        .copy_from_view_id
+        .as_deref()
+        .and_then(|id| database.views.iter().find(|view| view.id == id))
+        .cloned();
+
+    let layout = input
+        .layout
+        .or_else(|| template.as_ref().map(|view| view.layout))
+        .unwrap_or(DatabaseViewLayout::Table);
+
+    let name = input
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_owned)
+        .unwrap_or_else(|| unique_view_name(&database.views, "Untitled"));
+
+    let view_id = unique_view_id(&database.views, database_id);
+    let view = DatabaseViewDef {
+        id: view_id.clone(),
+        name,
+        layout,
+        sort: template.as_ref().and_then(|view| view.sort.clone()),
+        filter: template.as_ref().and_then(|view| view.filter.clone()),
+        properties: template
+            .as_ref()
+            .and_then(|view| view.properties.clone())
+            .or_else(|| DatabaseFile::default_view_properties(&database.properties)),
+    };
+    database.views.push(view);
+
+    let detail = save_database_file(cache, &meta, database_id, &database)?;
+    Ok(Some(CreateDatabaseViewResult {
+        database: detail,
+        view_id,
+    }))
+}
+
+pub fn delete_database_view(
+    _workspace_path: &Path,
+    cache: &mut CacheDb,
+    database_id: &str,
+    view_id: &str,
+) -> Result<Option<DatabaseDetail>, String> {
+    let Some(meta) = cache
+        .get_database_by_id(database_id)
+        .map_err(|error| error.to_string())?
+    else {
+        return Ok(None);
+    };
+
+    let contents = cache
+        .get_database_content(database_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "database content not found".to_owned())?;
+    let mut database: DatabaseFile =
+        serde_json::from_str(&contents).map_err(|error| error.to_string())?;
+
+    database.ensure_default_views();
+
+    if database.views.len() <= 1 {
+        return Err("cannot delete the last view".to_owned());
+    }
+    let before = database.views.len();
+    database.views.retain(|view| view.id != view_id);
+    if database.views.len() == before {
+        return Err(format!("view not found: {view_id}"));
+    }
+
+    let detail = save_database_file(cache, &meta, database_id, &database)?;
+    Ok(Some(detail))
+}
+
+fn unique_view_id(views: &[DatabaseViewDef], database_id: &str) -> String {
+    for _ in 0..8 {
+        let candidate = format!("view-{}", generate_row_id(database_id));
+        if !views.iter().any(|view| view.id == candidate) {
+            return candidate;
+        }
+    }
+    format!("view-{}", generate_row_id(&format!("{database_id}:retry")))
+}
+
+fn unique_view_name(views: &[DatabaseViewDef], base: &str) -> String {
+    if !views.iter().any(|view| view.name == base) {
+        return base.to_owned();
+    }
+    for index in 2..1000 {
+        let candidate = format!("{base} {index}");
+        if !views.iter().any(|view| view.name == candidate) {
+            return candidate;
+        }
+    }
+    format!("{base} {}", generate_row_id(base))
+}
+
+fn save_database_file(
+    cache: &mut CacheDb,
+    meta: &crate::cache::DatabaseMeta,
+    database_id: &str,
+    database: &DatabaseFile,
+) -> Result<DatabaseDetail, String> {
+    let mut serialized =
+        serde_json::to_string_pretty(database).map_err(|error| error.to_string())?;
+    serialized.push('\n');
+    cache
+        .upsert_database_content(database_id, &serialized)
+        .map_err(|error| error.to_string())?;
+
+    let json = serde_json::to_value(database).map_err(|error| error.to_string())?;
+    Ok(DatabaseDetail {
+        id: meta.id.clone(),
+        slug: meta.slug.clone(),
+        name: meta.name.clone(),
+        path: meta.path.clone(),
+        json,
     })
 }
 
@@ -403,21 +631,8 @@ fn mutate_database_view(
     };
     mutate(view)?;
 
-    let mut serialized =
-        serde_json::to_string_pretty(&database).map_err(|error| error.to_string())?;
-    serialized.push('\n');
-    cache
-        .upsert_database_content(database_id, &serialized)
-        .map_err(|error| error.to_string())?;
-
-    let json = serde_json::to_value(&database).map_err(|error| error.to_string())?;
-    Ok(Some(DatabaseDetail {
-        id: meta.id,
-        slug: meta.slug,
-        name: meta.name,
-        path: meta.path,
-        json,
-    }))
+    let detail = save_database_file(cache, &meta, database_id, &database)?;
+    Ok(Some(detail))
 }
 
 /// Resolve which SQLite field / expression to sort by for a property id.
@@ -673,6 +888,14 @@ pub fn create_database(
                 title: EmptyObject {},
             },
         },
+    );
+    properties.insert(
+        "created".to_owned(),
+        DatabaseFile::default_created_property(),
+    );
+    properties.insert(
+        "edited".to_owned(),
+        DatabaseFile::default_edited_property(),
     );
 
     let mut database = DatabaseFile {
