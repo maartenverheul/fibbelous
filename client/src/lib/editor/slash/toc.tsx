@@ -12,7 +12,7 @@ export function insertTocSlashMenuItem(
     title: "Table of contents",
     subtext: "Outline of headings on this page",
     aliases: ["toc", "contents", "outline", "headings"],
-    group: "Other",
+    group: "Others",
     icon: <PiListBullets size={18} />,
     onItemClick: () => {
       insertOrUpdateBlockForSlashMenu(editor, {

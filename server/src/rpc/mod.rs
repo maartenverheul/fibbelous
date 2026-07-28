@@ -51,6 +51,15 @@ struct CreateDatabaseRowParams {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct CreateDatabaseParams {
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    parent_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct UpdateDatabaseViewParams {
     id: String,
     view_id: String,
@@ -202,6 +211,34 @@ pub fn build_workspace_module(state: WorkspaceRpcState) -> RpcModule<WorkspaceRp
         .expect("get_database method registration");
 
     module
+        .register_async_method("list_databases", |_, ctx, _| async move {
+            let workspace = ctx.workspace.clone();
+            let databases =
+                tokio::task::spawn_blocking(move || workspace.list_databases())
+                    .await
+                    .map_err(|error| ErrorObjectOwned::owned(1, error.to_string(), None::<()>))?
+                    .map_err(|error| ErrorObjectOwned::owned(2, error, None::<()>))?;
+            Ok::<serde_json::Value, ErrorObjectOwned>(serde_json::to_value(databases).unwrap())
+        })
+        .expect("list_databases method registration");
+
+    module
+        .register_async_method("create_database", |params, ctx, _| async move {
+            let request: CreateDatabaseParams = params.parse()?;
+            let workspace = ctx.workspace.clone();
+            let title = request.title;
+            let parent_id = request.parent_id;
+            let result = tokio::task::spawn_blocking(move || {
+                workspace.create_database(title, parent_id)
+            })
+            .await
+            .map_err(|error| ErrorObjectOwned::owned(1, error.to_string(), None::<()>))?
+            .map_err(|error| ErrorObjectOwned::owned(2, error, None::<()>))?;
+            Ok::<serde_json::Value, ErrorObjectOwned>(serde_json::to_value(result).unwrap())
+        })
+        .expect("create_database method registration");
+
+    module
         .register_async_method("list_database_rows", |params, ctx, _| async move {
             let request: ListDatabaseRowsParams = params.parse()?;
             let workspace = ctx.workspace.clone();
@@ -272,6 +309,7 @@ pub fn build_workspace_module(state: WorkspaceRpcState) -> RpcModule<WorkspaceRp
             let workspace = ctx.workspace.clone();
             let page = tokio::task::spawn_blocking(move || {
                 workspace.create_page(CreatePageInput {
+                    id: None,
                     parent_id: request.parent_id,
                     title: request.title,
                     slug: request.slug,
@@ -514,6 +552,28 @@ pub async fn call_workspace_rpc(
                     .map_err(|error| error)?;
             serde_json::to_value(database).map_err(|error| error.to_string())
         }
+        "list_databases" => {
+            let workspace = workspace.clone();
+            let databases = tokio::task::spawn_blocking(move || workspace.list_databases())
+                .await
+                .map_err(|error| error.to_string())?
+                .map_err(|error| error)?;
+            serde_json::to_value(databases).map_err(|error| error.to_string())
+        }
+        "create_database" => {
+            let request: CreateDatabaseParams = serde_json::from_value(params_or_null(params))
+                .map_err(|error| error.to_string())?;
+            let workspace = workspace.clone();
+            let title = request.title;
+            let parent_id = request.parent_id;
+            let result = tokio::task::spawn_blocking(move || {
+                workspace.create_database(title, parent_id)
+            })
+            .await
+            .map_err(|error| error.to_string())?
+            .map_err(|error| error)?;
+            serde_json::to_value(result).map_err(|error| error.to_string())
+        }
         "list_database_rows" => {
             let request: ListDatabaseRowsParams = serde_json::from_value(params_or_null(params))
                 .map_err(|error| error.to_string())?;
@@ -577,6 +637,7 @@ pub async fn call_workspace_rpc(
             let workspace = workspace.clone();
             let page = tokio::task::spawn_blocking(move || {
                 workspace.create_page(CreatePageInput {
+                    id: None,
                     parent_id: request.parent_id,
                     title: request.title,
                     slug: request.slug,

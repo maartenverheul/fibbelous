@@ -8,8 +8,8 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
-use crate::cache::{page_body_from_content, CacheDb, DatabaseDetail, DatabaseRowsPage, PageDetail};
-use crate::pages::{format_database_row_content, DatabaseRowFrontmatter};
+use crate::cache::{page_body_from_content, CacheDb, DatabaseDetail, DatabaseMeta, DatabaseRowsPage, PageDetail};
+use crate::pages::{create_page, format_database_row_content, CreatePageInput, DatabaseRowFrontmatter};
 
 /// On-disk shape of `databases/*/database.json`.
 /// Field order here is the serialization order.
@@ -615,6 +615,125 @@ pub fn create_database_row(
         body,
         referenced_pages,
         ancestors: Vec::new(),
+    })
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateDatabaseResult {
+    pub database: DatabaseDetail,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page: Option<PageDetail>,
+}
+
+/// List all indexed databases (id, slug, name, path).
+pub fn list_databases(cache: &CacheDb) -> Result<Vec<DatabaseMeta>, String> {
+    cache
+        .list_databases()
+        .map_err(|error| error.to_string())
+}
+
+/// Create a new `databases/{id}/database.json`. When `parent_id` is set, also
+/// creates a host page with the same id and a database-only body.
+pub fn create_database(
+    workspace_path: &Path,
+    cache: &mut CacheDb,
+    title: Option<String>,
+    parent_id: Option<String>,
+) -> Result<CreateDatabaseResult, String> {
+    let title = title
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "Untitled".to_owned());
+    let slug = slugify(&title);
+    let file_slug = if slug.is_empty() {
+        "untitled".to_owned()
+    } else {
+        slug
+    };
+    let id = generate_row_id(&format!("database:{file_slug}:{parent_id:?}"));
+
+    if cache
+        .get_database_by_id(&id)
+        .map_err(|error| error.to_string())?
+        .is_some()
+    {
+        return Err("database id collision".to_owned());
+    }
+
+    let now = now_iso();
+    let mut properties = IndexMap::new();
+    properties.insert(
+        "title".to_owned(),
+        DatabaseProperty {
+            id: "title".to_owned(),
+            name: "Name".to_owned(),
+            description: None,
+            disable: false,
+            config: DatabasePropertyConfig::Title {
+                title: EmptyObject {},
+            },
+        },
+    );
+
+    let mut database = DatabaseFile {
+        id: id.clone(),
+        slug: Some(file_slug.clone()),
+        title: Some(title.clone()),
+        name: Some(title.clone()),
+        created: Some(now.clone()),
+        edited: Some(now),
+        properties,
+        views: Vec::new(),
+    };
+    database.ensure_default_views();
+
+    let mut serialized =
+        serde_json::to_string_pretty(&database).map_err(|error| error.to_string())?;
+    serialized.push('\n');
+
+    let relative_path = format!("databases/{id}/database.json");
+    cache
+        .upsert_database_mutable(
+            &relative_path,
+            &id,
+            Some(&file_slug),
+            Some(&title),
+            &serialized,
+        )
+        .map_err(|error| error.to_string())?;
+
+    let json = serde_json::to_value(&database).map_err(|error| error.to_string())?;
+    let database_detail = DatabaseDetail {
+        id: id.clone(),
+        slug: Some(file_slug),
+        name: Some(title.clone()),
+        path: relative_path,
+        json,
+    };
+
+    let page = if let Some(parent_id) = parent_id {
+        let body = format!("<Database id=\"{id}\" />");
+        let page = create_page(
+            workspace_path,
+            cache,
+            CreatePageInput {
+                id: Some(id.clone()),
+                parent_id: Some(parent_id),
+                title: Some(title),
+                slug: None,
+                icon: None,
+                body: Some(body),
+                favorite: false,
+            },
+        )?;
+        Some(page)
+    } else {
+        None
+    };
+
+    Ok(CreateDatabaseResult {
+        database: database_detail,
+        page,
     })
 }
 

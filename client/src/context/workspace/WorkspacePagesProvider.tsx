@@ -9,8 +9,10 @@ import {
   type ReactNode,
 } from "react";
 import type {
+  CreateDatabaseResult,
   DatabaseRowsPage,
   WorkspaceDatabaseDetail,
+  WorkspaceDatabaseMeta,
 } from "../../lib/database/types";
 import {
   DEFAULT_LIST_PAGES_DEPTH,
@@ -29,9 +31,11 @@ import {
 } from "../../lib/page/types";
 import { slugFromPageLink } from "../../lib/editor/pageLinks";
 import {
+  registerDatabaseCreator,
   registerDatabaseFetcher,
   registerDatabaseRowCreator,
   registerDatabaseRowsFetcher,
+  registerDatabasesLister,
   registerDatabaseViewUpdater,
 } from "../../lib/database/fetch";
 import { useWorkspaceConnection } from "./WorkspaceConnectionProvider";
@@ -59,6 +63,11 @@ export type WorkspacePagesValue = {
     title?: string;
     body?: string;
   }) => Promise<WorkspacePageDetail>;
+  createDatabase: (options?: {
+    title?: string;
+    parentId?: string;
+  }) => Promise<CreateDatabaseResult>;
+  listDatabases: () => Promise<WorkspaceDatabaseMeta[]>;
   updatePage: (
     id: string,
     patch: {
@@ -311,6 +320,8 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
       registerDatabaseRowsFetcher(null);
       registerDatabaseRowCreator(null);
       registerDatabaseViewUpdater(null);
+      registerDatabasesLister(null);
+      registerDatabaseCreator(null);
       return;
     }
 
@@ -347,12 +358,23 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
       }
       return detail;
     });
+    registerDatabasesLister(async () => {
+      return rpc.call<WorkspaceDatabaseMeta[]>("list_databases", {});
+    });
+    registerDatabaseCreator(async (options) => {
+      return rpc.call<CreateDatabaseResult>("create_database", {
+        title: options?.title,
+        parentId: options?.parentId,
+      });
+    });
 
     return () => {
       registerDatabaseFetcher(null);
       registerDatabaseRowsFetcher(null);
       registerDatabaseRowCreator(null);
       registerDatabaseViewUpdater(null);
+      registerDatabasesLister(null);
+      registerDatabaseCreator(null);
     };
   }, [rpc, connectionStatus, storePageDetail]);
 
@@ -583,6 +605,37 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
     [rpc, connectionStatus, invalidateAndRefreshChildren, storePageDetail],
   );
 
+  const createDatabase = useCallback(
+    async (options?: { title?: string; parentId?: string }) => {
+      if (!rpc || connectionStatus !== "connected") {
+        throw new Error("Workspace not connected");
+      }
+
+      const result = await rpc.call<CreateDatabaseResult>("create_database", {
+        title: options?.title,
+        parentId: options?.parentId,
+      });
+
+      if (result.page) {
+        storePageDetail(result.page);
+        await invalidateAndRefreshChildren(
+          result.page.parentId ?? options?.parentId ?? null,
+        );
+      }
+
+      return result;
+    },
+    [rpc, connectionStatus, invalidateAndRefreshChildren, storePageDetail],
+  );
+
+  const listDatabases = useCallback(async () => {
+    if (!rpc || connectionStatus !== "connected") {
+      throw new Error("Workspace not connected");
+    }
+
+    return rpc.call<WorkspaceDatabaseMeta[]>("list_databases", {});
+  }, [rpc, connectionStatus]);
+
   const updatePage = useCallback(
     async (
       id: string,
@@ -774,6 +827,8 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
       fetchTrashedPageDetail,
       createPage,
       createRootPage,
+      createDatabase,
+      listDatabases,
       updatePage,
       setPageFavorite,
       duplicatePage,
@@ -801,6 +856,8 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
       fetchTrashedPageDetail,
       createPage,
       createRootPage,
+      createDatabase,
+      listDatabases,
       updatePage,
       setPageFavorite,
       duplicatePage,

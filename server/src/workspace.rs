@@ -365,6 +365,34 @@ impl Workspace {
         result
     }
 
+    pub fn list_databases(&self) -> Result<Vec<crate::cache::DatabaseMeta>, String> {
+        let cache = self
+            .cache
+            .lock()
+            .map_err(|_| "cache mutex poisoned".to_string())?;
+        databases::list_databases(&cache)
+    }
+
+    pub fn create_database(
+        &self,
+        title: Option<String>,
+        parent_id: Option<String>,
+    ) -> Result<databases::CreateDatabaseResult, String> {
+        let mut cache = self
+            .cache
+            .lock()
+            .map_err(|_| "cache mutex poisoned".to_string())?;
+        let result = databases::create_database(&self.path, &mut cache, title, parent_id);
+        if let Ok(created) = &result {
+            self.flush
+                .mark(DirtyKey::Database(created.database.id.clone()));
+            if let Some(page) = &created.page {
+                self.flush.mark(DirtyKey::Page(page.id.clone()));
+            }
+        }
+        result
+    }
+
     pub fn search_pages(
         &self,
         query: &str,
@@ -737,6 +765,7 @@ fn open_workspace(id: String, path: PathBuf) -> Result<Workspace, String> {
 
 fn seed_welcome_page(workspace: &Workspace) -> Result<(), String> {
     workspace.create_page(CreatePageInput {
+        id: None,
         parent_id: None,
         title: Some("Welcome".to_owned()),
         slug: Some("welcome".to_owned()),

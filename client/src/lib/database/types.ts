@@ -1,4 +1,4 @@
-import type { WorkspacePage } from "../page/types";
+import type { WorkspacePage, WorkspacePageDetail } from "../page/types";
 
 export type WorkspaceDatabaseDetail = {
   id: string;
@@ -6,6 +6,19 @@ export type WorkspaceDatabaseDetail = {
   name: string | null;
   path: string;
   json: unknown;
+};
+
+/** Summary row from `list_databases` (no full schema json). */
+export type WorkspaceDatabaseMeta = {
+  id: string;
+  slug: string | null;
+  name: string | null;
+  path: string;
+};
+
+export type CreateDatabaseResult = {
+  database: WorkspaceDatabaseDetail;
+  page?: WorkspacePageDetail | null;
 };
 
 export type DatabaseRowSummary = {
@@ -176,6 +189,7 @@ export type DatabaseSchema = {
   id: string;
   slug: string | null;
   title: string | null;
+  icon: string | null;
   properties: DatabasePropertyColumn[];
   views: DatabaseView[];
 };
@@ -350,6 +364,7 @@ export function parseDatabaseSchema(json: unknown): DatabaseSchema | null {
     id,
     slug: readString(root.slug),
     title: readString(root.title) ?? readString(root.name),
+    icon: readString(root.icon),
     properties,
     views: parseDatabaseViews(root.views),
   };
@@ -372,4 +387,12 @@ export function databaseDisplayTitle(
     detail.slug?.trim() ||
     detail.id
   );
+}
+
+/** Prefer schema icon, then a host page with the same id. */
+export function databaseDisplayIcon(
+  schema: DatabaseSchema | null,
+  hostIcon?: string | null,
+): string | null {
+  return schema?.icon?.trim() || hostIcon?.trim() || null;
 }

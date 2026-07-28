@@ -94,6 +94,8 @@ pub struct TrashedPageSummary {
 
 #[derive(Debug)]
 pub struct CreatePageInput {
+    /// When set, use this id instead of generating one (e.g. database host pages).
+    pub id: Option<String>,
     pub parent_id: Option<String>,
     pub title: Option<String>,
     pub slug: Option<String>,
@@ -327,7 +329,10 @@ pub fn create_page(
     let body = input.body.unwrap_or_default();
     let icon = input.icon;
 
-    let id = generate_page_id(&format!("{:?}:{slug}", input.parent_id));
+    let id = input
+        .id
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| generate_page_id(&format!("{:?}:{slug}", input.parent_id)));
     let file_slug = file_stem_slug(&slug);
 
     let parent_path = match input.parent_id.as_deref() {
@@ -1199,6 +1204,7 @@ pub fn duplicate_page(
         workspace_path,
         cache,
         CreatePageInput {
+            id: None,
             parent_id: source.parent_id,
             title: Some(format!("Copy of {source_title}")),
             slug: Some(format!("{base_slug}-copy")),

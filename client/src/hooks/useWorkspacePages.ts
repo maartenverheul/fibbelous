@@ -28,6 +28,8 @@ export function useWorkspacePages() {
     purgePage,
     draftTitlesById,
     setPageDraftTitle,
+    createDatabase,
+    listDatabases,
   } = useWorkspace();
 
   return {
@@ -56,6 +58,8 @@ export function useWorkspacePages() {
     purgePage,
     draftTitlesById,
     setPageDraftTitle,
+    createDatabase,
+    listDatabases,
     rootLoaded: rootPages !== undefined,
     rootLoading: rootPages === undefined && !rootError,
   };

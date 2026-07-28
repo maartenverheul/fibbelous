@@ -12,7 +12,7 @@ export function insertCalloutSlashMenuItem(
     title: "Callout",
     subtext: "Highlighted note with optional icon and color",
     aliases: ["callout", "note", "info", "warning", "tip", "highlight"],
-    group: "Other",
+    group: "Others",
     icon: <PiChatTeardropText size={18} />,
     onItemClick: () => {
       insertOrUpdateBlockForSlashMenu(editor, {

@@ -11,6 +11,10 @@ import type {
   WorkspacePage,
   WorkspacePageDetail,
 } from "../../lib/page/types";
+import type {
+  CreateDatabaseResult,
+  WorkspaceDatabaseMeta,
+} from "../../lib/database/types";
 import {
   useWorkspaceConnection,
   useWorkspaceConnectionOptional,
@@ -49,6 +53,11 @@ export type WorkspaceContextValue = {
     title?: string;
     body?: string;
   }) => Promise<WorkspacePageDetail>;
+  createDatabase: (options?: {
+    title?: string;
+    parentId?: string;
+  }) => Promise<CreateDatabaseResult>;
+  listDatabases: () => Promise<WorkspaceDatabaseMeta[]>;
   updatePage: (
     id: string,
     patch: {

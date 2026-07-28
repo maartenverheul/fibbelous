@@ -14,6 +14,7 @@ import {
   type WorkspacePage,
 } from "../../lib/page/types";
 import {
+  PiArrowLeft,
   PiCheck,
   PiCircle,
   PiCircleNotch,
@@ -152,7 +153,7 @@ function CrumbList({
 }
 
 export function PageBreadcrumbs() {
-  const { activeSegment, navigateInTab } = useTabs();
+  const { activeSegment, navigateInTab, goBack, canGoBack } = useTabs();
   const { status } = usePageSave();
   const {
     findPageByKey,
@@ -269,6 +270,21 @@ export function PageBreadcrumbs() {
       className={cn(navClassName, "justify-end md:justify-between")}
     >
       <div className="hidden min-w-0 items-center gap-1 md:flex">
+        <button
+          type="button"
+          onClick={goBack}
+          disabled={!canGoBack}
+          aria-label="Go back"
+          title="Go back"
+          className={cn(
+            "flex h-6 w-6 shrink-0 items-center justify-center rounded",
+            canGoBack
+              ? "text-stone-700 hover:bg-stone-200/80 hover:text-stone-900 dark:text-stone-300 dark:hover:bg-stone-800 dark:hover:text-stone-50"
+              : "cursor-default text-stone-300/70 dark:text-stone-700/50",
+          )}
+        >
+          <PiArrowLeft className="h-4 w-4" aria-hidden />
+        </button>
         <CrumbList
           crumbs={crumbs}
           findPageById={findPageById}

@@ -13,11 +13,33 @@ export function isCursorAtDocumentStart(editor: PageEditor): boolean {
   }
 }
 
-/** Move focus to the start of the first block in the page body. */
-export function focusEditorDocumentStart(editor: PageEditor) {
-  const first = editor.document[0];
-  if (first) {
-    editor.setTextCursorPosition(first, "start");
+/**
+ * First block that can hold a text caret. Atom blocks (`content: "none"`, e.g.
+ * database) become a NodeSelection with BlockNote's blue outline if targeted.
+ */
+function firstTextCursorBlock(editor: PageEditor) {
+  for (const block of editor.document) {
+    const content = editor.schema.blockSchema[block.type]?.content;
+    if (content === "inline" || content === "table") {
+      return block;
+    }
   }
+  return undefined;
+}
+
+/** Place the text caret at the start of the first editable block (no focus). */
+export function placeEditorCursorAtDocumentStart(editor: PageEditor) {
+  const target = firstTextCursorBlock(editor);
+  if (!target) return;
+  try {
+    editor.setTextCursorPosition(target, "start");
+  } catch {
+    // Schema/document may be mid-update.
+  }
+}
+
+/** Move focus to the start of the first editable block in the page body. */
+export function focusEditorDocumentStart(editor: PageEditor) {
+  placeEditorCursorAtDocumentStart(editor);
   editor.focus();
 }

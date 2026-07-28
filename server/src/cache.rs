@@ -160,7 +160,8 @@ pub struct DatabaseDetail {
     pub json: serde_json::Value,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DatabaseMeta {
     pub id: String,
     pub slug: Option<String>,
@@ -804,6 +805,24 @@ impl CacheDb {
         Ok(row)
     }
 
+    pub fn list_databases(&self) -> rusqlite::Result<Vec<DatabaseMeta>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, slug, name, path FROM databases
+             ORDER BY COALESCE(name, slug, id) COLLATE NOCASE ASC",
+        )?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(DatabaseMeta {
+                    id: row.get(0)?,
+                    slug: row.get(1)?,
+                    name: row.get(2)?,
+                    path: row.get(3)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     pub fn get_database_content(&self, id: &str) -> rusqlite::Result<Option<String>> {
         self.conn
             .query_row(
@@ -874,6 +893,25 @@ impl CacheDb {
         self.conn.execute(
             "UPDATE databases SET content = ?1, fs_dirty = 1 WHERE id = ?2",
             params![content, id],
+        )?;
+        Ok(())
+    }
+
+    /// Inserts or updates a mutable database schema file (`database.json`).
+    pub fn upsert_database_mutable(
+        &mut self,
+        path: &str,
+        id: &str,
+        slug: Option<&str>,
+        name: Option<&str>,
+        content: &str,
+    ) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "INSERT INTO databases (path, id, slug, name, content, modified_ns, size_bytes, fs_dirty)
+             VALUES (?1, ?2, ?3, ?4, ?5, 0, 0, 1)
+             ON CONFLICT(path) DO UPDATE SET id=excluded.id, slug=excluded.slug,
+             name=excluded.name, content=excluded.content, fs_dirty=1",
+            params![path, id, slug, name, content],
         )?;
         Ok(())
     }

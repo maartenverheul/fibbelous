@@ -17,7 +17,7 @@ import {
   getStoredDatabaseViewId,
   setStoredDatabaseViewId,
 } from "./viewStorage";
-import { openWorkspacePage } from "../page/navigate";
+import { openWorkspacePage, findWorkspacePageById } from "../page/navigate";
 import {
   dbCellEmpty,
   dbColName,
@@ -30,8 +30,8 @@ import {
   dbListItems,
   dbMutedText,
   dbCheckbox,
-  dbRoot,
-  dbScroll,
+  dbRootInline,
+  dbScrollInline,
   dbSentinel,
   dbTable,
   dbTd,
@@ -44,7 +44,9 @@ import {
   dbOpenBtn,
 } from "./ui";
 import { getScrollParent, isInVerticalScrollport, cn } from "../utils";
+import { isIconUrl } from "../emojiIcon";
 import {
+  databaseDisplayIcon,
   databaseDisplayTitle,
   databaseViewProperties,
   pageFromDatabaseRow,
@@ -123,7 +125,7 @@ export function paintDatabaseTable(
   const title = databaseDisplayTitle(detail, schema);
 
   dom.replaceChildren();
-  dom.className = dbRoot;
+  dom.className = dbRootInline;
   dom.title = detail.path;
 
   if (!schema) {
@@ -185,11 +187,22 @@ export function paintDatabaseTable(
     renderActive();
   });
 
+  const hostPage = findWorkspacePageById(schema.id);
+  const icon = databaseDisplayIcon(schema, hostPage?.icon);
+  const heading = renderDatabaseHeading(title, icon);
+
   const toolbar = document.createElement("div");
   toolbar.className =
-    "mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2";
+    "mb-3 grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-4 gap-y-2";
   toolbar.appendChild(tabs);
+  heading.className = cn(
+    heading.className,
+    "justify-self-center px-1 text-center",
+  );
+  toolbar.appendChild(heading);
   const controls = renderViewControls(schema.id);
+  controls.dom.className =
+    "flex flex-wrap items-center justify-end gap-1.5 justify-self-end";
   toolbar.appendChild(controls.dom);
 
   dom.appendChild(toolbar);
@@ -202,6 +215,44 @@ export function paintDatabaseTable(
       controls.destroy();
     },
   };
+}
+
+const DATABASE_FALLBACK_ICON_SVG = `<svg viewBox="0 0 256 256" fill="currentColor" width="100%" height="100%"><path d="M224 48H32a16 16 0 0 0-16 16v128a16 16 0 0 0 16 16h192a16 16 0 0 0 16-16V64a16 16 0 0 0-16-16ZM32 64h56v32H32Zm0 48h56v32H32Zm0 80v-32h56v32Zm192 0H104v-32h120Zm0-48H104v-32h120Zm0-48H104V64h120Z"/></svg>`;
+
+function renderDatabaseHeading(
+  title: string,
+  icon: string | null,
+): HTMLElement {
+  const heading = document.createElement("div");
+  heading.className = "flex min-w-0 items-center gap-2";
+
+  const iconEl = document.createElement("span");
+  iconEl.className =
+    "inline-flex size-5 shrink-0 items-center justify-center text-[1.05rem] leading-none text-app-fg-muted";
+  iconEl.setAttribute("aria-hidden", "true");
+  if (icon && isIconUrl(icon)) {
+    const img = document.createElement("img");
+    img.src = icon;
+    img.alt = "";
+    img.className = "size-5 object-contain";
+    iconEl.appendChild(img);
+  } else if (icon) {
+    iconEl.textContent = icon;
+  } else {
+    iconEl.className =
+      "inline-flex size-5 shrink-0 items-center justify-center text-app-fg-muted";
+    iconEl.innerHTML = DATABASE_FALLBACK_ICON_SVG;
+  }
+  heading.appendChild(iconEl);
+
+  const name = document.createElement("span");
+  name.className =
+    "min-w-0 truncate text-sm font-semibold text-app-fg";
+  name.textContent = title;
+  name.title = title;
+  heading.appendChild(name);
+
+  return heading;
 }
 
 const VIEW_TAB_IDLE =
@@ -380,6 +431,7 @@ function renderViewBody(
 ): { dom: HTMLElement; destroy?: () => void } {
   if (view.settings.layout === "list") {
     const list = document.createElement("div");
+    list.className = dbScrollInline;
     list.setAttribute("aria-label", `${title} · ${view.name}`);
     const status = document.createElement("div");
     status.className = dbMutedText;
@@ -454,7 +506,7 @@ function renderViewBody(
   }
 
   const scroller = document.createElement("div");
-  scroller.className = dbScroll;
+  scroller.className = dbScrollInline;
 
   const table = document.createElement("table");
   table.className = dbTable;
@@ -786,7 +838,7 @@ export function paintDatabaseError(
   message: string,
 ): void {
   dom.replaceChildren();
-  dom.className = `${dbRoot} ${dbEmptyShell}`;
+  dom.className = `${dbRootInline} ${dbEmptyShell}`;
 
   const body = document.createElement("div");
   body.className = dbMutedText;

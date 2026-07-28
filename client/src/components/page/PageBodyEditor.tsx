@@ -13,12 +13,15 @@ import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState,
 import { useTabs } from "../../context/TabContext";
 import { useWorkspacePages } from "../../hooks/useWorkspacePages";
 import { insertBookmarkBlock } from "../../lib/editor/blocks/bookmark";
+import { insertDatabaseBlock } from "../../lib/editor/blocks/database";
 import {
   htmlToMarkdown,
   markdownToHtml,
 } from "../../lib/editor/markdownPipeline";
 import { insertMapsBlock } from "../../lib/editor/blocks/maps";
 import { insertCalloutSlashMenuItem } from "../../lib/editor/slash/callout";
+import { insertDatabasePageSlashMenuItem } from "../../lib/editor/slash/database";
+import { insertInlineDatabaseSlashMenuItem } from "../../lib/editor/slash/inlineDatabase";
 import { insertMapsSlashMenuItem } from "../../lib/editor/slash/maps";
 import type { PageEditor } from "../../lib/editor/schema";
 import { pageEditorSchema } from "../../lib/editor/schema";
@@ -29,6 +32,7 @@ import { getMentionMenuItems } from "../../lib/editor/mentionMenu";
 import {
   focusEditorDocumentStart,
   isCursorAtDocumentStart,
+  placeEditorCursorAtDocumentStart,
 } from "../../lib/editor/titleBodyKeyboard";
 import {
   internalPageLinksToMarkers,
@@ -55,10 +59,19 @@ import {
   pageLabel,
   type ReferencedPage,
 } from "../../lib/page/types";
+import type { WorkspaceDatabaseMeta } from "../../lib/database/types";
 import {
   PasteLinkChoiceMenu,
   type PasteLinkChoice,
 } from "./PasteLinkChoiceMenu";
+import {
+  InlineDatabaseChoiceMenu,
+  type InlineDatabaseChoice,
+} from "./InlineDatabaseChoiceMenu";
+import {
+  InlineDatabasePickerMenu,
+  type InlineDatabasePickerAnchor,
+} from "./InlineDatabasePickerMenu";
 
 export type PageBodyEditorHandle = {
   focusStart: () => void;
@@ -121,15 +134,38 @@ async function serializeBody(editor: PageEditor): Promise<string> {
 
 function getSlashMenuItems(
   editor: PageEditor,
-  options: Parameters<typeof insertNewPageSlashMenuItem>[1],
+  options: {
+    page: Parameters<typeof insertNewPageSlashMenuItem>[1];
+    database: Parameters<typeof insertDatabasePageSlashMenuItem>[1];
+    inlineDatabase: Parameters<typeof insertInlineDatabaseSlashMenuItem>[1];
+  },
 ) {
-  return [
+  const items = [
     ...getDefaultReactSlashMenuItems(editor),
-    insertNewPageSlashMenuItem(editor, options),
+    insertNewPageSlashMenuItem(editor, options.page),
+    insertDatabasePageSlashMenuItem(editor, options.database),
+    insertInlineDatabaseSlashMenuItem(editor, options.inlineDatabase),
     insertMapsSlashMenuItem(editor),
     insertTocSlashMenuItem(editor),
     insertCalloutSlashMenuItem(editor),
   ];
+
+  // BlockNote shows a section title whenever `group` changes, so keep items
+  // with the same group contiguous (defaults end with Media/Others; our
+  // custom Media/Others items would otherwise reopen those sections).
+  const groupOrder: string[] = [];
+  const byGroup = new Map<string, typeof items>();
+  for (const item of items) {
+    const group = item.group ?? "";
+    let bucket = byGroup.get(group);
+    if (!bucket) {
+      bucket = [];
+      byGroup.set(group, bucket);
+      groupOrder.push(group);
+    }
+    bucket.push(item);
+  }
+  return groupOrder.flatMap((group) => byGroup.get(group)!);
 }
 
 export const PageBodyEditor = forwardRef<
@@ -149,6 +185,8 @@ export const PageBodyEditor = forwardRef<
   const { navigateInTab } = useTabs();
   const {
     createPage,
+    createDatabase,
+    listDatabases,
     findPageById,
     searchPages,
     favoritePages,
@@ -156,6 +194,8 @@ export const PageBodyEditor = forwardRef<
   } = useWorkspacePages();
   const findPageByIdRef = useRef(findPageById);
   const createPageRef = useRef(createPage);
+  const createDatabaseRef = useRef(createDatabase);
+  const listDatabasesRef = useRef(listDatabases);
   const searchPagesRef = useRef(searchPages);
   const favoritePagesRef = useRef(favoritePages);
   const rootPagesRef = useRef(rootPages);
@@ -164,10 +204,15 @@ export const PageBodyEditor = forwardRef<
   const openPasteChoiceRef = useRef<(choice: PasteLinkChoice) => void>(
     () => {},
   );
+  const openInlineDbChoiceRef = useRef<(choice: InlineDatabaseChoice) => void>(
+    () => {},
+  );
   const pendingFocusStartRef = useRef(false);
 
   findPageByIdRef.current = findPageById;
   createPageRef.current = createPage;
+  createDatabaseRef.current = createDatabase;
+  listDatabasesRef.current = listDatabases;
   searchPagesRef.current = searchPages;
   favoritePagesRef.current = favoritePages;
   rootPagesRef.current = rootPages;
@@ -211,6 +256,16 @@ export const PageBodyEditor = forwardRef<
 
   const [pasteChoice, setPasteChoice] = useState<PasteLinkChoice | null>(null);
   openPasteChoiceRef.current = setPasteChoice;
+
+  const [inlineDbChoice, setInlineDbChoice] =
+    useState<InlineDatabaseChoice | null>(null);
+  openInlineDbChoiceRef.current = setInlineDbChoice;
+
+  const [inlineDbPicker, setInlineDbPicker] =
+    useState<InlineDatabasePickerAnchor | null>(null);
+  const [inlineDbList, setInlineDbList] = useState<WorkspaceDatabaseMeta[]>([]);
+  const [inlineDbLoading, setInlineDbLoading] = useState(false);
+  const [inlineDbError, setInlineDbError] = useState<string | null>(null);
 
   const editor = useCreateBlockNote(
     {
@@ -368,9 +423,65 @@ export const PageBodyEditor = forwardRef<
     editor.focus();
   }, [editor]);
 
+  const dismissInlineDbMenus = useCallback(() => {
+    setInlineDbChoice(null);
+    setInlineDbPicker(null);
+    setInlineDbList([]);
+    setInlineDbError(null);
+    setInlineDbLoading(false);
+  }, []);
+
+  const applyInlineDbNew = useCallback(() => {
+    const choice = inlineDbChoice;
+    setInlineDbChoice(null);
+    void (async () => {
+      try {
+        const result = await createDatabaseRef.current();
+        insertDatabaseBlock(editor, result.database.id);
+        editor.focus();
+      } catch (error) {
+        console.error(error);
+        if (choice) setInlineDbChoice(choice);
+      }
+    })();
+  }, [editor, inlineDbChoice]);
+
+  const openInlineDbExisting = useCallback(() => {
+    const choice = inlineDbChoice;
+    if (!choice) return;
+    setInlineDbChoice(null);
+    setInlineDbPicker({ left: choice.left, top: choice.top });
+    setInlineDbLoading(true);
+    setInlineDbError(null);
+    void (async () => {
+      try {
+        const databases = await listDatabasesRef.current();
+        setInlineDbList(databases);
+      } catch (error) {
+        console.error(error);
+        setInlineDbError(
+          error instanceof Error ? error.message : "Failed to list databases",
+        );
+      } finally {
+        setInlineDbLoading(false);
+      }
+    })();
+  }, [inlineDbChoice]);
+
+  const applyInlineDbExisting = useCallback(
+    (database: WorkspaceDatabaseMeta) => {
+      setInlineDbPicker(null);
+      setInlineDbList([]);
+      insertDatabaseBlock(editor, database.id);
+      editor.focus();
+    },
+    [editor],
+  );
+
   useEffect(() => {
     setPasteChoice(null);
-  }, [pageId]);
+    dismissInlineDbMenus();
+  }, [pageId, dismissInlineDbMenus]);
 
   useEffect(() => {
     const applyKey = `${body}\0${referencedKey}`;
@@ -393,6 +504,7 @@ export const PageBodyEditor = forwardRef<
             : [{ type: "paragraph" as const, content: [] }];
 
         editor.replaceBlocks(editor.document, nextBlocks);
+        placeEditorCursorAtDocumentStart(editor);
         appliedBodyRef.current = applyKey;
       } catch (error) {
         console.error("Failed to load page body into editor", error);
@@ -457,15 +569,33 @@ export const PageBodyEditor = forwardRef<
           getItems={async (query) =>
             filterSuggestionItems(
               getSlashMenuItems(editor, {
-                createPage: (parent) => createPageRef.current(parent),
-                getParentPage: () => findPageByIdRef.current(pageId),
-                flushBody: (markdown) => {
-                  userEditedRef.current = true;
-                  if (serializeTimerRef.current) {
-                    clearTimeout(serializeTimerRef.current);
-                    serializeTimerRef.current = null;
-                  }
-                  onBodyChangeRef.current(markdown);
+                page: {
+                  createPage: (parent) => createPageRef.current(parent),
+                  getParentPage: () => findPageByIdRef.current(pageId),
+                  flushBody: (markdown) => {
+                    userEditedRef.current = true;
+                    if (serializeTimerRef.current) {
+                      clearTimeout(serializeTimerRef.current);
+                      serializeTimerRef.current = null;
+                    }
+                    onBodyChangeRef.current(markdown);
+                  },
+                },
+                database: {
+                  createDatabase: (opts) => createDatabaseRef.current(opts),
+                  getParentPage: () => findPageByIdRef.current(pageId),
+                  flushBody: (markdown) => {
+                    userEditedRef.current = true;
+                    if (serializeTimerRef.current) {
+                      clearTimeout(serializeTimerRef.current);
+                      serializeTimerRef.current = null;
+                    }
+                    onBodyChangeRef.current(markdown);
+                  },
+                },
+                inlineDatabase: {
+                  openChoiceMenu: (anchor) =>
+                    openInlineDbChoiceRef.current(anchor),
                 },
               }),
               query,
@@ -507,6 +637,24 @@ export const PageBodyEditor = forwardRef<
           onBookmark={applyPasteAsBookmark}
           onMaps={applyPasteAsMaps}
           onDismiss={applyPasteAsPlainText}
+        />
+      )}
+      {inlineDbChoice && !readOnly && (
+        <InlineDatabaseChoiceMenu
+          choice={inlineDbChoice}
+          onNew={applyInlineDbNew}
+          onExisting={openInlineDbExisting}
+          onDismiss={dismissInlineDbMenus}
+        />
+      )}
+      {inlineDbPicker && !readOnly && (
+        <InlineDatabasePickerMenu
+          anchor={inlineDbPicker}
+          databases={inlineDbList}
+          loading={inlineDbLoading}
+          error={inlineDbError}
+          onSelect={applyInlineDbExisting}
+          onDismiss={dismissInlineDbMenus}
         />
       )}
     </div>

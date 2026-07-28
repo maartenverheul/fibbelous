@@ -13,7 +13,7 @@ import {
   paintDatabaseTable,
 } from "../database/block";
 import { fetchDatabaseDetail } from "../database/fetch";
-import { dbMutedText, dbRoot } from "../database/ui";
+import { dbMutedText, dbRootInline } from "../database/ui";
 import {
   bookmarkDisplayLabel,
   elementToMdxTag,
@@ -305,7 +305,7 @@ type DatabaseRenderResult = {
 
 function renderDatabaseDom(databaseId: string): DatabaseRenderResult {
   const dom = document.createElement("div");
-  dom.className = dbRoot;
+  dom.className = dbRootInline;
 
   if (!databaseId) {
     paintDatabaseError(dom, "", "Database (missing id)");

@@ -56,3 +56,8 @@ export function openWorkspacePage(
     pageId: page.id,
   });
 }
+
+/** Lookup a cached workspace page (e.g. database host) from BlockNote DOM code. */
+export function findWorkspacePageById(id: string): WorkspacePage | undefined {
+  return findPageById?.(id);
+}
