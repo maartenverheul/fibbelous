@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import * as Popover from "@radix-ui/react-popover";
+import * as Select from "@radix-ui/react-select";
 import {
   DndContext,
   PointerSensor,
@@ -25,14 +26,20 @@ import {
   PiArrowLeft,
   PiArrowUp,
   PiArrowsDownUp,
+  PiCaretDown,
   PiCaretRight,
+  PiCheck,
+  PiCopy,
   PiDotsSixVertical,
+  PiDotsThree,
   PiEye,
   PiEyeSlash,
   PiFunnel,
   PiGear,
   PiListBullets,
+  PiPencilSimple,
   PiPlus,
+  PiStar,
   PiTable,
   PiTrash,
 } from "react-icons/pi";
@@ -42,9 +49,14 @@ import {
 } from "../../lib/database/attributes";
 import {
   createDatabaseRow,
+  createDatabaseTemplate,
   createDatabaseView,
+  deleteDatabaseTemplate,
   deleteDatabaseView,
+  duplicateDatabaseTemplate,
   fetchDatabaseRows,
+  fetchDatabaseTemplate,
+  setDefaultDatabaseTemplate,
   updateDatabaseView,
   type DatabaseViewUpdate,
 } from "../../lib/database/fetch";
@@ -85,6 +97,7 @@ import {
   databaseDisplayIcon,
   databaseDisplayTitle,
   databaseViewProperties,
+  EMPTY_DATABASE_TEMPLATE_ID,
   pageFromDatabaseRow,
   parseDatabaseSchema,
   pinTitlePropertyFirst,
@@ -92,6 +105,7 @@ import {
   resolveViewPropertyEntries,
   type DatabasePropertyColumn,
   type DatabaseRowSummary,
+  type DatabaseRowTemplate,
   type DatabaseSchema,
   type DatabaseView,
   type DatabaseViewLayout,
@@ -194,11 +208,11 @@ export function DatabaseDisplay({
     setStoredDatabaseViewId(schema.id, id);
   };
 
-  const handleNew = async () => {
+  const handleNew = async (templateId?: string) => {
     if (creating) return;
     setCreating(true);
     try {
-      const page = await createDatabaseRow(schema.id);
+      const page = await createDatabaseRow(schema.id, undefined, templateId);
       openWorkspacePage(page);
     } catch (error) {
       console.error(error);
@@ -207,6 +221,103 @@ export function DatabaseDisplay({
       );
     } finally {
       setCreating(false);
+    }
+  };
+
+  const applyDatabaseDetail = (nextDetail: WorkspaceDatabaseDetail) => {
+    const nextSchema = parseDatabaseSchema(nextDetail.json);
+    if (!nextSchema) {
+      throw new Error("Invalid database.json");
+    }
+    setDetail(nextDetail);
+    setSchema(nextSchema);
+    return nextSchema;
+  };
+
+  const handleCreateTemplate = async () => {
+    if (creating) return;
+    setCreating(true);
+    try {
+      const result = await createDatabaseTemplate(schema.id);
+      applyDatabaseDetail(result.database);
+      openWorkspacePage(result.page, { focusTitle: true });
+    } catch (error) {
+      console.error(error);
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Failed to create database template",
+      );
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleEditTemplate = async (template: DatabaseRowTemplate) => {
+    try {
+      const detail = await fetchDatabaseTemplate(schema.id, template.id);
+      if (detail) {
+        openWorkspacePage(detail, { focusTitle: true });
+        return;
+      }
+    } catch (error) {
+      console.error(error);
+    }
+    openWorkspacePage(
+      {
+        id: template.id,
+        slug: null,
+        title: template.name,
+        icon: template.icon ?? null,
+        path: `databases/${schema.id}/templates/${template.id}`,
+        hasChildren: false,
+        databaseId: schema.id,
+      },
+      { focusTitle: true },
+    );
+  };
+
+  const handleDuplicateTemplate = async (templateId: string) => {
+    try {
+      const result = await duplicateDatabaseTemplate(schema.id, templateId);
+      applyDatabaseDetail(result.database);
+      openWorkspacePage(result.page, { focusTitle: true });
+    } catch (error) {
+      console.error(error);
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Failed to duplicate template",
+      );
+    }
+  };
+
+  const handleDeleteTemplate = async (templateId: string) => {
+    try {
+      const nextDetail = await deleteDatabaseTemplate(schema.id, templateId);
+      applyDatabaseDetail(nextDetail);
+    } catch (error) {
+      console.error(error);
+      alert(
+        error instanceof Error ? error.message : "Failed to delete template",
+      );
+    }
+  };
+
+  const handleSetDefaultTemplate = async (templateId: string) => {
+    try {
+      const nextDetail = await setDefaultDatabaseTemplate(
+        schema.id,
+        templateId,
+      );
+      applyDatabaseDetail(nextDetail);
+    } catch (error) {
+      console.error(error);
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Failed to set default template",
+      );
     }
   };
 
@@ -219,12 +330,7 @@ export function DatabaseDisplay({
         activeView.id,
         update,
       );
-      const nextSchema = parseDatabaseSchema(nextDetail.json);
-      if (!nextSchema) {
-        throw new Error("Invalid database.json");
-      }
-      setDetail(nextDetail);
-      setSchema(nextSchema);
+      applyDatabaseDetail(nextDetail);
       return true;
     } catch (error) {
       console.error(error);
@@ -405,6 +511,8 @@ export function DatabaseDisplay({
           savingView={savingView}
           sortProperties={allProperties}
           schemaProperties={schema.properties}
+          templates={schema.templates}
+          defaultTemplateId={schema.defaultTemplateId}
           view={activeView}
           viewCount={schema.views.length}
           sort={activeSort}
@@ -415,6 +523,18 @@ export function DatabaseDisplay({
           onCreateView={() => void createView()}
           onDeleteView={requestDeleteView}
           onNew={() => void handleNew()}
+          onNewFromTemplate={(templateId) => void handleNew(templateId)}
+          onCreateTemplate={() => void handleCreateTemplate()}
+          onEditTemplate={(template) => void handleEditTemplate(template)}
+          onDuplicateTemplate={(templateId) =>
+            void handleDuplicateTemplate(templateId)
+          }
+          onDeleteTemplate={(templateId) =>
+            void handleDeleteTemplate(templateId)
+          }
+          onSetDefaultTemplate={(templateId) =>
+            void handleSetDefaultTemplate(templateId)
+          }
           className={inline ? "justify-self-end" : undefined}
         />
       </div>
@@ -494,35 +614,116 @@ function DatabaseViewTabs({
   activeViewId: string;
   onSelect: (id: string) => void;
 }) {
+  const activeView =
+    views.find((view) => view.id === activeViewId) ?? views[0];
+  const ActiveIcon =
+    activeView?.layout === "list" ? PiListBullets : PiTable;
+
+  if (views.length <= 1) {
+    if (!activeView) return null;
+    return (
+      <div
+        className="flex min-w-0 flex-wrap items-center gap-1.5"
+        role="tablist"
+        aria-label="Database views"
+      >
+        <span
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[0.8125rem] font-medium",
+            "bg-app-border/70 text-app-fg",
+          )}
+        >
+          <ActiveIcon className="size-[0.95em] shrink-0" aria-hidden />
+          <span>{activeView.name}</span>
+        </span>
+      </div>
+    );
+  }
+
   return (
-    <div
-      className="flex min-w-0 flex-wrap items-center gap-1.5"
-      role="tablist"
-      aria-label="Database views"
-    >
-      {views.map((view) => {
-        const selected = view.id === activeViewId;
-        const Icon = view.layout === "list" ? PiListBullets : PiTable;
-        return (
-          <button
-            key={view.id}
-            type="button"
-            role="tab"
-            aria-selected={selected}
+    <>
+      <div
+        className="hidden min-w-0 flex-wrap items-center gap-1.5 md:flex"
+        role="tablist"
+        aria-label="Database views"
+      >
+        {views.map((view) => {
+          const selected = view.id === activeViewId;
+          const Icon = view.layout === "list" ? PiListBullets : PiTable;
+          return (
+            <button
+              key={view.id}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[0.8125rem] font-medium",
+                selected
+                  ? "bg-app-border/70 text-app-fg"
+                  : "bg-app-border/35 text-app-fg-muted hover:bg-app-border/55 hover:text-app-fg",
+              )}
+              onClick={() => onSelect(view.id)}
+            >
+              <Icon className="size-[0.95em] shrink-0" aria-hidden />
+              <span>{view.name}</span>
+            </button>
+          );
+        })}
+      </div>
+      <Select.Root value={activeViewId} onValueChange={onSelect}>
+        <Select.Trigger
+          className={cn(
+            "inline-flex max-w-full min-w-0 items-center gap-1 rounded-full bg-app-border/70 px-2.5 py-1 text-[0.8125rem] font-medium text-app-fg outline-none md:hidden",
+            "hover:bg-app-border/80",
+          )}
+          aria-label="Database views"
+        >
+          {activeView ? (
+            <>
+              <ActiveIcon className="size-[0.95em] shrink-0" aria-hidden />
+              <Select.Value className="min-w-0 truncate">
+                {activeView.name}
+              </Select.Value>
+            </>
+          ) : (
+            <Select.Value placeholder="View" />
+          )}
+          <Select.Icon className="shrink-0 text-app-fg-muted">
+            <PiCaretDown className="size-3" aria-hidden />
+          </Select.Icon>
+        </Select.Trigger>
+        <Select.Portal>
+          <Select.Content
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[0.8125rem] font-medium",
-              selected
-                ? "bg-app-border/70 text-app-fg"
-                : "bg-app-border/35 text-app-fg-muted hover:bg-app-border/55 hover:text-app-fg",
+              "z-50 min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-lg border border-app-border bg-app-bg text-app-fg shadow-lg",
             )}
-            onClick={() => onSelect(view.id)}
+            position="popper"
+            sideOffset={6}
+            align="start"
           >
-            <Icon className="size-[0.95em] shrink-0" aria-hidden />
-            <span>{view.name}</span>
-          </button>
-        );
-      })}
-    </div>
+            <Select.Viewport className="p-1">
+              {views.map((view) => {
+                const Icon = view.layout === "list" ? PiListBullets : PiTable;
+                return (
+                  <Select.Item
+                    key={view.id}
+                    value={view.id}
+                    className={cn(
+                      "flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[0.8125rem] outline-none",
+                      "data-[highlighted]:bg-app-border/45",
+                      "data-[state=checked]:bg-app-border/70",
+                    )}
+                  >
+                    <Icon className="size-[0.95em] shrink-0" aria-hidden />
+                    <Select.ItemText>{view.name}</Select.ItemText>
+                  </Select.Item>
+                );
+              })}
+            </Select.Viewport>
+          </Select.Content>
+        </Select.Portal>
+      </Select.Root>
+    </>
   );
 }
 
@@ -531,6 +732,8 @@ function DatabaseViewControls({
   savingView,
   sortProperties,
   schemaProperties,
+  templates,
+  defaultTemplateId,
   view,
   viewCount,
   sort,
@@ -541,12 +744,20 @@ function DatabaseViewControls({
   onCreateView,
   onDeleteView,
   onNew,
+  onNewFromTemplate,
+  onCreateTemplate,
+  onEditTemplate,
+  onDuplicateTemplate,
+  onDeleteTemplate,
+  onSetDefaultTemplate,
   className,
 }: {
   creating: boolean;
   savingView: boolean;
   sortProperties: DatabasePropertyColumn[];
   schemaProperties: DatabasePropertyColumn[];
+  templates: DatabaseRowTemplate[];
+  defaultTemplateId: string;
   view: DatabaseView | undefined;
   viewCount: number;
   sort: DatabaseViewSort | null;
@@ -557,6 +768,12 @@ function DatabaseViewControls({
   onCreateView: () => void;
   onDeleteView: () => void;
   onNew: () => void;
+  onNewFromTemplate: (templateId: string) => void;
+  onCreateTemplate: () => void;
+  onEditTemplate: (template: DatabaseRowTemplate) => void;
+  onDuplicateTemplate: (templateId: string) => void;
+  onDeleteTemplate: (templateId: string) => void;
+  onSetDefaultTemplate: (templateId: string) => void;
   className?: string;
 }) {
   const controlBtnClass = cn(
@@ -596,19 +813,263 @@ function DatabaseViewControls({
         onDeleteView={onDeleteView}
         triggerClassName={controlBtnClass}
       />
-      <button
-        type="button"
-        className={cn(
-          "inline-flex items-center gap-1 rounded-md bg-blue-600 px-3 py-1.5 text-[0.8125rem] font-semibold text-white",
-          "hover:bg-blue-700 disabled:cursor-wait disabled:opacity-70",
-        )}
-        onClick={onNew}
-        disabled={creating}
-      >
-        <PiPlus className="size-[1.05rem] shrink-0" aria-hidden />
-        <span>{creating ? "Creating…" : "New"}</span>
-      </button>
+      <DatabaseNewRowSplitButton
+        creating={creating}
+        templates={templates}
+        defaultTemplateId={defaultTemplateId}
+        onNew={onNew}
+        onNewFromTemplate={onNewFromTemplate}
+        onCreateTemplate={onCreateTemplate}
+        onEditTemplate={onEditTemplate}
+        onDuplicateTemplate={onDuplicateTemplate}
+        onDeleteTemplate={onDeleteTemplate}
+        onSetDefaultTemplate={onSetDefaultTemplate}
+      />
     </div>
+  );
+}
+
+const templateMenuItemClass = cn(
+  "flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[0.8125rem] text-app-fg",
+  "hover:bg-app-border/45",
+);
+
+function DatabaseNewRowSplitButton({
+  creating,
+  templates,
+  defaultTemplateId,
+  onNew,
+  onNewFromTemplate,
+  onCreateTemplate,
+  onEditTemplate,
+  onDuplicateTemplate,
+  onDeleteTemplate,
+  onSetDefaultTemplate,
+}: {
+  creating: boolean;
+  templates: DatabaseRowTemplate[];
+  defaultTemplateId: string;
+  onNew: () => void;
+  onNewFromTemplate: (templateId: string) => void;
+  onCreateTemplate: () => void;
+  onEditTemplate: (template: DatabaseRowTemplate) => void;
+  onDuplicateTemplate: (templateId: string) => void;
+  onDeleteTemplate: (templateId: string) => void;
+  onSetDefaultTemplate: (templateId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [actionsForId, setActionsForId] = useState<string | null>(null);
+
+  const entries: Array<{
+    id: string;
+    name: string;
+    icon?: string | null;
+    locked: boolean;
+  }> = [
+    {
+      id: EMPTY_DATABASE_TEMPLATE_ID,
+      name: "Empty",
+      locked: true,
+    },
+    ...templates.map((template) => ({
+      id: template.id,
+      name: template.name.trim() || "Untitled",
+      icon: template.icon,
+      locked: false,
+    })),
+  ];
+
+  return (
+    <Popover.Root
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) setActionsForId(null);
+      }}
+    >
+      <div className="inline-flex overflow-hidden rounded-md bg-blue-600 shadow-sm">
+        <button
+          type="button"
+          className={cn(
+            "inline-flex items-center justify-center px-1.5 py-1 text-white",
+            "md:gap-1 md:px-3 md:py-1.5 md:text-[0.8125rem] md:font-semibold",
+            "hover:bg-blue-700 disabled:cursor-wait disabled:opacity-70",
+          )}
+          onClick={onNew}
+          disabled={creating}
+          aria-label={creating ? "Creating" : "New"}
+        >
+          <PiPlus className="size-3.5 shrink-0 md:size-[1.05rem]" aria-hidden />
+          <span className="hidden md:inline">
+            {creating ? "Creating…" : "New"}
+          </span>
+        </button>
+        <Popover.Trigger asChild>
+          <button
+            type="button"
+            className={cn(
+              "inline-flex items-center border-l border-blue-500/80 px-1 text-white",
+              "md:px-1.5",
+              "hover:bg-blue-700 disabled:cursor-wait disabled:opacity-70",
+            )}
+            aria-label="Choose template"
+            disabled={creating}
+          >
+            <PiCaretDown className="size-3 md:size-3.5" aria-hidden />
+          </button>
+        </Popover.Trigger>
+      </div>
+      <Popover.Portal>
+        <Popover.Content
+          align="end"
+          sideOffset={6}
+          className={cn(
+            "z-50 w-64 rounded-lg border border-app-border bg-app-bg p-1 shadow-lg",
+            "outline-none",
+          )}
+          onCloseAutoFocus={(event) => event.preventDefault()}
+        >
+          <div className="px-2.5 py-1.5 text-[0.7rem] font-semibold uppercase tracking-wide text-app-fg-muted">
+            Templates
+          </div>
+          <div role="menu" className="flex flex-col">
+            {entries.map((entry) => {
+              const isDefault = entry.id === defaultTemplateId;
+              const custom = templates.find(
+                (template) => template.id === entry.id,
+              );
+              return (
+                <div key={entry.id} className="relative">
+                  <div className="flex items-center gap-0.5">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className={cn(templateMenuItemClass, "min-w-0 flex-1")}
+                      onClick={() => {
+                        setOpen(false);
+                        onNewFromTemplate(entry.id);
+                      }}
+                    >
+                      <span className="min-w-0 flex-1 truncate">
+                        {entry.name}
+                      </span>
+                      {isDefault ? (
+                        <span className="shrink-0 text-[0.7rem] text-app-fg-muted">
+                          Default
+                        </span>
+                      ) : null}
+                    </button>
+                    <button
+                      type="button"
+                      className={cn(
+                        "inline-flex size-7 shrink-0 items-center justify-center rounded-md text-app-fg-muted",
+                        "hover:bg-app-border/45 hover:text-app-fg",
+                      )}
+                      aria-label={`${entry.name} template actions`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setActionsForId((current) =>
+                          current === entry.id ? null : entry.id,
+                        );
+                      }}
+                    >
+                      <PiDotsThree className="size-4" aria-hidden />
+                    </button>
+                  </div>
+                  {actionsForId === entry.id ? (
+                    <div
+                      role="menu"
+                      className={cn(
+                        "absolute right-0 top-full z-10 mt-0.5 w-44 rounded-md border border-app-border",
+                        "bg-app-bg py-1 shadow-md",
+                      )}
+                    >
+                      {!entry.locked && custom ? (
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className={templateMenuItemClass}
+                          onClick={() => {
+                            setOpen(false);
+                            setActionsForId(null);
+                            onEditTemplate(custom);
+                          }}
+                        >
+                          <PiPencilSimple className="size-3.5 shrink-0" aria-hidden />
+                          Edit
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className={templateMenuItemClass}
+                        onClick={() => {
+                          setOpen(false);
+                          setActionsForId(null);
+                          onDuplicateTemplate(entry.id);
+                        }}
+                      >
+                        <PiCopy className="size-3.5 shrink-0" aria-hidden />
+                        Duplicate
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className={templateMenuItemClass}
+                        disabled={isDefault}
+                        onClick={() => {
+                          setOpen(false);
+                          setActionsForId(null);
+                          onSetDefaultTemplate(entry.id);
+                        }}
+                      >
+                        {isDefault ? (
+                          <PiCheck className="size-3.5 shrink-0" aria-hidden />
+                        ) : (
+                          <PiStar className="size-3.5 shrink-0" aria-hidden />
+                        )}
+                        Set as default
+                      </button>
+                      {!entry.locked ? (
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className={cn(
+                            templateMenuItemClass,
+                            "text-red-600 dark:text-red-400",
+                          )}
+                          onClick={() => {
+                            setOpen(false);
+                            setActionsForId(null);
+                            onDeleteTemplate(entry.id);
+                          }}
+                        >
+                          <PiTrash className="size-3.5 shrink-0" aria-hidden />
+                          Delete
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+          <div className="my-1 h-px bg-app-border" role="separator" />
+          <button
+            type="button"
+            role="menuitem"
+            className={templateMenuItemClass}
+            onClick={() => {
+              setOpen(false);
+              onCreateTemplate();
+            }}
+          >
+            <PiPlus className="size-3.5 shrink-0" aria-hidden />
+            New template
+          </button>
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }
 

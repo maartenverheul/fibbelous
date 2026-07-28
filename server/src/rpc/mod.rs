@@ -47,6 +47,43 @@ struct CreateDatabaseRowParams {
     id: String,
     #[serde(default)]
     title: Option<String>,
+    #[serde(default)]
+    template_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateDatabaseTemplateParams {
+    id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GetDatabaseTemplateParams {
+    id: String,
+    template_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateDatabaseTemplateParams {
+    id: String,
+    template_id: String,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    icon: Option<String>,
+    #[serde(default)]
+    body: Option<String>,
+    #[serde(default)]
+    attributes: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DatabaseTemplateIdParams {
+    id: String,
+    template_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -334,8 +371,9 @@ pub fn build_workspace_module(state: WorkspaceRpcState) -> RpcModule<WorkspaceRp
             let workspace = ctx.workspace.clone();
             let database_id = request.id;
             let title = request.title;
+            let template_id = request.template_id;
             let page = tokio::task::spawn_blocking(move || {
-                workspace.create_database_row(&database_id, title)
+                workspace.create_database_row(&database_id, title, template_id)
             })
             .await
             .map_err(|error| ErrorObjectOwned::owned(1, error.to_string(), None::<()>))?
@@ -343,6 +381,107 @@ pub fn build_workspace_module(state: WorkspaceRpcState) -> RpcModule<WorkspaceRp
             Ok::<serde_json::Value, ErrorObjectOwned>(serde_json::to_value(page).unwrap())
         })
         .expect("create_database_row method registration");
+
+    module
+        .register_async_method("create_database_template", |params, ctx, _| async move {
+            let request: CreateDatabaseTemplateParams = params.parse()?;
+            let workspace = ctx.workspace.clone();
+            let database_id = request.id;
+            let result = tokio::task::spawn_blocking(move || {
+                workspace.create_database_template(&database_id)
+            })
+            .await
+            .map_err(|error| ErrorObjectOwned::owned(1, error.to_string(), None::<()>))?
+            .map_err(|error| ErrorObjectOwned::owned(2, error, None::<()>))?;
+            Ok::<serde_json::Value, ErrorObjectOwned>(serde_json::to_value(result).unwrap())
+        })
+        .expect("create_database_template method registration");
+
+    module
+        .register_async_method("get_database_template", |params, ctx, _| async move {
+            let request: GetDatabaseTemplateParams = params.parse()?;
+            let workspace = ctx.workspace.clone();
+            let database_id = request.id;
+            let template_id = request.template_id;
+            let page = tokio::task::spawn_blocking(move || {
+                workspace.get_database_template(&database_id, &template_id)
+            })
+            .await
+            .map_err(|error| ErrorObjectOwned::owned(1, error.to_string(), None::<()>))?
+            .map_err(|error| ErrorObjectOwned::owned(2, error, None::<()>))?;
+            Ok::<serde_json::Value, ErrorObjectOwned>(serde_json::to_value(page).unwrap())
+        })
+        .expect("get_database_template method registration");
+
+    module
+        .register_async_method("update_database_template", |params, ctx, _| async move {
+            let request: UpdateDatabaseTemplateParams = params.parse()?;
+            let workspace = ctx.workspace.clone();
+            let database_id = request.id;
+            let template_id = request.template_id;
+            let update = crate::databases::UpdateDatabaseTemplateInput {
+                title: request.title,
+                icon: request.icon,
+                body: request.body,
+                attributes: request.attributes,
+            };
+            let page = tokio::task::spawn_blocking(move || {
+                workspace.update_database_template(&database_id, &template_id, update)
+            })
+            .await
+            .map_err(|error| ErrorObjectOwned::owned(1, error.to_string(), None::<()>))?
+            .map_err(|error| ErrorObjectOwned::owned(2, error, None::<()>))?;
+            Ok::<serde_json::Value, ErrorObjectOwned>(serde_json::to_value(page).unwrap())
+        })
+        .expect("update_database_template method registration");
+
+    module
+        .register_async_method("duplicate_database_template", |params, ctx, _| async move {
+            let request: DatabaseTemplateIdParams = params.parse()?;
+            let workspace = ctx.workspace.clone();
+            let database_id = request.id;
+            let template_id = request.template_id;
+            let result = tokio::task::spawn_blocking(move || {
+                workspace.duplicate_database_template(&database_id, &template_id)
+            })
+            .await
+            .map_err(|error| ErrorObjectOwned::owned(1, error.to_string(), None::<()>))?
+            .map_err(|error| ErrorObjectOwned::owned(2, error, None::<()>))?;
+            Ok::<serde_json::Value, ErrorObjectOwned>(serde_json::to_value(result).unwrap())
+        })
+        .expect("duplicate_database_template method registration");
+
+    module
+        .register_async_method("delete_database_template", |params, ctx, _| async move {
+            let request: DatabaseTemplateIdParams = params.parse()?;
+            let workspace = ctx.workspace.clone();
+            let database_id = request.id;
+            let template_id = request.template_id;
+            let database = tokio::task::spawn_blocking(move || {
+                workspace.delete_database_template(&database_id, &template_id)
+            })
+            .await
+            .map_err(|error| ErrorObjectOwned::owned(1, error.to_string(), None::<()>))?
+            .map_err(|error| ErrorObjectOwned::owned(2, error, None::<()>))?;
+            Ok::<serde_json::Value, ErrorObjectOwned>(serde_json::to_value(database).unwrap())
+        })
+        .expect("delete_database_template method registration");
+
+    module
+        .register_async_method("set_default_database_template", |params, ctx, _| async move {
+            let request: DatabaseTemplateIdParams = params.parse()?;
+            let workspace = ctx.workspace.clone();
+            let database_id = request.id;
+            let template_id = request.template_id;
+            let database = tokio::task::spawn_blocking(move || {
+                workspace.set_default_database_template(&database_id, &template_id)
+            })
+            .await
+            .map_err(|error| ErrorObjectOwned::owned(1, error.to_string(), None::<()>))?
+            .map_err(|error| ErrorObjectOwned::owned(2, error, None::<()>))?;
+            Ok::<serde_json::Value, ErrorObjectOwned>(serde_json::to_value(database).unwrap())
+        })
+        .expect("set_default_database_template method registration");
 
     module
         .register_async_method("search_pages", |params, ctx, _| async move {
@@ -698,13 +837,109 @@ pub async fn call_workspace_rpc(
             let workspace = workspace.clone();
             let database_id = request.id;
             let title = request.title;
+            let template_id = request.template_id;
             let page = tokio::task::spawn_blocking(move || {
-                workspace.create_database_row(&database_id, title)
+                workspace.create_database_row(&database_id, title, template_id)
             })
             .await
             .map_err(|error| error.to_string())?
             .map_err(|error| error)?;
             serde_json::to_value(page).map_err(|error| error.to_string())
+        }
+        "create_database_template" => {
+            let request: CreateDatabaseTemplateParams =
+                serde_json::from_value(params_or_null(params))
+                    .map_err(|error| error.to_string())?;
+            let workspace = workspace.clone();
+            let database_id = request.id;
+            let result = tokio::task::spawn_blocking(move || {
+                workspace.create_database_template(&database_id)
+            })
+            .await
+            .map_err(|error| error.to_string())?
+            .map_err(|error| error)?;
+            serde_json::to_value(result).map_err(|error| error.to_string())
+        }
+        "get_database_template" => {
+            let request: GetDatabaseTemplateParams =
+                serde_json::from_value(params_or_null(params))
+                    .map_err(|error| error.to_string())?;
+            let workspace = workspace.clone();
+            let database_id = request.id;
+            let template_id = request.template_id;
+            let page = tokio::task::spawn_blocking(move || {
+                workspace.get_database_template(&database_id, &template_id)
+            })
+            .await
+            .map_err(|error| error.to_string())?
+            .map_err(|error| error)?;
+            serde_json::to_value(page).map_err(|error| error.to_string())
+        }
+        "update_database_template" => {
+            let request: UpdateDatabaseTemplateParams =
+                serde_json::from_value(params_or_null(params))
+                    .map_err(|error| error.to_string())?;
+            let workspace = workspace.clone();
+            let database_id = request.id;
+            let template_id = request.template_id;
+            let update = crate::databases::UpdateDatabaseTemplateInput {
+                title: request.title,
+                icon: request.icon,
+                body: request.body,
+                attributes: request.attributes,
+            };
+            let page = tokio::task::spawn_blocking(move || {
+                workspace.update_database_template(&database_id, &template_id, update)
+            })
+            .await
+            .map_err(|error| error.to_string())?
+            .map_err(|error| error)?;
+            serde_json::to_value(page).map_err(|error| error.to_string())
+        }
+        "duplicate_database_template" => {
+            let request: DatabaseTemplateIdParams =
+                serde_json::from_value(params_or_null(params))
+                    .map_err(|error| error.to_string())?;
+            let workspace = workspace.clone();
+            let database_id = request.id;
+            let template_id = request.template_id;
+            let result = tokio::task::spawn_blocking(move || {
+                workspace.duplicate_database_template(&database_id, &template_id)
+            })
+            .await
+            .map_err(|error| error.to_string())?
+            .map_err(|error| error)?;
+            serde_json::to_value(result).map_err(|error| error.to_string())
+        }
+        "delete_database_template" => {
+            let request: DatabaseTemplateIdParams =
+                serde_json::from_value(params_or_null(params))
+                    .map_err(|error| error.to_string())?;
+            let workspace = workspace.clone();
+            let database_id = request.id;
+            let template_id = request.template_id;
+            let database = tokio::task::spawn_blocking(move || {
+                workspace.delete_database_template(&database_id, &template_id)
+            })
+            .await
+            .map_err(|error| error.to_string())?
+            .map_err(|error| error)?;
+            serde_json::to_value(database).map_err(|error| error.to_string())
+        }
+        "set_default_database_template" => {
+            let request: DatabaseTemplateIdParams =
+                serde_json::from_value(params_or_null(params))
+                    .map_err(|error| error.to_string())?;
+            let workspace = workspace.clone();
+            let database_id = request.id;
+            let template_id = request.template_id;
+            let database = tokio::task::spawn_blocking(move || {
+                workspace.set_default_database_template(&database_id, &template_id)
+            })
+            .await
+            .map_err(|error| error.to_string())?
+            .map_err(|error| error)?;
+            serde_json::to_value(database).map_err(|error| error.to_string())
         }
         "search_pages" => {
             let request: SearchPagesParams = serde_json::from_value(params_or_null(params))

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import * as Popover from "@radix-ui/react-popover";
 import { usePageSave } from "../../context/PageSaveContext";
 import { useTabs } from "../../context/TabContext";
 import { useWorkspacePages } from "../../hooks/useWorkspacePages";
@@ -40,24 +41,19 @@ const saveStatusLabel: Record<PageSaveStatus, string> = {
   error: "Save failed",
 };
 
-function PageSaveIndicator({ status }: { status: PageSaveStatus }) {
+function PageSaveIndicator({
+  status,
+  error,
+}: {
+  status: PageSaveStatus;
+  error: string | null;
+}) {
   const label = saveStatusLabel[status];
   const isSaving = status === "saving";
+  const [open, setOpen] = useState(false);
 
-  return (
-    <span
-      role="status"
-      aria-live="polite"
-      aria-label={label}
-      title={label}
-      className={cn(
-        "flex h-6 w-6 shrink-0 items-center justify-center",
-        status === "saved" && "text-stone-500 dark:text-stone-500",
-        status === "unsaved" && "text-stone-700 dark:text-stone-300",
-        isSaving && "text-stone-700 dark:text-stone-300",
-        status === "error" && "text-red-700 dark:text-red-400",
-      )}
-    >
+  const icon = (
+    <>
       {status === "saved" && <PiCheck className="h-4 w-4" aria-hidden />}
       {status === "unsaved" && <PiCircle className="h-4 w-4" aria-hidden />}
       {isSaving && (
@@ -66,6 +62,67 @@ function PageSaveIndicator({ status }: { status: PageSaveStatus }) {
       {status === "error" && (
         <PiWarningCircle className="h-4 w-4" aria-hidden />
       )}
+    </>
+  );
+
+  const statusClassName = cn(
+    "flex h-6 w-6 shrink-0 items-center justify-center rounded",
+    status === "saved" && "text-stone-500 dark:text-stone-500",
+    status === "unsaved" && "text-stone-700 dark:text-stone-300",
+    isSaving && "text-stone-700 dark:text-stone-300",
+    status === "error" && "text-red-700 dark:text-red-400",
+  );
+
+  if (status === "error" && error) {
+    return (
+      <Popover.Root open={open} onOpenChange={setOpen}>
+        <Popover.Trigger asChild>
+          <button
+            type="button"
+            role="status"
+            aria-live="polite"
+            aria-label={label}
+            title={label}
+            className={cn(
+              statusClassName,
+              "hover:bg-red-50 dark:hover:bg-red-950/40",
+            )}
+          >
+            {icon}
+          </button>
+        </Popover.Trigger>
+        <Popover.Portal>
+          <Popover.Content
+            side="bottom"
+            align="end"
+            sideOffset={6}
+            className={cn(
+              "z-50 max-w-sm rounded-lg border border-app-border bg-app-surface p-3 shadow-lg",
+              "outline-none",
+            )}
+          >
+            <p className="text-xs font-medium text-red-700 dark:text-red-400">
+              Save failed
+            </p>
+            <p className="mt-1 whitespace-pre-wrap wrap-break-word text-sm text-stone-800 dark:text-stone-200">
+              {error}
+            </p>
+            <Popover.Arrow className="fill-app-surface" />
+          </Popover.Content>
+        </Popover.Portal>
+      </Popover.Root>
+    );
+  }
+
+  return (
+    <span
+      role="status"
+      aria-live="polite"
+      aria-label={label}
+      title={label}
+      className={statusClassName}
+    >
+      {icon}
     </span>
   );
 }
@@ -154,7 +211,7 @@ function CrumbList({
 
 export function PageBreadcrumbs() {
   const { activeSegment, navigateInTab, goBack, canGoBack } = useTabs();
-  const { status } = usePageSave();
+  const { status, error } = usePageSave();
   const {
     findPageByKey,
     findPageById,
@@ -334,7 +391,7 @@ export function PageBreadcrumbs() {
             </div>
           </>
         )}
-        <PageSaveIndicator status={status} />
+        <PageSaveIndicator status={status} error={error} />
       </div>
     </nav>
   );

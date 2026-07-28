@@ -166,7 +166,8 @@
   margin: 0;
   flex-shrink: 0;
   border-radius: 0.2rem;
-  border: 1px solid color-mix(in srgb, var(--app-fg-muted) 65%, var(--app-border));
+  border: 1px solid
+    color-mix(in srgb, var(--app-fg-muted) 65%, var(--app-border));
   background-color: #292524;
   background-position: center;
   background-repeat: no-repeat;
@@ -191,6 +192,7 @@
   width: 0.875rem;
   height: 0.875rem;
   margin-left: 0.5rem;
+  margin-right: 0.5rem;
   align-self: center;
 }
 
@@ -232,8 +234,12 @@
 /* <Database id="…" /> — keep wide tables inside the page column.
    BlockNote uses flex for .bn-block / .bn-block-content; without min-width:0
    a min-w-max table expands the editor past max-w-3xl. */
-.page-body-editor .bn-block-outer:has(> .bn-block > .bn-block-content[data-content-type="database"]),
-.page-body-editor .bn-block:has(> .bn-block-content[data-content-type="database"]) {
+.page-body-editor
+  .bn-block-outer:has(
+    > .bn-block > .bn-block-content[data-content-type="database"]
+  ),
+.page-body-editor
+  .bn-block:has(> .bn-block-content[data-content-type="database"]) {
   width: 100%;
   max-width: 100%;
   min-width: 0;
@@ -503,7 +509,11 @@
   font-size: 0.9375rem;
   line-height: inherit;
   text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, var(--app-fg-muted) 45%, transparent);
+  text-decoration-color: color-mix(
+    in srgb,
+    var(--app-fg-muted) 45%,
+    transparent
+  );
   text-underline-offset: 0.15em;
   word-break: break-word;
 }
@@ -511,7 +521,11 @@
 .page-body-editor .bn-mdx-toc__link:hover,
 .page-body-editor .bn-mdx-toc__link:focus-visible {
   color: var(--app-fg);
-  text-decoration-color: color-mix(in srgb, var(--app-fg-muted) 70%, transparent);
+  text-decoration-color: color-mix(
+    in srgb,
+    var(--app-fg-muted) 70%,
+    transparent
+  );
   outline: none;
 }
 
@@ -525,7 +539,11 @@
   box-sizing: border-box;
   padding: 1.1rem 1.25rem;
   border-radius: 0.5rem;
-  background-color: color-mix(in srgb, var(--app-border) 28%, var(--app-surface));
+  background-color: color-mix(
+    in srgb,
+    var(--app-border) 28%,
+    var(--app-surface)
+  );
 }
 
 .page-body-editor .bn-mdx-callout[data-callout-color="gray"] {
@@ -578,7 +596,10 @@
 
 /* Internal page links: alone on a row = chip; among text = icon + link */
 .page-body-editor .bn-editor .bn-page-link,
-.page-body-editor .bn-editor [data-inline-content-type="pageLink"] .bn-page-link {
+.page-body-editor
+  .bn-editor
+  [data-inline-content-type="pageLink"]
+  .bn-page-link {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
@@ -649,7 +670,10 @@
 
 /* Date mentions — @Today / @Yesterday … */
 .page-body-editor .bn-editor .bn-mention-date,
-.page-body-editor .bn-editor [data-inline-content-type="mentionDate"] .bn-mention-date {
+.page-body-editor
+  .bn-editor
+  [data-inline-content-type="mentionDate"]
+  .bn-mention-date {
   display: inline;
   margin-inline: 0.05em;
   padding: 0;

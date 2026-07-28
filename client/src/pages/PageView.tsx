@@ -10,8 +10,9 @@ import { useTabs } from "../context/TabContext";
 import { useWorkspacePages } from "../hooks/useWorkspacePages";
 import { isIgnorableRpcError } from "../lib/api/rpc";
 import { isDatabaseOnlyBody } from "../lib/database/block";
+import { updateDatabaseTemplate } from "../lib/database/fetch";
 import { consumePageTitleFocus, shouldFocusPageTitle } from "../lib/page/navigate";
-import { cn } from "../lib/utils";
+import { cn, formatUnknownError } from "../lib/utils";
 import { bodyMatchesStored } from "../lib/page/bodyTitle";
 import {
   buildBodyPatch,
@@ -58,6 +59,7 @@ type PageEditorProps = {
   readOnly: boolean;
   restoring: boolean;
   showTrashBanner: boolean;
+  showTemplateBanner?: boolean;
   referencedPages?: ReferencedPage[];
   databaseId?: string | null;
   attributes?: Record<string, unknown>;
@@ -79,6 +81,7 @@ function PageEditor({
   readOnly,
   restoring,
   showTrashBanner,
+  showTemplateBanner = false,
   referencedPages,
   databaseId,
   attributes,
@@ -154,6 +157,18 @@ function PageEditor({
           </button>
         </div>
       )}
+      {showTemplateBanner && !showTrashBanner ? (
+        <div
+          role="status"
+          className={cn(
+            "shrink-0 border-b border-app-border bg-app-border/35 px-4 py-2.5 sm:px-6",
+            "text-sm text-app-fg-muted",
+          )}
+        >
+          Editing template — new rows created from this template will use these
+          property values and body.
+        </div>
+      ) : null}
 
       <header
         className={cn("relative z-10 shrink-0", icon ? "h-20" : "h-24")}
@@ -193,8 +208,8 @@ function PageEditor({
                 bodyEditorRef.current?.focusStart();
               }}
               readOnly={readOnly}
-              placeholder="Untitled"
-              aria-label="Page title"
+              placeholder={showTemplateBanner ? "Untitled template" : "Untitled"}
+              aria-label={showTemplateBanner ? "Template name" : "Page title"}
               className={cn(
                 "min-w-0 w-full border-none bg-transparent p-0 text-3xl font-semibold text-stone-900 outline-none",
                 "placeholder:font-semibold placeholder:text-stone-400 dark:placeholder:text-stone-500",
@@ -208,11 +223,10 @@ function PageEditor({
       </header>
       <div
         className={cn(
-          "mx-auto w-full flex-1 pb-[80dvh]",
+          "mx-auto w-full flex-1 pb-[80dvh] pt-12",
           databasePage
             ? "page-database-body max-w-none px-4 sm:px-6 lg:px-8"
             : "max-w-3xl px-4",
-          icon ? "pt-20" : "pt-24",
         )}
       >
         {isDatabaseRow && databaseId ? (
@@ -610,34 +624,6 @@ export function PageView() {
 
         setPageStatusRef.current(pageIdForSave, "saving");
 
-        const meta = titleChanged
-          ? { title: titleToSave, slug: slugifyPageTitle(titleToSave) }
-          : {};
-
-        let bodyFields: { body?: string; bodyPatch?: BodyPatch } = {};
-
-        if (bodyChanged) {
-          const synced =
-            syncedBodyByPageIdRef.current.get(pageIdForSave) ??
-            (detailForSave.bodyHash
-              ? {
-                  body: detailForSave.body,
-                  hash: detailForSave.bodyHash,
-                }
-              : undefined);
-
-          if (synced) {
-            const patch = await buildBodyPatch(synced.body, bodyToSave);
-            if (shouldSendBodyPatch(patch, bodyToSave)) {
-              bodyFields = { bodyPatch: patch };
-            } else {
-              bodyFields = { body: bodyToSave };
-            }
-          } else {
-            bodyFields = { body: bodyToSave };
-          }
-        }
-
         const finishSave = (updated: WorkspacePageDetail) => {
           syncedBodyByPageIdRef.current.set(pageIdForSave, {
             body: updated.body,
@@ -687,6 +673,62 @@ export function PageView() {
           }
         };
 
+        const databaseIdForTemplate = detailForSave.databaseId;
+        if (detailForSave.isDatabaseTemplate && databaseIdForTemplate) {
+          try {
+            const updated = await updateDatabaseTemplate(
+              databaseIdForTemplate,
+              pageIdForSave,
+              {
+                ...(titleChanged ? { title: titleToSave } : {}),
+                ...(bodyChanged ? { body: bodyToSave } : {}),
+                ...(attrsChanged ? { attributes: attributesToSave } : {}),
+              },
+            );
+            finishSave(updated);
+          } catch (error) {
+            if (isIgnorableRpcError(error)) {
+              setPageStatusRef.current(pageIdForSave, "unsaved");
+              return;
+            }
+            console.error(error);
+            setPageStatusRef.current(
+              pageIdForSave,
+              "error",
+              formatUnknownError(error, "Failed to save page"),
+            );
+          }
+          return;
+        }
+
+        const meta = titleChanged
+          ? { title: titleToSave, slug: slugifyPageTitle(titleToSave) }
+          : {};
+
+        let bodyFields: { body?: string; bodyPatch?: BodyPatch } = {};
+
+        if (bodyChanged) {
+          const synced =
+            syncedBodyByPageIdRef.current.get(pageIdForSave) ??
+            (detailForSave.bodyHash
+              ? {
+                body: detailForSave.body,
+                hash: detailForSave.bodyHash,
+              }
+              : undefined);
+
+          if (synced) {
+            const patch = await buildBodyPatch(synced.body, bodyToSave);
+            if (shouldSendBodyPatch(patch, bodyToSave)) {
+              bodyFields = { bodyPatch: patch };
+            } else {
+              bodyFields = { body: bodyToSave };
+            }
+          } else {
+            bodyFields = { body: bodyToSave };
+          }
+        }
+
         try {
           const updated = await updatePageRef.current(pageIdForSave, {
             ...meta,
@@ -730,12 +772,20 @@ export function PageView() {
                 return;
               }
               console.error(retryError);
-              setPageStatusRef.current(pageIdForSave, "error");
+              setPageStatusRef.current(
+                pageIdForSave,
+                "error",
+                formatUnknownError(retryError, "Failed to save page"),
+              );
               return;
             }
           }
           console.error(error);
-          setPageStatusRef.current(pageIdForSave, "error");
+          setPageStatusRef.current(
+            pageIdForSave,
+            "error",
+            formatUnknownError(error, "Failed to save page"),
+          );
         }
       });
   }, []);
@@ -825,13 +875,25 @@ export function PageView() {
       if (isTrashed || !page) return;
 
       try {
+        const detailForIcon =
+          (activeDetail?.id === page.id ? activeDetail : undefined) ??
+          getPageDetailById(page.id);
+        if (detailForIcon?.isDatabaseTemplate && detailForIcon.databaseId) {
+          const updated = await updateDatabaseTemplate(
+            detailForIcon.databaseId,
+            page.id,
+            { icon },
+          );
+          applyDetail(updated, page.id);
+          return;
+        }
         const updated = await updatePage(page.id, { icon });
         applyDetail(updated, page.id);
       } catch (error) {
         console.error(error);
       }
     },
-    [isTrashed, page, updatePage, applyDetail],
+    [isTrashed, page, activeDetail, getPageDetailById, updatePage, applyDetail],
   );
 
   const handleRestore = async () => {
@@ -890,6 +952,7 @@ export function PageView() {
       readOnly={isTrashed}
       restoring={restoring}
       showTrashBanner={isTrashed}
+      showTemplateBanner={Boolean(activeDetail?.isDatabaseTemplate)}
       referencedPages={detail?.referencedPages ?? []}
       databaseId={activeDetail?.databaseId ?? cachedPage?.databaseId}
       attributes={attributes}

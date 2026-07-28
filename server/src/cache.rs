@@ -117,6 +117,9 @@ pub struct PageDetail {
     /// Set when this page is a database row; id of the parent database / host page.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub database_id: Option<String>,
+    /// True when this detail is a database row template (not a real row).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub is_database_template: bool,
     /// Database-row attribute map from frontmatter; omitted for normal pages.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attributes: Option<serde_json::Value>,
@@ -662,6 +665,7 @@ impl CacheDb {
             has_children,
             favorite,
             database_id: None,
+            is_database_template: false,
             attributes: None,
             created: None,
             edited: None,

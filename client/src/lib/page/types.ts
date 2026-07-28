@@ -57,6 +57,8 @@ export type WorkspacePageDetail = WorkspacePage & {
   created?: string | null;
   /** Row frontmatter `edited` (ISO). */
   edited?: string | null;
+  /** True when this detail is a database row template (not a real row). */
+  isDatabaseTemplate?: boolean;
 };
 
 /** Compact op: `[0, index, length]` delete or `[1, index, text]` insert. */
@@ -100,12 +102,12 @@ export function buildTrashedPageSegment(page: TrashedPage) {
 export const ROOT_PAGES_DIR = "pages";
 
 export function pageKey(page: WorkspacePage) {
-  const slug = page.slug ?? page.id;
+  const slug = page.slug?.trim() || page.id;
   return `${slug}-${page.id}`;
 }
 
 export function pageSlug(page: WorkspacePage) {
-  return page.slug ?? page.id;
+  return page.slug?.trim() || page.id;
 }
 
 export function parsePageKey(

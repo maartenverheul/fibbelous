@@ -9,7 +9,10 @@ use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 
 use crate::cache::{page_body_from_content, CacheDb, DatabaseDetail, DatabaseMeta, DatabaseRowsPage, PageDetail};
-use crate::pages::{create_page, format_database_row_content, CreatePageInput, DatabaseRowFrontmatter};
+use crate::pages::{
+    create_page, format_database_row_content, format_properties_block, CreatePageInput,
+    DatabaseRowFrontmatter,
+};
 
 /// On-disk shape of `databases/*/database.json`.
 /// Field order here is the serialization order.
@@ -30,6 +33,32 @@ pub struct DatabaseFile {
     pub properties: IndexMap<String, DatabaseProperty>,
     #[serde(default)]
     pub views: Vec<DatabaseViewDef>,
+    /// Custom row templates (Empty is virtual and never stored here).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub templates: Vec<DatabaseRowTemplate>,
+    /// Id of the default template used by New. Absent/`"empty"` => Empty.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        rename = "defaultTemplateId"
+    )]
+    pub default_template_id: Option<String>,
+}
+
+/// Built-in locked Empty template id (never persisted in `templates`).
+pub const EMPTY_TEMPLATE_ID: &str = "empty";
+
+/// A named row template that presets property values and body content.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DatabaseRowTemplate {
+    pub id: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub body: String,
+    #[serde(default, skip_serializing_if = "IndexMap::is_empty")]
+    pub properties: IndexMap<String, Value>,
 }
 
 /// A property column. Shared fields first, then `type` + type-specific config.
@@ -758,11 +787,22 @@ pub fn create_database_row(
     cache: &mut CacheDb,
     database_id: &str,
     title: Option<String>,
+    template_id: Option<String>,
 ) -> Result<PageDetail, String> {
     let meta = cache
         .get_database_by_id(database_id)
         .map_err(|error| error.to_string())?
         .ok_or_else(|| "database not found".to_string())?;
+
+    let contents = cache
+        .get_database_content(database_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "database content not found".to_owned())?;
+    let database: DatabaseFile =
+        serde_json::from_str(&contents).map_err(|error| error.to_string())?;
+
+    let resolved_template_id = resolve_template_id(&database, template_id.as_deref())?;
+    let template = resolved_row_template(&database, &resolved_template_id)?;
 
     let database_dir = Path::new(&meta.path)
         .parent()
@@ -781,18 +821,23 @@ pub fn create_database_row(
     let id = generate_row_id(&format!("{database_dir_rel}:{file_slug}"));
     let now = now_iso();
 
+    let properties_value = Value::Object(template.properties.iter().map(|(k, v)| (k.clone(), v.clone())).collect());
+    let properties_block = format_properties_block(&properties_value)?;
+    let icon = template.icon.clone().filter(|value| !value.is_empty());
+    let body = template.body.clone();
+
     let content = format_database_row_content(
         &DatabaseRowFrontmatter {
             id: id.clone(),
             slug: file_slug.clone(),
             title: title.clone(),
-            icon: None,
+            icon: icon.clone(),
             favorite: false,
             created: now.clone(),
             edited: now.clone(),
-            properties_block: "properties: {}\n".to_owned(),
+            properties_block,
         },
-        "",
+        &body,
     );
     let relative_path = format!("{database_dir_rel}/{id}-{file_slug}.mdx");
     cache
@@ -802,7 +847,7 @@ pub fn create_database_row(
             &id,
             Some(&file_slug),
             Some(&title),
-            None,
+            icon.as_deref(),
             &content,
             false,
         )
@@ -818,12 +863,13 @@ pub fn create_database_row(
         parent_id: None,
         slug: Some(file_slug),
         title: Some(title),
-        icon: None,
+        icon,
         path: relative_path,
         has_children: false,
         favorite: false,
         database_id: Some(database_id.to_owned()),
-        attributes: Some(serde_json::json!({})),
+        is_database_template: false,
+        attributes: Some(properties_value),
         created: Some(now.clone()),
         edited: Some(now),
         body_hash: crate::cache::hash_body(&body),
@@ -831,6 +877,388 @@ pub fn create_database_row(
         referenced_pages,
         ancestors: Vec::new(),
     })
+}
+
+/// Effective default template id for a database (`empty` when unset/invalid).
+pub fn effective_default_template_id(database: &DatabaseFile) -> String {
+    match database.default_template_id.as_deref() {
+        None | Some("") | Some(EMPTY_TEMPLATE_ID) => EMPTY_TEMPLATE_ID.to_owned(),
+        Some(id) if database.templates.iter().any(|template| template.id == id) => {
+            id.to_owned()
+        }
+        Some(_) => EMPTY_TEMPLATE_ID.to_owned(),
+    }
+}
+
+fn resolve_template_id(
+    database: &DatabaseFile,
+    requested: Option<&str>,
+) -> Result<String, String> {
+    match requested {
+        None | Some("") => Ok(effective_default_template_id(database)),
+        Some(EMPTY_TEMPLATE_ID) => Ok(EMPTY_TEMPLATE_ID.to_owned()),
+        Some(id) => {
+            if database.templates.iter().any(|template| template.id == id) {
+                Ok(id.to_owned())
+            } else {
+                Err(format!("template not found: {id}"))
+            }
+        }
+    }
+}
+
+fn empty_row_template() -> DatabaseRowTemplate {
+    DatabaseRowTemplate {
+        id: EMPTY_TEMPLATE_ID.to_owned(),
+        name: "Empty".to_owned(),
+        icon: None,
+        body: String::new(),
+        properties: IndexMap::new(),
+    }
+}
+
+fn resolved_row_template(
+    database: &DatabaseFile,
+    template_id: &str,
+) -> Result<DatabaseRowTemplate, String> {
+    if template_id == EMPTY_TEMPLATE_ID {
+        return Ok(empty_row_template());
+    }
+    database
+        .templates
+        .iter()
+        .find(|template| template.id == template_id)
+        .cloned()
+        .ok_or_else(|| format!("template not found: {template_id}"))
+}
+
+fn template_path(database_id: &str, template_id: &str) -> String {
+    format!("databases/{database_id}/templates/{template_id}")
+}
+
+fn template_to_page_detail(
+    cache: &CacheDb,
+    database_id: &str,
+    template: &DatabaseRowTemplate,
+) -> Result<PageDetail, String> {
+    if template.id == EMPTY_TEMPLATE_ID {
+        return Err("cannot open the Empty template for editing".to_owned());
+    }
+    let attributes = Value::Object(
+        template
+            .properties
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect(),
+    );
+    let body = template.body.clone();
+    let referenced_pages = cache
+        .referenced_pages_for_body(&body)
+        .map_err(|error| error.to_string())?;
+    let slug = {
+        let derived = slugify(&template.name);
+        if derived.is_empty() {
+            "untitled".to_owned()
+        } else {
+            derived
+        }
+    };
+    Ok(PageDetail {
+        id: template.id.clone(),
+        parent_id: None,
+        slug: Some(slug),
+        title: Some(template.name.clone()),
+        icon: template.icon.clone(),
+        path: template_path(database_id, &template.id),
+        has_children: false,
+        favorite: false,
+        database_id: Some(database_id.to_owned()),
+        is_database_template: true,
+        attributes: Some(attributes),
+        created: None,
+        edited: None,
+        body_hash: crate::cache::hash_body(&body),
+        body,
+        referenced_pages,
+        ancestors: Vec::new(),
+    })
+}
+
+fn unique_template_id(templates: &[DatabaseRowTemplate], database_id: &str) -> String {
+    for _ in 0..8 {
+        let candidate = generate_row_id(database_id);
+        if candidate != EMPTY_TEMPLATE_ID
+            && !templates.iter().any(|template| template.id == candidate)
+        {
+            return candidate;
+        }
+    }
+    let fallback = generate_row_id(&format!("{database_id}:template-retry"));
+    format!("tpl-{fallback}")
+}
+
+fn unique_template_name(templates: &[DatabaseRowTemplate], base: &str) -> String {
+    if !templates.iter().any(|template| template.name == base) {
+        return base.to_owned();
+    }
+    for index in 2..1000 {
+        let candidate = format!("{base} {index}");
+        if !templates.iter().any(|template| template.name == candidate) {
+            return candidate;
+        }
+    }
+    format!("{base} {}", generate_row_id(base))
+}
+
+fn load_database_file(
+    cache: &CacheDb,
+    database_id: &str,
+) -> Result<(DatabaseMeta, DatabaseFile), String> {
+    let meta = cache
+        .get_database_by_id(database_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "database not found".to_string())?;
+    let contents = cache
+        .get_database_content(database_id)
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "database content not found".to_owned())?;
+    let database: DatabaseFile =
+        serde_json::from_str(&contents).map_err(|error| error.to_string())?;
+    Ok((meta, database))
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateDatabaseTemplateResult {
+    pub database: DatabaseDetail,
+    pub page: PageDetail,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateDatabaseTemplateInput {
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub icon: Option<String>,
+    #[serde(default)]
+    pub body: Option<String>,
+    #[serde(default)]
+    pub attributes: Option<Value>,
+}
+
+pub fn create_database_template(
+    _workspace_path: &Path,
+    cache: &mut CacheDb,
+    database_id: &str,
+) -> Result<Option<CreateDatabaseTemplateResult>, String> {
+    let Ok((meta, mut database)) = load_database_file(cache, database_id) else {
+        return Ok(None);
+    };
+
+    let id = unique_template_id(&database.templates, database_id);
+    let name = unique_template_name(&database.templates, "New template");
+    let template = DatabaseRowTemplate {
+        id: id.clone(),
+        name,
+        icon: None,
+        body: String::new(),
+        properties: IndexMap::new(),
+    };
+    let page = template_to_page_detail(cache, database_id, &template)?;
+    database.templates.push(template);
+    let detail = save_database_file(cache, &meta, database_id, &database)?;
+    Ok(Some(CreateDatabaseTemplateResult {
+        database: detail,
+        page,
+    }))
+}
+
+pub fn get_database_template(
+    _workspace_path: &Path,
+    cache: &CacheDb,
+    database_id: &str,
+    template_id: &str,
+) -> Result<Option<PageDetail>, String> {
+    let Ok((_, database)) = load_database_file(cache, database_id) else {
+        return Ok(None);
+    };
+    if template_id == EMPTY_TEMPLATE_ID {
+        return Err("cannot open the Empty template for editing".to_owned());
+    }
+    let Some(template) = database
+        .templates
+        .iter()
+        .find(|template| template.id == template_id)
+    else {
+        return Ok(None);
+    };
+    Ok(Some(template_to_page_detail(cache, database_id, template)?))
+}
+
+/// Find a template by id across all databases (for page navigation / deep links).
+pub fn find_database_template(
+    cache: &CacheDb,
+    template_id: &str,
+) -> Result<Option<PageDetail>, String> {
+    if template_id == EMPTY_TEMPLATE_ID {
+        return Err("cannot open the Empty template for editing".to_owned());
+    }
+    let databases = cache
+        .list_databases()
+        .map_err(|error| error.to_string())?;
+    for meta in databases {
+        let contents = match cache.get_database_content(&meta.id) {
+            Ok(Some(contents)) => contents,
+            Ok(None) => continue,
+            Err(error) => return Err(error.to_string()),
+        };
+        let database: DatabaseFile =
+            serde_json::from_str(&contents).map_err(|error| error.to_string())?;
+        if let Some(template) = database
+            .templates
+            .iter()
+            .find(|template| template.id == template_id)
+        {
+            return Ok(Some(template_to_page_detail(cache, &meta.id, template)?));
+        }
+    }
+    Ok(None)
+}
+
+pub fn update_database_template(
+    _workspace_path: &Path,
+    cache: &mut CacheDb,
+    database_id: &str,
+    template_id: &str,
+    update: UpdateDatabaseTemplateInput,
+) -> Result<Option<PageDetail>, String> {
+    if template_id == EMPTY_TEMPLATE_ID {
+        return Err("cannot edit the Empty template".to_owned());
+    }
+    let Ok((meta, mut database)) = load_database_file(cache, database_id) else {
+        return Ok(None);
+    };
+    let Some(template) = database
+        .templates
+        .iter_mut()
+        .find(|template| template.id == template_id)
+    else {
+        return Ok(None);
+    };
+
+    if let Some(title) = update.title {
+        template.name = title.trim().to_owned();
+    }
+    if let Some(icon) = update.icon {
+        template.icon = if icon.trim().is_empty() {
+            None
+        } else {
+            Some(icon)
+        };
+    }
+    if let Some(body) = update.body {
+        template.body = body;
+    }
+    if let Some(attributes) = update.attributes {
+        let map = match attributes {
+            Value::Null => IndexMap::new(),
+            Value::Object(object) => object.into_iter().collect(),
+            _ => return Err("attributes must be a JSON object".to_owned()),
+        };
+        template.properties = map;
+    }
+
+    let page = template_to_page_detail(cache, database_id, template)?;
+    save_database_file(cache, &meta, database_id, &database)?;
+    Ok(Some(page))
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DuplicateDatabaseTemplateResult {
+    pub database: DatabaseDetail,
+    pub page: PageDetail,
+}
+
+pub fn duplicate_database_template(
+    _workspace_path: &Path,
+    cache: &mut CacheDb,
+    database_id: &str,
+    template_id: &str,
+) -> Result<Option<DuplicateDatabaseTemplateResult>, String> {
+    let Ok((meta, mut database)) = load_database_file(cache, database_id) else {
+        return Ok(None);
+    };
+    let source = resolved_row_template(&database, template_id)?;
+    let id = unique_template_id(&database.templates, database_id);
+    let source_label = if source.name.trim().is_empty() {
+        "Untitled"
+    } else {
+        source.name.as_str()
+    };
+    let name = unique_template_name(
+        &database.templates,
+        &format!("Copy of {source_label}"),
+    );
+    let template = DatabaseRowTemplate {
+        id: id.clone(),
+        name,
+        icon: source.icon,
+        body: source.body,
+        properties: source.properties,
+    };
+    let page = template_to_page_detail(cache, database_id, &template)?;
+    database.templates.push(template);
+    let detail = save_database_file(cache, &meta, database_id, &database)?;
+    Ok(Some(DuplicateDatabaseTemplateResult {
+        database: detail,
+        page,
+    }))
+}
+
+pub fn delete_database_template(
+    _workspace_path: &Path,
+    cache: &mut CacheDb,
+    database_id: &str,
+    template_id: &str,
+) -> Result<Option<DatabaseDetail>, String> {
+    if template_id == EMPTY_TEMPLATE_ID {
+        return Err("cannot delete the Empty template".to_owned());
+    }
+    let Ok((meta, mut database)) = load_database_file(cache, database_id) else {
+        return Ok(None);
+    };
+    let before = database.templates.len();
+    database.templates.retain(|template| template.id != template_id);
+    if database.templates.len() == before {
+        return Err(format!("template not found: {template_id}"));
+    }
+    if database.default_template_id.as_deref() == Some(template_id) {
+        database.default_template_id = None;
+    }
+    let detail = save_database_file(cache, &meta, database_id, &database)?;
+    Ok(Some(detail))
+}
+
+pub fn set_default_database_template(
+    _workspace_path: &Path,
+    cache: &mut CacheDb,
+    database_id: &str,
+    template_id: &str,
+) -> Result<Option<DatabaseDetail>, String> {
+    let Ok((meta, mut database)) = load_database_file(cache, database_id) else {
+        return Ok(None);
+    };
+    if template_id == EMPTY_TEMPLATE_ID {
+        database.default_template_id = None;
+    } else if database.templates.iter().any(|template| template.id == template_id) {
+        database.default_template_id = Some(template_id.to_owned());
+    } else {
+        return Err(format!("template not found: {template_id}"));
+    }
+    let detail = save_database_file(cache, &meta, database_id, &database)?;
+    Ok(Some(detail))
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -907,6 +1335,8 @@ pub fn create_database(
         edited: Some(now),
         properties,
         views: Vec::new(),
+        templates: Vec::new(),
+        default_template_id: None,
     };
     database.ensure_default_views();
 

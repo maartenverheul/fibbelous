@@ -242,7 +242,7 @@ impl Workspace {
             .get_database_row_by_id(id)
             .map_err(|error| error.to_string())?
         else {
-            return Ok(None);
+            return databases::find_database_template(&cache, id);
         };
 
         let content = cache
@@ -290,6 +290,7 @@ impl Workspace {
             has_children: false,
             favorite: row.favorite,
             database_id: Some(row.database_id),
+            is_database_template: false,
             attributes: Some(attributes),
             created: created.or(row.created),
             edited: edited.or(row.edited),
@@ -387,14 +388,135 @@ impl Workspace {
         &self,
         database_id: &str,
         title: Option<String>,
+        template_id: Option<String>,
     ) -> Result<crate::cache::PageDetail, String> {
         let mut cache = self
             .cache
             .lock()
             .map_err(|_| "cache mutex poisoned".to_string())?;
-        let result = databases::create_database_row(&self.path, &mut cache, database_id, title);
+        let result = databases::create_database_row(
+            &self.path,
+            &mut cache,
+            database_id,
+            title,
+            template_id,
+        );
         if let Ok(page) = &result {
             self.flush.mark(DirtyKey::Row(page.id.clone()));
+        }
+        result
+    }
+
+    pub fn create_database_template(
+        &self,
+        database_id: &str,
+    ) -> Result<Option<databases::CreateDatabaseTemplateResult>, String> {
+        let mut cache = self
+            .cache
+            .lock()
+            .map_err(|_| "cache mutex poisoned".to_string())?;
+        let result =
+            databases::create_database_template(&self.path, &mut cache, database_id);
+        if matches!(result, Ok(Some(_))) {
+            self.flush.mark(DirtyKey::Database(database_id.to_owned()));
+        }
+        result
+    }
+
+    pub fn get_database_template(
+        &self,
+        database_id: &str,
+        template_id: &str,
+    ) -> Result<Option<crate::cache::PageDetail>, String> {
+        let cache = self
+            .cache
+            .lock()
+            .map_err(|_| "cache mutex poisoned".to_string())?;
+        databases::get_database_template(&self.path, &cache, database_id, template_id)
+    }
+
+    pub fn update_database_template(
+        &self,
+        database_id: &str,
+        template_id: &str,
+        update: databases::UpdateDatabaseTemplateInput,
+    ) -> Result<Option<crate::cache::PageDetail>, String> {
+        let mut cache = self
+            .cache
+            .lock()
+            .map_err(|_| "cache mutex poisoned".to_string())?;
+        let result = databases::update_database_template(
+            &self.path,
+            &mut cache,
+            database_id,
+            template_id,
+            update,
+        );
+        if matches!(result, Ok(Some(_))) {
+            self.flush.mark(DirtyKey::Database(database_id.to_owned()));
+        }
+        result
+    }
+
+    pub fn duplicate_database_template(
+        &self,
+        database_id: &str,
+        template_id: &str,
+    ) -> Result<Option<databases::DuplicateDatabaseTemplateResult>, String> {
+        let mut cache = self
+            .cache
+            .lock()
+            .map_err(|_| "cache mutex poisoned".to_string())?;
+        let result = databases::duplicate_database_template(
+            &self.path,
+            &mut cache,
+            database_id,
+            template_id,
+        );
+        if matches!(result, Ok(Some(_))) {
+            self.flush.mark(DirtyKey::Database(database_id.to_owned()));
+        }
+        result
+    }
+
+    pub fn delete_database_template(
+        &self,
+        database_id: &str,
+        template_id: &str,
+    ) -> Result<Option<crate::cache::DatabaseDetail>, String> {
+        let mut cache = self
+            .cache
+            .lock()
+            .map_err(|_| "cache mutex poisoned".to_string())?;
+        let result = databases::delete_database_template(
+            &self.path,
+            &mut cache,
+            database_id,
+            template_id,
+        );
+        if matches!(result, Ok(Some(_))) {
+            self.flush.mark(DirtyKey::Database(database_id.to_owned()));
+        }
+        result
+    }
+
+    pub fn set_default_database_template(
+        &self,
+        database_id: &str,
+        template_id: &str,
+    ) -> Result<Option<crate::cache::DatabaseDetail>, String> {
+        let mut cache = self
+            .cache
+            .lock()
+            .map_err(|_| "cache mutex poisoned".to_string())?;
+        let result = databases::set_default_database_template(
+            &self.path,
+            &mut cache,
+            database_id,
+            template_id,
+        );
+        if matches!(result, Ok(Some(_))) {
+            self.flush.mark(DirtyKey::Database(database_id.to_owned()));
         }
         result
     }

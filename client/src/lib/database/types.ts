@@ -64,6 +64,19 @@ export type DatabaseFile = {
   edited?: string | null;
   properties: Record<string, DatabaseProperty>;
   views?: DatabaseView[];
+  templates?: DatabaseRowTemplate[];
+  defaultTemplateId?: string | null;
+};
+
+/** Built-in locked Empty template id (never persisted in `templates`). */
+export const EMPTY_DATABASE_TEMPLATE_ID = "empty";
+
+export type DatabaseRowTemplate = {
+  id: string;
+  name: string;
+  icon?: string | null;
+  body?: string;
+  properties?: Record<string, unknown>;
 };
 
 export type DatabaseProperty = {
@@ -197,6 +210,9 @@ export type DatabaseSchema = {
   icon: string | null;
   properties: DatabasePropertyColumn[];
   views: DatabaseView[];
+  templates: DatabaseRowTemplate[];
+  /** Effective default template id (`empty` when unset). */
+  defaultTemplateId: string;
 };
 
 export const DEFAULT_DATABASE_VIEW: DatabaseView = {
@@ -325,6 +341,42 @@ function parsePropertyOptions(
   return options.length > 0 ? options : undefined;
 }
 
+function parseRowTemplate(raw: unknown): DatabaseRowTemplate | null {
+  const record = asRecord(raw);
+  if (!record) return null;
+  const id = readString(record.id);
+  if (!id || id === EMPTY_DATABASE_TEMPLATE_ID) return null;
+  const name = typeof record.name === "string" ? record.name.trim() : "";
+  const properties = asRecord(record.properties) ?? undefined;
+  return {
+    id,
+    name,
+    icon: readString(record.icon),
+    body: typeof record.body === "string" ? record.body : "",
+    ...(properties ? { properties } : {}),
+  };
+}
+
+function parseRowTemplates(raw: unknown): DatabaseRowTemplate[] {
+  if (!Array.isArray(raw) || raw.length === 0) return [];
+  return raw
+    .map(parseRowTemplate)
+    .filter((item): item is DatabaseRowTemplate => item !== null);
+}
+
+function parseDefaultTemplateId(
+  raw: unknown,
+  templates: DatabaseRowTemplate[],
+): string {
+  const id = readString(raw);
+  if (!id || id === EMPTY_DATABASE_TEMPLATE_ID) {
+    return EMPTY_DATABASE_TEMPLATE_ID;
+  }
+  return templates.some((template) => template.id === id)
+    ? id
+    : EMPTY_DATABASE_TEMPLATE_ID;
+}
+
 /** Parse Notion-like `database.json` into columns + views (title column first). */
 export function parseDatabaseSchema(json: unknown): DatabaseSchema | null {
   const root = asRecord(json);
@@ -364,6 +416,8 @@ export function parseDatabaseSchema(json: unknown): DatabaseSchema | null {
     });
   }
 
+  const templates = parseRowTemplates(root.templates);
+
   return {
     id,
     slug: readString(root.slug),
@@ -371,6 +425,8 @@ export function parseDatabaseSchema(json: unknown): DatabaseSchema | null {
     icon: readString(root.icon),
     properties,
     views: parseDatabaseViews(root.views),
+    templates,
+    defaultTemplateId: parseDefaultTemplateId(root.defaultTemplateId, templates),
   };
 }
 

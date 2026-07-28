@@ -1,5 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { PiFileText, PiGear, PiGitBranch, PiMagnifyingGlass, PiTrash, PiX } from "react-icons/pi";
+import {
+  PiCaretUp,
+  PiFileText,
+  PiGear,
+  PiGitBranch,
+  PiMagnifyingGlass,
+  PiTrash,
+  PiX,
+} from "react-icons/pi";
 import { useSidebar } from "../../context/SidebarContext";
 import { useTabs, type TabTarget } from "../../context/TabContext";
 import { useWorkspacePages } from "../../hooks/useWorkspacePages";
@@ -25,6 +33,19 @@ type ContextMenuState = {
   page?: WorkspacePage;
 };
 
+type SidebarUtilityLink = {
+  segment: "search" | "sync" | "trash" | "settings";
+  label: string;
+  icon: typeof PiMagnifyingGlass;
+};
+
+const SIDEBAR_UTILITY_LINKS: SidebarUtilityLink[] = [
+  { segment: "search", label: "Search", icon: PiMagnifyingGlass },
+  { segment: "sync", label: "Sync", icon: PiGitBranch },
+  { segment: "trash", label: "Trash", icon: PiTrash },
+  { segment: "settings", label: "Settings", icon: PiGear },
+];
+
 const navButtonClassName = (active: boolean) =>
   cn(
     "rounded-md px-2.5 py-1.5 text-left text-sm transition-colors",
@@ -49,6 +70,7 @@ export function Sidebar() {
     ensurePageTreeVisible,
   } = useWorkspacePages();
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [moreOpen, setMoreOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -254,89 +276,90 @@ export function Sidebar() {
           </CollapsibleSection>
         </div>
 
-        <button
-          type="button"
-          onClick={() =>
-            navigateFromSidebar(
-              "search",
-              { label: "Search" },
-              activeSegment === "search",
-            )
-          }
-          onContextMenu={(event) =>
-            openContextMenu(event, "search", { label: "Search" })
-          }
-          className={cn(
-            navButtonClassName(activeSegment === "search"),
-            "mx-3 mt-2 flex shrink-0 items-center gap-2",
-          )}
-        >
-          <PiMagnifyingGlass className="h-4 w-4 shrink-0" aria-hidden />
-          Search
-        </button>
-
-        <button
-          type="button"
-          onClick={() =>
-            navigateFromSidebar(
-              "sync",
-              { label: "Sync" },
-              activeSegment === "sync",
-            )
-          }
-          onContextMenu={(event) =>
-            openContextMenu(event, "sync", { label: "Sync" })
-          }
-          className={cn(
-            navButtonClassName(activeSegment === "sync"),
-            "mx-3 mt-2 flex shrink-0 items-center gap-2",
-          )}
-        >
-          <PiGitBranch className="h-4 w-4 shrink-0" aria-hidden />
-          Sync
-        </button>
-
-        <button
-          type="button"
-          onClick={() =>
-            navigateFromSidebar(
-              "trash",
-              { label: "Trash" },
-              activeSegment === "trash",
-            )
-          }
-          onContextMenu={(event) =>
-            openContextMenu(event, "trash", { label: "Trash" })
-          }
-          className={cn(
-            navButtonClassName(activeSegment === "trash"),
-            "mx-3 mt-2 flex shrink-0 items-center gap-2",
-          )}
-        >
-          <PiTrash className="h-4 w-4 shrink-0" aria-hidden />
-          Trash
-        </button>
-
-        <button
-          type="button"
-          onClick={() =>
-            navigateFromSidebar(
-              "settings",
-              { label: "Settings" },
-              activeSegment === "settings",
-            )
-          }
-          onContextMenu={(event) =>
-            openContextMenu(event, "settings", { label: "Settings" })
-          }
-          className={cn(
-            navButtonClassName(activeSegment === "settings"),
-            "mx-3 mb-3 mt-2 flex shrink-0 items-center gap-2",
-          )}
-        >
-          <PiGear className="h-4 w-4 shrink-0" aria-hidden />
-          Settings
-        </button>
+        {isMobile ? (
+          <div className="mx-3 mb-3 mt-2 flex shrink-0 flex-col border-t border-app-border pt-2">
+            {moreOpen
+              ? SIDEBAR_UTILITY_LINKS.map((link) => {
+                  const Icon = link.icon;
+                  const active = activeSegment === link.segment;
+                  return (
+                    <button
+                      key={link.segment}
+                      type="button"
+                      onClick={() => {
+                        setMoreOpen(false);
+                        navigateFromSidebar(
+                          link.segment,
+                          { label: link.label },
+                          active,
+                        );
+                      }}
+                      className={cn(
+                        navButtonClassName(active),
+                        "flex items-center gap-2",
+                      )}
+                    >
+                      <Icon className="h-4 w-4 shrink-0" aria-hidden />
+                      {link.label}
+                    </button>
+                  );
+                })
+              : null}
+            <button
+              type="button"
+              onClick={() => setMoreOpen((open) => !open)}
+              className={cn(
+                navButtonClassName(
+                  !moreOpen &&
+                    SIDEBAR_UTILITY_LINKS.some(
+                      (link) => activeSegment === link.segment,
+                    ),
+                ),
+                "flex items-center gap-2",
+              )}
+              aria-expanded={moreOpen}
+            >
+              <PiCaretUp
+                className={cn(
+                  "h-4 w-4 shrink-0 transition-transform",
+                  moreOpen && "rotate-180",
+                )}
+                aria-hidden
+              />
+              More…
+            </button>
+          </div>
+        ) : (
+          <div className="mx-3 mb-3 mt-2 flex shrink-0 flex-col border-t border-app-border pt-2">
+            {SIDEBAR_UTILITY_LINKS.map((link) => {
+              const Icon = link.icon;
+              const active = activeSegment === link.segment;
+              return (
+                <button
+                  key={link.segment}
+                  type="button"
+                  onClick={() =>
+                    navigateFromSidebar(
+                      link.segment,
+                      { label: link.label },
+                      active,
+                    )
+                  }
+                  onContextMenu={(event) =>
+                    openContextMenu(event, link.segment, { label: link.label })
+                  }
+                  className={cn(
+                    navButtonClassName(active),
+                    "flex items-center gap-2",
+                  )}
+                >
+                  <Icon className="h-4 w-4 shrink-0" aria-hidden />
+                  {link.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </aside>
 
       {contextMenu && (

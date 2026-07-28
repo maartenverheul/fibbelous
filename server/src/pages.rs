@@ -577,6 +577,7 @@ fn update_database_row(
             has_children: false,
             favorite,
             database_id: Some(existing.database_id),
+            is_database_template: false,
             attributes: Some(attributes),
             created: Some(created),
             edited: Some(edited),
@@ -632,7 +633,7 @@ fn extract_properties_block(frontmatter_inner: &str) -> String {
 
 /// Serialize a JSON property map to a YAML `properties:` frontmatter block.
 /// Arrays of scalars use inline flow style: `Tags: [A, B]`.
-fn format_properties_block(properties: &serde_json::Value) -> Result<String, String> {
+pub(crate) fn format_properties_block(properties: &serde_json::Value) -> Result<String, String> {
     let props = match properties {
         serde_json::Value::Null => serde_json::Map::new(),
         serde_json::Value::Object(map) => map.clone(),
@@ -987,6 +988,7 @@ fn database_row_page_detail(cache: &CacheDb, id: &str) -> Result<PageDetail, Str
         has_children: false,
         favorite: row.favorite,
         database_id: Some(row.database_id),
+        is_database_template: false,
         attributes: Some(attributes),
         created: created.or(row.created),
         edited: edited.or(row.edited),

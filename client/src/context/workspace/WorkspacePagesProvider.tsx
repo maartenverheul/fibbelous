@@ -32,10 +32,16 @@ import {
 import { slugFromPageLink } from "../../lib/editor/pageLinks";
 import {
   registerDatabaseCreator,
+  registerDatabaseDefaultTemplateSetter,
   registerDatabaseFetcher,
   registerDatabaseRowCreator,
   registerDatabaseRowsFetcher,
   registerDatabasesLister,
+  registerDatabaseTemplateCreator,
+  registerDatabaseTemplateDeleter,
+  registerDatabaseTemplateDuplicator,
+  registerDatabaseTemplateFetcher,
+  registerDatabaseTemplateUpdater,
   registerDatabaseViewCreator,
   registerDatabaseViewDeleter,
   registerDatabaseViewUpdater,
@@ -326,6 +332,12 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
       registerDatabaseViewDeleter(null);
       registerDatabasesLister(null);
       registerDatabaseCreator(null);
+      registerDatabaseTemplateCreator(null);
+      registerDatabaseTemplateFetcher(null);
+      registerDatabaseTemplateUpdater(null);
+      registerDatabaseTemplateDuplicator(null);
+      registerDatabaseTemplateDeleter(null);
+      registerDatabaseDefaultTemplateSetter(null);
       return;
     }
 
@@ -340,10 +352,11 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
         sort: sort ?? null,
       });
     });
-    registerDatabaseRowCreator(async (id, title) => {
+    registerDatabaseRowCreator(async (id, title, templateId) => {
       const detail = await rpc.call<WorkspacePageDetail>("create_database_row", {
         id,
         title,
+        templateId,
       });
       storePageDetail(detail);
       return detail;
@@ -399,6 +412,76 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
         parentId: options?.parentId,
       });
     });
+    registerDatabaseTemplateCreator(async (databaseId) => {
+      const result = await rpc.call<{
+        database: WorkspaceDatabaseDetail | null;
+        page: WorkspacePageDetail;
+      } | null>("create_database_template", { id: databaseId });
+      if (!result?.database) {
+        throw new Error("Database not found");
+      }
+      storePageDetail(result.page);
+      return { database: result.database, page: result.page };
+    });
+    registerDatabaseTemplateFetcher(async (databaseId, templateId) => {
+      const detail = await rpc.call<WorkspacePageDetail | null>(
+        "get_database_template",
+        { id: databaseId, templateId },
+      );
+      if (detail) {
+        storePageDetail(detail);
+      }
+      return detail;
+    });
+    registerDatabaseTemplateUpdater(async (databaseId, templateId, update) => {
+      const detail = await rpc.call<WorkspacePageDetail | null>(
+        "update_database_template",
+        {
+          id: databaseId,
+          templateId,
+          ...update,
+        },
+      );
+      if (!detail) {
+        throw new Error("Template not found");
+      }
+      storePageDetail(detail);
+      return detail;
+    });
+    registerDatabaseTemplateDuplicator(async (databaseId, templateId) => {
+      const result = await rpc.call<{
+        database: WorkspaceDatabaseDetail | null;
+        page: WorkspacePageDetail;
+      } | null>("duplicate_database_template", {
+        id: databaseId,
+        templateId,
+      });
+      if (!result?.database) {
+        throw new Error("Database not found");
+      }
+      storePageDetail(result.page);
+      return { database: result.database, page: result.page };
+    });
+    registerDatabaseTemplateDeleter(async (databaseId, templateId) => {
+      const detail = await rpc.call<WorkspaceDatabaseDetail | null>(
+        "delete_database_template",
+        { id: databaseId, templateId },
+      );
+      if (!detail) {
+        throw new Error("Database not found");
+      }
+      return detail;
+    });
+    registerDatabaseDefaultTemplateSetter(async (databaseId, templateId) => {
+      const detail = await rpc.call<WorkspaceDatabaseDetail | null>(
+        "set_default_database_template",
+        { id: databaseId, templateId },
+      );
+      if (!detail) {
+        throw new Error("Database not found");
+      }
+      return detail;
+    });
 
     return () => {
       registerDatabaseFetcher(null);
@@ -409,6 +492,12 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
       registerDatabaseViewDeleter(null);
       registerDatabasesLister(null);
       registerDatabaseCreator(null);
+      registerDatabaseTemplateCreator(null);
+      registerDatabaseTemplateFetcher(null);
+      registerDatabaseTemplateUpdater(null);
+      registerDatabaseTemplateDuplicator(null);
+      registerDatabaseTemplateDeleter(null);
+      registerDatabaseDefaultTemplateSetter(null);
     };
   }, [rpc, connectionStatus, storePageDetail]);
 
