@@ -269,7 +269,7 @@ function AttributeValueEditor({
           type="checkbox"
           checked={checked}
           onChange={(event) => onChange(event.target.checked)}
-          className="size-4 accent-app-fg"
+          className="app-checkbox size-4"
           aria-label={property.name}
         />
       </label>
@@ -298,6 +298,7 @@ function AttributeValueEditor({
         readOnly={readOnly}
         aria-label={property.name}
         className={inputClassName}
+        placeholder="Empty"
         onChange={(event) => {
           const raw = event.target.value;
           if (!raw.trim()) {

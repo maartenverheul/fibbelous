@@ -62,7 +62,6 @@ export const dbListItemAttrs =
 
 export const dbListItemAttr = "shrink-0 whitespace-nowrap";
 
-export const dbCheckbox =
-  "pointer-events-none size-3.5 shrink-0 rounded-sm border border-app-fg/35 accent-blue-600";
+export const dbCheckbox = "app-checkbox pointer-events-none size-3.5 shrink-0";
 
 export const dbSentinel = "h-px w-full";
