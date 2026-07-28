@@ -33,6 +33,7 @@ import {
   updateLocalWorkspaceSettings,
 } from "../../lib/api/tauri";
 import { workspaceNoticeMessage, type WorkspaceNotice } from "../../lib/app/navigation";
+import { buildRestoredWorkspacePath } from "../../lib/app/lastRouteStorage";
 import { slugifyPageTitle } from "../../lib/page/types";
 import {
   isLocalWorkspace,
@@ -334,7 +335,7 @@ export function WorkspaceManagerDialog({
 
       if (existing) {
         setActive(existing.id);
-        navigate(`/${existing.slug}`);
+        navigate(buildRestoredWorkspacePath(existing));
       } else {
         const saved: SavedWorkspace = {
           id: crypto.randomUUID(),
@@ -346,7 +347,7 @@ export function WorkspaceManagerDialog({
         };
         addWorkspace(saved);
         setActive(saved.id);
-        navigate(`/${saved.slug}`);
+        navigate(buildRestoredWorkspacePath(saved));
       }
 
       onOpenChange(false);
@@ -379,7 +380,7 @@ export function WorkspaceManagerDialog({
         );
       }
       setActive(workspace.id);
-      navigate(`/${workspace.slug}`);
+      navigate(buildRestoredWorkspacePath(workspace));
       onOpenChange(false);
     } catch (error) {
       handleOpenFailure(workspace.label, error, workspace);
@@ -426,7 +427,7 @@ export function WorkspaceManagerDialog({
 
     if (existing) {
       setActive(existing.id);
-      navigate(`/${existing.slug}`);
+      navigate(buildRestoredWorkspacePath(existing));
     } else {
       const saved: SavedWorkspace = {
         id: crypto.randomUUID(),
@@ -439,7 +440,7 @@ export function WorkspaceManagerDialog({
       };
       addWorkspace(saved);
       setActive(saved.id);
-      navigate(`/${saved.slug}`);
+      navigate(buildRestoredWorkspacePath(saved));
     }
 
     onOpenChange(false);

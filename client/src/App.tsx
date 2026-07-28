@@ -10,6 +10,7 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { SyncPage } from "./pages/SyncPage";
 import { TrashPage } from "./pages/TrashPage";
 import { useSavedWorkspaces } from "./hooks/useSavedWorkspaces";
+import { buildRestoredWorkspacePath } from "./lib/app/lastRouteStorage";
 import { shouldOpenWorkspaceManager } from "./lib/app/navigation";
 
 function RootRedirect() {
@@ -21,7 +22,7 @@ function RootRedirect() {
   }
 
   if (activeWorkspace) {
-    return <Navigate to={`/${activeWorkspace.slug}`} replace />;
+    return <Navigate to={buildRestoredWorkspacePath(activeWorkspace)} replace />;
   }
 
   return <LandingPage />;

@@ -11,6 +11,7 @@ import {
 import { useNavigate, useParams } from "react-router-dom";
 import { useSavedWorkspaces } from "../../hooks/useSavedWorkspaces";
 import type { SavedWorkspace } from "../../lib/api/workspace";
+import { buildRestoredWorkspacePath } from "../../lib/app/lastRouteStorage";
 
 export type WorkspaceSessionValue = {
   workspaces: SavedWorkspace[];
@@ -67,7 +68,9 @@ export function WorkspaceSessionProvider({
     }
 
     if (savedActiveWorkspace) {
-      navigate(`/${savedActiveWorkspace.slug}`, { replace: true });
+      navigate(buildRestoredWorkspacePath(savedActiveWorkspace), {
+        replace: true,
+      });
       return;
     }
 
@@ -79,7 +82,7 @@ export function WorkspaceSessionProvider({
   const setActiveWorkspace = useCallback(
     (workspace: SavedWorkspace) => {
       setActive(workspace.id);
-      navigate(`/${workspace.slug}`);
+      navigate(buildRestoredWorkspacePath(workspace));
     },
     [navigate, setActive],
   );

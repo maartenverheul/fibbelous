@@ -14,8 +14,10 @@ import {
   parseWorkspacePath,
 } from "../routes";
 import { useWorkspacePages } from "../hooks/useWorkspacePages";
+import { setLastRouteSegment } from "../lib/app/lastRouteStorage";
 import { pageLabel, parsePageIdFromSegment } from "../lib/page/types";
 import { registerPageNavigator } from "../lib/page/navigate";
+import { useWorkspaceSession } from "./workspace/WorkspaceSessionProvider";
 
 export type TabTarget = {
   label: string;
@@ -95,6 +97,7 @@ export function TabProvider({ children }: { children: ReactNode }) {
   const { slug } = useParams<{ slug: string }>();
   const { segment } = parseWorkspacePath(location.pathname);
   const { findPageById } = useWorkspacePages();
+  const { activeWorkspace } = useWorkspaceSession();
 
   const [tabs, setTabs] = useState<Tab[]>(
     () => createInitialState(segment).tabs,
@@ -102,6 +105,11 @@ export function TabProvider({ children }: { children: ReactNode }) {
   const [activeTabId, setActiveTabId] = useState<string | null>(
     () => createInitialState(segment).activeTabId,
   );
+
+  useEffect(() => {
+    if (!activeWorkspace?.id) return;
+    setLastRouteSegment(activeWorkspace.id, segment);
+  }, [activeWorkspace?.id, segment]);
 
   useEffect(() => {
     const tabInfo = getTabInfoFromSegment(segment);

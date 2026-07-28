@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import useLocalStorageState from "use-local-storage-state";
+import { clearLastRouteSegment } from "../lib/app/lastRouteStorage";
 import type { SavedWorkspace } from "../lib/api/workspace";
 
 const WORKSPACES_KEY = "fibbelous.workspaces";
@@ -49,6 +50,7 @@ export function useSavedWorkspaces() {
 
   const removeWorkspace = useCallback(
     (id: string) => {
+      clearLastRouteSegment(id);
       setWorkspaces((prev) => prev.filter((workspace) => workspace.id !== id));
       setActiveWorkspaceId((current) => (current === id ? null : current));
     },
