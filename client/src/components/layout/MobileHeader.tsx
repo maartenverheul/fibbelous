@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { PiArrowUp, PiList } from "react-icons/pi";
 import { useSidebar } from "../../context/SidebarContext";
 import { useTabs } from "../../context/TabContext";
@@ -6,43 +7,80 @@ import { cn } from "../../lib/utils";
 import {
   buildPageSegment,
   pageLabel,
+  parsePageIdFromSegment,
   type WorkspacePage,
   type WorkspacePageDetail,
 } from "../../lib/page/types";
 import { EmojiIcon } from "../emoji/EmojiIcon";
 
-function resolveParentPage(
-  pageId: string | null | undefined,
-  findPageById: (id: string) => WorkspacePage | undefined,
-  getPageDetailById: (id: string) => WorkspacePageDetail | undefined,
-): WorkspacePage | null {
-  if (!pageId) return null;
+const headerIconButtonClassName = cn(
+  "flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-app-fg",
+  "hover:bg-stone-200/80 dark:hover:bg-stone-800",
+);
 
-  const detail = getPageDetailById(pageId);
-  const ancestors = detail?.ancestors;
+function parentFromDetail(detail: WorkspacePageDetail): WorkspacePage | null {
+  const ancestors = detail.ancestors;
   if (ancestors && ancestors.length > 0) {
     return ancestors[ancestors.length - 1] ?? null;
   }
+  return null;
+}
 
-  const page = findPageById(pageId) ?? detail;
-  if (!page) return null;
-
-  const parentId = page.databaseId ?? page.parentId ?? null;
-  if (!parentId) return null;
-
-  return findPageById(parentId) ?? getPageDetailById(parentId) ?? null;
+function detailHasParent(detail: WorkspacePageDetail): boolean {
+  return (
+    parentFromDetail(detail) != null ||
+    Boolean(detail.databaseId ?? detail.parentId)
+  );
 }
 
 export function MobileHeader() {
   const { open } = useSidebar();
-  const { tabs, activeTabId, navigateInTab } = useTabs();
-  const { findPageById, getPageDetailById } = useWorkspacePages();
+  const { tabs, activeTabId, activeSegment, navigateInTab } = useTabs();
+  const { findPageById, getPageDetailById, fetchPageDetail } =
+    useWorkspacePages();
   const activeTab = tabs.find((tab) => tab.id === activeTabId);
-  const parentPage = resolveParentPage(
-    activeTab?.pageId,
-    findPageById,
-    getPageDetailById,
-  );
+  const pageId =
+    activeTab?.pageId ??
+    parsePageIdFromSegment(activeTab?.segment ?? activeSegment);
+  const detail = pageId ? getPageDetailById(pageId) : undefined;
+  const parentPage = detail ? parentFromDetail(detail) : null;
+  const showParentButton = detail ? detailHasParent(detail) : false;
+
+  // Ensure we have get_page (ancestors) so the up button can appear on web.
+  useEffect(() => {
+    if (!pageId || detail) return;
+    void fetchPageDetail(pageId);
+  }, [pageId, detail, fetchPageDetail]);
+
+  const goToParent = async () => {
+    if (!pageId) return;
+
+    try {
+      const pageDetail = detail ?? (await fetchPageDetail(pageId));
+      if (!pageDetail) return;
+
+      let parent = parentFromDetail(pageDetail);
+      if (!parent) {
+        const parentId = pageDetail.databaseId ?? pageDetail.parentId ?? null;
+        if (!parentId) return;
+        parent =
+          findPageById(parentId) ??
+          getPageDetailById(parentId) ??
+          (await fetchPageDetail(parentId));
+      }
+      if (!parent) return;
+
+      navigateInTab(buildPageSegment(parent, findPageById), {
+        label: pageLabel(parent),
+        icon: parent.icon,
+        pageId: parent.id,
+      });
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const parentLabel = parentPage ? pageLabel(parentPage) : "Parent page";
 
   return (
     <header
@@ -54,31 +92,19 @@ export function MobileHeader() {
         type="button"
         onClick={open}
         aria-label="Open sidebar"
-        className={cn(
-          "flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-stone-700",
-          "hover:bg-stone-200/80 dark:text-stone-300 dark:hover:bg-stone-800",
-        )}
+        className={headerIconButtonClassName}
       >
-        <PiList className="h-5 w-5" aria-hidden />
+        <PiList size={20} className="shrink-0" aria-hidden />
       </button>
-      {parentPage ? (
+      {showParentButton ? (
         <button
           type="button"
-          onClick={() =>
-            navigateInTab(buildPageSegment(parentPage, findPageById), {
-              label: pageLabel(parentPage),
-              icon: parentPage.icon,
-              pageId: parentPage.id,
-            })
-          }
-          aria-label={`Go to ${pageLabel(parentPage)}`}
-          title={pageLabel(parentPage)}
-          className={cn(
-            "flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-stone-700",
-            "hover:bg-stone-200/80 dark:text-stone-300 dark:hover:bg-stone-800",
-          )}
+          onClick={() => void goToParent()}
+          aria-label={`Go to ${parentLabel}`}
+          title={parentLabel}
+          className={headerIconButtonClassName}
         >
-          <PiArrowUp className="h-5 w-5" aria-hidden />
+          <PiArrowUp size={20} className="shrink-0" aria-hidden />
         </button>
       ) : null}
       {activeTab ? (
