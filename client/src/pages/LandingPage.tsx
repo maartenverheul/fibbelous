@@ -61,9 +61,6 @@ export function LandingPage() {
           </button>
         </div>
       )}
-      {managerOpen && (
-        <div className="min-h-screen bg-app-bg" aria-hidden />
-      )}
       <WorkspaceManagerDialog
         open={managerOpen}
         onOpenChange={(open) => {

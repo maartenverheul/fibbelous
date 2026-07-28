@@ -1,5 +1,4 @@
-import * as Dialog from "@radix-ui/react-dialog";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { PiFolder, PiX } from "react-icons/pi";
 import { EmojiIcon } from "../emoji/EmojiIcon";
 import { EmojiIconPicker } from "../emoji/EmojiIconPicker";
@@ -45,7 +44,7 @@ import { useWorkspaceOptional } from "../../context/WorkspaceContext";
 
 export type WorkspaceManagerTab = "browse" | "settings";
 
-type WorkspaceManagerDialogProps = {
+type WorkspaceManagerProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialTab?: WorkspaceManagerTab;
@@ -149,7 +148,10 @@ export function WorkspaceManagerDialog({
   initialTab = "browse",
   focusSavedWorkspaceId = null,
   notice = null,
-}: WorkspaceManagerDialogProps) {
+}: WorkspaceManagerProps) {
+  const titleId = useId();
+  const descriptionId = useId();
+  const panelRef = useRef<HTMLDivElement>(null);
   const {
     workspaces,
     activeWorkspace,
@@ -268,6 +270,28 @@ export function WorkspaceManagerDialog({
 
   useEffect(() => {
     if (!open) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onOpenChange(false);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    panelRef.current?.focus();
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open, onOpenChange]);
+
+  useEffect(() => {
+    if (!open) return;
     setActiveTab(initialTab);
   }, [open, initialTab]);
 
@@ -286,7 +310,7 @@ export function WorkspaceManagerDialog({
       isLocalWorkspace(settingsWorkspace) ? "" : settingsWorkspace.serverUrl,
     );
     setSettingsError(null);
-    // Reset the form when switching workspace or reopening the dialog, not when
+    // Reset the form when switching workspace or reopening, not when
     // the bookmark is patched in place (e.g. after reindex reloads workspace.json).
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
   }, [settingsWorkspaceId, open]);
@@ -743,38 +767,61 @@ export function WorkspaceManagerDialog({
     }
   };
 
-  return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-        <Dialog.Content
-          className={cn(
-            "fixed top-1/2 left-1/2 z-50 max-h-[85vh] w-[min(36rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-app-border bg-app-surface p-5 text-stone-900 shadow-xl dark:text-stone-50",
-          )}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <Dialog.Title className="text-lg font-semibold">
-                Workspaces
-              </Dialog.Title>
-              <Dialog.Description className="mt-1 text-sm text-stone-600 dark:text-stone-400">
-                {activeTab === "browse"
-                  ? "Connect to your server, then open or create a workspace."
-                  : "Edit workspace details and connection settings."}
-              </Dialog.Description>
-            </div>
-            <Dialog.Close asChild>
-              <button
-                type="button"
-                className="rounded-md px-2 py-1 text-stone-500 hover:bg-stone-100 hover:text-stone-800 dark:hover:bg-stone-800 dark:hover:text-stone-200"
-                aria-label="Close"
-              >
-                <PiX className="h-4 w-4" aria-hidden />
-              </button>
-            </Dialog.Close>
-          </div>
+  if (!open) return null;
 
-          <div className="mt-4 flex gap-1 rounded-lg bg-stone-100 p-1 dark:bg-stone-900">
+  return (
+    <div
+      ref={panelRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      aria-describedby={descriptionId}
+      tabIndex={-1}
+      className={cn(
+        "fixed inset-0 z-50 flex flex-col bg-app-bg text-stone-900 outline-none",
+        "dark:text-stone-50",
+      )}
+    >
+      <header
+        className={cn(
+          "shrink-0 border-b border-app-border bg-app-surface",
+          "pt-[max(0.75rem,env(safe-area-inset-top))] pr-[max(1rem,env(safe-area-inset-right))] pl-[max(1rem,env(safe-area-inset-left))]",
+        )}
+      >
+        <div className="mx-auto flex w-full max-w-xl items-start justify-between gap-3 pb-3">
+          <div className="min-w-0">
+            <h1 id={titleId} className="text-lg font-semibold">
+              Workspaces
+            </h1>
+            <p
+              id={descriptionId}
+              className="mt-1 text-sm text-stone-600 dark:text-stone-400"
+            >
+              {activeTab === "browse"
+                ? "Connect to your server, then open or create a workspace."
+                : "Edit workspace details and connection settings."}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            className="rounded-md px-2 py-1 text-stone-500 hover:bg-stone-100 hover:text-stone-800 dark:hover:bg-stone-800 dark:hover:text-stone-200"
+            aria-label="Close"
+          >
+            <PiX className="h-5 w-5" aria-hidden />
+          </button>
+        </div>
+      </header>
+
+      <div
+        className={cn(
+          "min-h-0 flex-1 overflow-y-auto",
+          "pr-[max(0px,env(safe-area-inset-right))] pl-[max(0px,env(safe-area-inset-left))]",
+          "pb-[max(1.5rem,env(safe-area-inset-bottom))]",
+        )}
+      >
+        <div className="mx-auto w-full max-w-xl px-4 pt-4">
+          <div className="flex gap-1 rounded-lg bg-stone-100 p-1 dark:bg-stone-900">
             <TabButton
               active={activeTab === "browse"}
               onClick={() => setActiveTab("browse")}
@@ -805,8 +852,8 @@ export function WorkspaceManagerDialog({
 
           {activeTab === "browse" ? (
             <div className="mt-5 space-y-5">
-              <section className="rounded-lg border border-app-border bg-app-bg/40 p-3">
-                <div className="grid grid-cols-[1fr_auto] gap-2">
+              <section className="rounded-lg border border-app-border bg-app-surface p-3">
+                <div className="flex flex-col gap-2 sm:grid sm:grid-cols-[1fr_auto]">
                   <Field label="Server">
                     <input
                       value={serverAddress}
@@ -820,7 +867,7 @@ export function WorkspaceManagerDialog({
                       type="button"
                       onClick={handleConnect}
                       disabled={connectionStatus === "connecting"}
-                      className={cn(buttonPrimaryClassName, "w-full")}
+                      className={cn(buttonPrimaryClassName, "w-full sm:w-auto")}
                     >
                       {connectionStatus === "connecting" ? "..." : "Connect"}
                     </button>
@@ -837,12 +884,12 @@ export function WorkspaceManagerDialog({
                   </p>
                 )}
                 {showUseFolder && (
-                  <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-app-border pt-3">
+                  <div className="mt-3 flex flex-col gap-2 border-t border-app-border pt-3 sm:flex-row sm:flex-wrap sm:items-center">
                     <button
                       type="button"
                       onClick={() => void handleUseFolder()}
                       disabled={openingFolder}
-                      className={buttonSecondaryClassName}
+                      className={cn(buttonSecondaryClassName, "w-full sm:w-auto")}
                     >
                       {openingFolder ? "Opening..." : "Use folder"}
                     </button>
@@ -852,11 +899,11 @@ export function WorkspaceManagerDialog({
                         setShowCloneForm((value) => !value);
                         setCloneError(null);
                       }}
-                      className={buttonSecondaryClassName}
+                      className={cn(buttonSecondaryClassName, "w-full sm:w-auto")}
                     >
                       {showCloneForm ? "Cancel clone" : "Clone repository"}
                     </button>
-                    <p className="text-xs text-stone-600 dark:text-stone-400">
+                    <p className="text-xs text-stone-600 dark:text-stone-400 sm:basis-full">
                       Open or create a workspace from a local folder (no server).
                     </p>
                   </div>
@@ -895,11 +942,11 @@ export function WorkspaceManagerDialog({
 
               {connectionStatus === "connected" && (
                 <section className="space-y-3">
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <h2 className="text-sm font-medium text-stone-800 dark:text-stone-200">
                       On this server
                     </h2>
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                       <button
                         type="button"
                         onClick={() => {
@@ -921,7 +968,7 @@ export function WorkspaceManagerDialog({
                   </div>
 
                   {showCloneForm && (
-                    <div className="grid gap-3 rounded-lg border border-app-border bg-app-bg/40 p-3">
+                    <div className="grid gap-3 rounded-lg border border-app-border bg-app-surface p-3">
                       <Field label="Git repository URL">
                         <input
                           value={cloneUrl}
@@ -947,7 +994,7 @@ export function WorkspaceManagerDialog({
                   )}
 
                   {showCreateForm && (
-                    <div className="grid gap-3 rounded-lg border border-app-border bg-app-bg/40 p-3">
+                    <div className="grid gap-3 rounded-lg border border-app-border bg-app-surface p-3">
                       <div className="grid grid-cols-[3rem_1fr] gap-2">
                         <div className="grid gap-1">
                           <span className={labelClassName}>Icon</span>
@@ -1007,33 +1054,40 @@ export function WorkspaceManagerDialog({
                       {remoteWorkspaces.map((workspace) => (
                         <li
                           key={workspace.id}
-                          className="flex items-center gap-3 rounded-lg border border-app-border bg-app-bg/40 px-3 py-2.5"
+                          className="flex flex-col gap-3 rounded-lg border border-app-border bg-app-surface px-3 py-2.5 sm:flex-row sm:items-center"
                         >
-                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-stone-200/80 text-lg dark:bg-stone-800">
-                            <WorkspaceIcon icon={workspace.icon} />
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate font-medium">{workspace.title}</p>
-                            <p className="truncate text-xs text-stone-600 dark:text-stone-400">
-                              /{workspace.slug}
-                              <span
-                                className={cn(
-                                  "ml-2",
-                                  indexStatusClassName(workspace.indexStatus),
-                                )}
-                              >
-                                {indexStatusLabel(workspace.indexStatus)}
-                              </span>
-                              {serverUrl &&
-                                isBookmarked(serverUrl, workspace.id) &&
-                                " · Saved"}
-                            </p>
+                          <div className="flex min-w-0 flex-1 items-center gap-3">
+                            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-stone-200/80 text-lg dark:bg-stone-800">
+                              <WorkspaceIcon icon={workspace.icon} />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate font-medium">
+                                {workspace.title}
+                              </p>
+                              <p className="truncate text-xs text-stone-600 dark:text-stone-400">
+                                /{workspace.slug}
+                                <span
+                                  className={cn(
+                                    "ml-2",
+                                    indexStatusClassName(workspace.indexStatus),
+                                  )}
+                                >
+                                  {indexStatusLabel(workspace.indexStatus)}
+                                </span>
+                                {serverUrl &&
+                                  isBookmarked(serverUrl, workspace.id) &&
+                                  " · Saved"}
+                              </p>
+                            </div>
                           </div>
                           <button
                             type="button"
                             onClick={() => void openWorkspace(workspace)}
                             disabled={openingWorkspaceId === workspace.id}
-                            className={buttonPrimaryClassName}
+                            className={cn(
+                              buttonPrimaryClassName,
+                              "w-full sm:w-auto",
+                            )}
                           >
                             {openingWorkspaceId === workspace.id
                               ? "Opening..."
@@ -1055,27 +1109,31 @@ export function WorkspaceManagerDialog({
                     {workspaces.map((workspace) => (
                       <li
                         key={workspace.id}
-                        className="flex items-center gap-3 rounded-lg border border-app-border bg-app-bg/40 px-3 py-2.5"
+                        className="flex flex-col gap-3 rounded-lg border border-app-border bg-app-surface px-3 py-2.5 sm:flex-row sm:items-center"
                       >
-                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-stone-200/80 text-lg dark:bg-stone-800">
-                          <WorkspaceIcon icon={workspace.icon} />
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate font-medium">{workspace.label}</p>
-                          <p className="truncate text-xs text-stone-600 dark:text-stone-400">
-                            {isLocalWorkspace(workspace)
-                              ? workspace.localPath
-                              : `${workspace.serverUrl} · /${workspace.slug}`}
-                          </p>
+                        <div className="flex min-w-0 flex-1 items-center gap-3">
+                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-stone-200/80 text-lg dark:bg-stone-800">
+                            <WorkspaceIcon icon={workspace.icon} />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate font-medium">
+                              {workspace.label}
+                            </p>
+                            <p className="truncate text-xs text-stone-600 dark:text-stone-400">
+                              {isLocalWorkspace(workspace)
+                                ? workspace.localPath
+                                : `${workspace.serverUrl} · /${workspace.slug}`}
+                            </p>
+                          </div>
                         </div>
-                        <div className="flex shrink-0 gap-2">
+                        <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0">
                           <button
                             type="button"
                             onClick={() => {
                               setSettingsWorkspaceId(workspace.id);
                               setActiveTab("settings");
                             }}
-                            className={buttonSecondaryClassName}
+                            className={cn(buttonSecondaryClassName, "w-full")}
                           >
                             Settings
                           </button>
@@ -1083,7 +1141,7 @@ export function WorkspaceManagerDialog({
                             type="button"
                             onClick={() => void openSavedWorkspace(workspace)}
                             disabled={openingWorkspaceId === workspace.id}
-                            className={buttonPrimaryClassName}
+                            className={cn(buttonPrimaryClassName, "w-full")}
                           >
                             {openingWorkspaceId === workspace.id
                               ? "Opening..."
@@ -1122,7 +1180,7 @@ export function WorkspaceManagerDialog({
                   </Field>
 
                   {settingsWorkspace && (
-                    <div className="space-y-4 rounded-lg border border-app-border bg-app-bg/40 p-3">
+                    <div className="space-y-4 rounded-lg border border-app-border bg-app-surface p-3">
                       <div className="grid grid-cols-[3rem_1fr] gap-2">
                         <div className="grid gap-1">
                           <span className={labelClassName}>Icon</span>
@@ -1192,12 +1250,12 @@ export function WorkspaceManagerDialog({
                         </p>
                       )}
 
-                      <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                         <button
                           type="button"
                           onClick={handleSaveSettings}
                           disabled={settingsSaving || settingsReindexing}
-                          className={buttonPrimaryClassName}
+                          className={cn(buttonPrimaryClassName, "w-full sm:w-auto")}
                         >
                           {settingsSaving ? "Saving..." : "Save changes"}
                         </button>
@@ -1205,7 +1263,10 @@ export function WorkspaceManagerDialog({
                           type="button"
                           onClick={handleReindex}
                           disabled={settingsSaving || settingsReindexing}
-                          className={buttonSecondaryClassName}
+                          className={cn(
+                            buttonSecondaryClassName,
+                            "w-full sm:w-auto",
+                          )}
                         >
                           {settingsReindexing
                             ? "Reindexing..."
@@ -1222,7 +1283,7 @@ export function WorkspaceManagerDialog({
                               )?.id ?? null,
                             );
                           }}
-                          className="text-sm text-red-600 hover:underline dark:text-red-400"
+                          className="py-1.5 text-sm text-red-600 hover:underline dark:text-red-400 sm:py-0"
                         >
                           Remove bookmark
                         </button>
@@ -1233,8 +1294,8 @@ export function WorkspaceManagerDialog({
               )}
             </div>
           )}
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+        </div>
+      </div>
+    </div>
   );
 }
