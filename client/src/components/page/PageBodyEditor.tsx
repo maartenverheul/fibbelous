@@ -52,6 +52,12 @@ import {
   insertPastedPlainText,
   shouldOfferPasteLinkChoice,
 } from "../../lib/editor/pasteLinkChoice";
+import {
+  isNotionClipboardHtml,
+  looksLikeMarkdownPaste,
+  normalizeNotionClipboardHtml,
+  promoteTaskListMarkersInHtml,
+} from "../../lib/editor/clipboardPaste";
 import { openExternalUrl } from "../../lib/api/tauri";
 import { cn } from "../../lib/utils";
 import {
@@ -306,7 +312,18 @@ export const PageBodyEditor = forwardRef<
         },
       },
       pasteHandler: ({ event, editor: pasteEditor, defaultPasteHandler }) => {
-        const rawText = event.clipboardData?.getData("text/plain") ?? "";
+        const rawText =
+          event.clipboardData?.getData("text/plain") ||
+          event.clipboardData?.getData("text") ||
+          "";
+        const html = event.clipboardData?.getData("text/html") ?? "";
+        const clipboardTypes = Array.from(event.clipboardData?.types ?? []);
+        const inCodeBlock =
+          pasteEditor.getTextCursorPosition().block.type === "codeBlock";
+        const hasNativeRichPaste =
+          clipboardTypes.includes("blocknote/html") ||
+          clipboardTypes.includes("text/markdown") ||
+          clipboardTypes.includes("vscode-editor-data");
 
         // Ctrl+Shift+V / Cmd+Shift+V — always paste as plain text.
         if ("shiftKey" in event && event.shiftKey) {
@@ -315,6 +332,45 @@ export const PageBodyEditor = forwardRef<
             return true;
           }
           return defaultPasteHandler({ plainTextAsMarkdown: false });
+        }
+
+        if (!inCodeBlock && !hasNativeRichPaste) {
+          const fromNotion = isNotionClipboardHtml(html);
+
+          // Notion: prefer its plain-text markdown (usually faithful), then fall
+          // back to normalizing Notion HTML (`[ ]` todos, strip notionvc, …).
+          if (fromNotion) {
+            if (rawText.trim()) {
+              void markdownToHtml(rawText).then((mdHtml) => {
+                pasteEditor.pasteHTML(
+                  promoteTaskListMarkersInHtml(mdHtml).html,
+                );
+              });
+              return true;
+            }
+            if (html) {
+              pasteEditor.pasteHTML(normalizeNotionClipboardHtml(html));
+              return true;
+            }
+          }
+
+          // Prefer plain-text markdown via our remark-gfm pipeline when the
+          // clipboard looks like markdown but HTML would otherwise win.
+          if (rawText && looksLikeMarkdownPaste(rawText)) {
+            void markdownToHtml(rawText).then((mdHtml) => {
+              pasteEditor.pasteHTML(mdHtml);
+            });
+            return true;
+          }
+
+          // Fallback: rewrite `<li>[ ] label</li>` into checkboxes.
+          if (html) {
+            const promoted = promoteTaskListMarkersInHtml(html);
+            if (promoted.changed) {
+              pasteEditor.pasteHTML(promoted.html);
+              return true;
+            }
+          }
         }
 
         const text = rawText.trim();
