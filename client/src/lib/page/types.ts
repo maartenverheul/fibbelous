@@ -164,6 +164,33 @@ export function pageLabel(page: {
   return "Untitled";
 }
 
+/** Overlay an unsaved title draft onto a page for live sidebar/breadcrumb labels. */
+export function applyDraftTitleToPage<
+  T extends { id: string; title: string | null },
+>(page: T, draftTitlesById: Record<string, string>): T {
+  if (!Object.prototype.hasOwnProperty.call(draftTitlesById, page.id)) {
+    return page;
+  }
+  const draft = draftTitlesById[page.id];
+  const title = draft.trim() ? draft : null;
+  if (page.title === title) return page;
+  return { ...page, title };
+}
+
+export function applyDraftTitlesToPages(
+  pages: WorkspacePage[],
+  draftTitlesById: Record<string, string>,
+): WorkspacePage[] {
+  if (Object.keys(draftTitlesById).length === 0) return pages;
+  let changed = false;
+  const next = pages.map((page) => {
+    const overlaid = applyDraftTitleToPage(page, draftTitlesById);
+    if (overlaid !== page) changed = true;
+    return overlaid;
+  });
+  return changed ? next : pages;
+}
+
 /** Editable title value (empty when unset or still the default Untitled). */
 export function pageTitleValue(page: { title: string | null | undefined }) {
   const title = page.title?.trim() ?? "";

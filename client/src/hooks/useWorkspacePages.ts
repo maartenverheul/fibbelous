@@ -26,6 +26,8 @@ export function useWorkspacePages() {
     listTrashedPages,
     restorePage,
     purgePage,
+    draftTitlesById,
+    setPageDraftTitle,
   } = useWorkspace();
 
   return {
@@ -52,6 +54,8 @@ export function useWorkspacePages() {
     listTrashedPages,
     restorePage,
     purgePage,
+    draftTitlesById,
+    setPageDraftTitle,
     rootLoaded: rootPages !== undefined,
     rootLoading: rootPages === undefined && !rootError,
   };

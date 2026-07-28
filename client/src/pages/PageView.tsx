@@ -290,6 +290,7 @@ export function PageView() {
     updatePage,
     restorePage,
     connectionStatus,
+    setPageDraftTitle,
   } = useWorkspacePages();
   const { navigateInTab } = useTabs();
   const { setPageStatus } = usePageSave();
@@ -410,9 +411,10 @@ export function PageView() {
           body: nextBody,
           attributes: attrs,
         });
+        setPageDraftTitle(pageId, nextTitle);
       }
     },
-    [pageId],
+    [pageId, setPageDraftTitle],
   );
 
   const applyDetail = useCallback(
@@ -557,6 +559,8 @@ export function PageView() {
   applyDetailRef.current = applyDetail;
   const setPageStatusRef = useRef(setPageStatus);
   setPageStatusRef.current = setPageStatus;
+  const setPageDraftTitleRef = useRef(setPageDraftTitle);
+  setPageDraftTitleRef.current = setPageDraftTitle;
 
   const persistPageDraft = useCallback((pageIdForSave: string) => {
     saveChainRef.current = saveChainRef.current
@@ -591,6 +595,7 @@ export function PageView() {
 
         if (!titleChanged && !bodyChanged && !attrsChanged) {
           dirtyPageIdsRef.current.delete(pageIdForSave);
+          setPageDraftTitleRef.current(pageIdForSave, null);
           setPageStatusRef.current(pageIdForSave, "saved");
           return;
         }
@@ -644,6 +649,7 @@ export function PageView() {
 
           if (draftMatchesSave) {
             dirtyPageIdsRef.current.delete(pageIdForSave);
+            setPageDraftTitleRef.current(pageIdForSave, null);
           }
 
           applyDetailRef.current(updated, pageIdForSave);
@@ -755,6 +761,7 @@ export function PageView() {
         clearTimeout(saveTimerRef.current);
         saveTimerRef.current = null;
       }
+      setPageDraftTitle(page.id, null);
       setPageStatus(page.id, "saved");
       return;
     }
@@ -788,6 +795,7 @@ export function PageView() {
     activeDetail,
     isTrashed,
     setPageStatus,
+    setPageDraftTitle,
   ]);
 
   // Always flush a pending/dirty draft when leaving a page (or unmounting).

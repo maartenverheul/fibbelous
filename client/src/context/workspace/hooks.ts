@@ -72,6 +72,8 @@ export type WorkspaceContextValue = {
   restorePage: (id: string) => Promise<WorkspacePageDetail>;
   purgePage: (id: string) => Promise<void>;
   reloadPages: () => Promise<void>;
+  draftTitlesById: Record<string, string>;
+  setPageDraftTitle: (id: string, title: string | null) => void;
   setActiveWorkspace: (workspace: SavedWorkspace) => void;
   addWorkspace: ReturnType<typeof useSavedWorkspaces>["addWorkspace"];
   updateWorkspace: ReturnType<typeof useSavedWorkspaces>["updateWorkspace"];

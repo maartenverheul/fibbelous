@@ -4,6 +4,7 @@ import { useTabs } from "../../context/TabContext";
 import { useWorkspacePages } from "../../hooks/useWorkspacePages";
 import { cn } from "../../lib/utils";
 import {
+  applyDraftTitlesToPages,
   buildPageBreadcrumbs,
   buildPageSegment,
   breadcrumbsFromDetail,
@@ -160,6 +161,7 @@ export function PageBreadcrumbs() {
     duplicatePage,
     setPageFavorite,
     trashPage,
+    draftTitlesById,
   } = useWorkspacePages();
   const crumbsByPageIdRef = useRef(new Map<string, WorkspacePage[]>());
   const menuRef = useRef<HTMLDivElement>(null);
@@ -205,9 +207,10 @@ export function PageBreadcrumbs() {
       const built = detail
         ? breadcrumbsFromDetail(detail, findPageById)
         : buildPageBreadcrumbs(page, findPageById);
-      if (detail || built.length >= crumbs.length) {
-        crumbsByPageIdRef.current.set(pageId, built);
-        crumbs = built;
+      const withDrafts = applyDraftTitlesToPages(built, draftTitlesById);
+      if (detail || withDrafts.length >= crumbs.length) {
+        crumbsByPageIdRef.current.set(pageId, withDrafts);
+        crumbs = withDrafts;
       }
     }
   }

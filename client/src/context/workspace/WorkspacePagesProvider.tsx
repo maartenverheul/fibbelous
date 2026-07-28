@@ -14,6 +14,8 @@ import type {
 } from "../../lib/database/types";
 import {
   DEFAULT_LIST_PAGES_DEPTH,
+  applyDraftTitleToPage,
+  applyDraftTitlesToPages,
   isPagePathSegment,
   parentKeyOfPage,
   parsePageIdFromSegment,
@@ -77,6 +79,9 @@ export type WorkspacePagesValue = {
   restorePage: (id: string) => Promise<WorkspacePageDetail>;
   purgePage: (id: string) => Promise<void>;
   reloadPages: () => Promise<void>;
+  /** Live title drafts (before sync) for sidebar / breadcrumbs / tabs. */
+  draftTitlesById: Record<string, string>;
+  setPageDraftTitle: (id: string, title: string | null) => void;
 };
 
 const WorkspacePagesContext = createContext<WorkspacePagesValue | null>(null);
@@ -96,6 +101,9 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
     Record<string, WorkspacePageDetail>
   >({});
   const [favoritePages, setFavoritePages] = useState<WorkspacePage[]>([]);
+  const [draftTitlesById, setDraftTitlesById] = useState<Record<string, string>>(
+    {},
+  );
   const [rootError, setRootError] = useState<string | null>(null);
   /** Max `list_pages` depth successfully stored per parent. */
   const loadedDepthByParentRef = useRef(new Map<string, number>());
@@ -121,6 +129,7 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
       childrenByParentStableRef,
     );
     setFavoritePages([]);
+    setDraftTitlesById({});
     lastTreeWorkspaceIdRef.current = workspaceId;
   }, [activeWorkspace?.workspaceId]);
 
@@ -416,11 +425,14 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
       const current = childrenByParent[key];
       if (current !== undefined) {
         childrenByParentStableRef.current[key] = current;
-        return current;
+        return applyDraftTitlesToPages(current, draftTitlesById);
       }
-      return childrenByParentStableRef.current[key];
+      const stable = childrenByParentStableRef.current[key];
+      return stable
+        ? applyDraftTitlesToPages(stable, draftTitlesById)
+        : stable;
     },
-    [childrenByParent],
+    [childrenByParent, draftTitlesById],
   );
 
   const pageFromDetail = useCallback(
@@ -439,19 +451,27 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
   const findPageById = useCallback(
     (id: string) => {
       const cached = pagesById[id];
-      if (cached) return cached;
+      if (cached) return applyDraftTitleToPage(cached, draftTitlesById);
 
       const detail = pageDetailsById[id];
-      if (detail) return pageFromDetail(detail);
+      if (detail) {
+        return applyDraftTitleToPage(pageFromDetail(detail), draftTitlesById);
+      }
 
       for (const pages of Object.values(childrenByParent)) {
         const match = pages.find((page) => page.id === id);
-        if (match) return match;
+        if (match) return applyDraftTitleToPage(match, draftTitlesById);
       }
 
       return undefined;
     },
-    [childrenByParent, pagesById, pageDetailsById, pageFromDetail],
+    [
+      childrenByParent,
+      pagesById,
+      pageDetailsById,
+      pageFromDetail,
+      draftTitlesById,
+    ],
   );
   const pagesByIdRef = useRef(pagesById);
   pagesByIdRef.current = pagesById;
@@ -713,17 +733,35 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
       childrenByParentStableRef,
     );
     setFavoritePages([]);
+    setDraftTitlesById({});
     if (!rpc || connectionStatus !== "connected") return;
     await refreshChildren(null);
     await refreshFavoritePages();
   }, [rpc, connectionStatus, refreshChildren, refreshFavoritePages]);
 
+  const setPageDraftTitle = useCallback((id: string, title: string | null) => {
+    if (!id) return;
+    setDraftTitlesById((prev) => {
+      if (title === null) {
+        if (!(id in prev)) return prev;
+        const { [id]: _removed, ...rest } = prev;
+        return rest;
+      }
+      if (prev[id] === title) return prev;
+      return { ...prev, [id]: title };
+    });
+  }, []);
+
   const rootPages = getChildren(null);
+  const favoritePagesWithDrafts = useMemo(
+    () => applyDraftTitlesToPages(favoritePages, draftTitlesById),
+    [favoritePages, draftTitlesById],
+  );
 
   const value = useMemo(
     () => ({
       rootPages,
-      favoritePages,
+      favoritePages: favoritePagesWithDrafts,
       rootError,
       getChildren,
       ensureChildren,
@@ -745,10 +783,12 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
       restorePage,
       purgePage,
       reloadPages,
+      draftTitlesById,
+      setPageDraftTitle,
     }),
     [
       rootPages,
-      favoritePages,
+      favoritePagesWithDrafts,
       rootError,
       getChildren,
       ensureChildren,
@@ -770,6 +810,8 @@ export function WorkspacePagesProvider({ children }: { children: ReactNode }) {
       restorePage,
       purgePage,
       reloadPages,
+      draftTitlesById,
+      setPageDraftTitle,
     ],
   );
 
