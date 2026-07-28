@@ -8,6 +8,7 @@ import { EmojiIcon } from "../components/emoji/EmojiIcon";
 import { usePageSave } from "../context/PageSaveContext";
 import { useTabs } from "../context/TabContext";
 import { useWorkspacePages } from "../hooks/useWorkspacePages";
+import { isIgnorableRpcError } from "../lib/api/rpc";
 import { isDatabaseOnlyBody } from "../lib/database/block";
 import { consumePageTitleFocus, shouldFocusPageTitle } from "../lib/page/navigate";
 import { cn } from "../lib/utils";
@@ -680,6 +681,11 @@ export function PageView() {
           });
           finishSave(updated);
         } catch (error) {
+          if (isIgnorableRpcError(error)) {
+            // Keep the dirty draft; reconnect will flush it.
+            setPageStatusRef.current(pageIdForSave, "unsaved");
+            return;
+          }
           if (
             bodyChanged &&
             bodyFields.bodyPatch &&
@@ -705,6 +711,10 @@ export function PageView() {
               finishSave(updated);
               return;
             } catch (retryError) {
+              if (isIgnorableRpcError(retryError)) {
+                setPageStatusRef.current(pageIdForSave, "unsaved");
+                return;
+              }
               console.error(retryError);
               setPageStatusRef.current(pageIdForSave, "error");
               return;
@@ -718,6 +728,14 @@ export function PageView() {
 
   const persistPageDraftRef = useRef(persistPageDraft);
   persistPageDraftRef.current = persistPageDraft;
+
+  // After reconnect, flush every dirty draft — never discard offline edits.
+  useEffect(() => {
+    if (connectionStatus !== "connected") return;
+    for (const id of [...dirtyPageIdsRef.current]) {
+      persistPageDraftRef.current(id);
+    }
+  }, [connectionStatus]);
 
   useEffect(() => {
     if (isTrashed || !page || !activeDetail || pageId !== editorPageId) {

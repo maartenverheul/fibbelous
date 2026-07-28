@@ -1,5 +1,6 @@
 import { SidebarProvider } from "../../context/SidebarContext";
 import { cn } from "../../lib/utils";
+import { ConnectionLostBanner } from "./ConnectionLostBanner";
 import { MobileHeader } from "./MobileHeader";
 import { Sidebar } from "./Sidebar";
 import { TabBar } from "./TabBar";
@@ -15,6 +16,7 @@ function AppShellLayout() {
     >
       <Sidebar />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <ConnectionLostBanner />
         <MobileHeader />
         <TabBar />
         <TabContent />

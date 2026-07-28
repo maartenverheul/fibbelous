@@ -41,7 +41,7 @@ pub struct WorkspaceSettings {
 pub struct Workspace {
     pub id: String,
     pub path: PathBuf,
-    pub settings: WorkspaceSettings,
+    settings: Arc<Mutex<WorkspaceSettings>>,
     cache: Arc<Mutex<CacheDb>>,
     flush: FlushScheduler,
     index_status: Arc<Mutex<IndexStatus>>,
@@ -52,7 +52,7 @@ impl std::fmt::Debug for Workspace {
         f.debug_struct("Workspace")
             .field("id", &self.id)
             .field("path", &self.path)
-            .field("settings", &self.settings)
+            .field("settings", &self.settings())
             .field("index_status", &self.index_status())
             .finish_non_exhaustive()
     }
@@ -157,6 +157,13 @@ pub struct WorkspaceInfo {
 }
 
 impl Workspace {
+    pub fn settings(&self) -> WorkspaceSettings {
+        self.settings
+            .lock()
+            .expect("settings mutex poisoned")
+            .clone()
+    }
+
     pub fn index_status(&self) -> IndexStatus {
         *self
             .index_status
@@ -175,8 +182,23 @@ impl Workspace {
         WorkspaceInfo {
             id: self.id.clone(),
             index_status: self.index_status(),
-            settings: self.settings.clone(),
+            settings: self.settings(),
         }
+    }
+
+    fn reload_settings(&self) -> Result<(), String> {
+        let workspace_json = self.path.join("workspace.json");
+        let contents = fs::read_to_string(&workspace_json).map_err(|error| error.to_string())?;
+        let settings = serde_json::from_str::<WorkspaceSettings>(&contents).map_err(|error| {
+            format!(
+                "invalid workspace.json ({error}). Expected fields: title, slug, icon, createdAt"
+            )
+        })?;
+        *self
+            .settings
+            .lock()
+            .expect("settings mutex poisoned") = settings;
+        Ok(())
     }
 
     pub fn list_pages(
@@ -438,9 +460,24 @@ impl Workspace {
     }
 
     /// Rescan workspace files and update the cache for pages that changed on disk
-    /// (same incremental sync path as startup indexing).
+    /// (same incremental sync path as startup indexing). Also reloads `workspace.json`.
     pub fn reindex(&self) -> Result<crate::index::SyncStats, String> {
         self.set_index_status(IndexStatus::Indexing);
+        tracing::info!(
+            workspace = %self.id,
+            path = %log_path(&self.path),
+            "reindexing workspace"
+        );
+
+        if let Err(error) = self.reload_settings() {
+            self.set_index_status(IndexStatus::Failed);
+            tracing::warn!(
+                workspace = %self.id,
+                %error,
+                "failed to reload workspace.json during reindex"
+            );
+            return Err(error);
+        }
 
         let result = self.with_cache_mut(|path, cache| {
             sync_workspace(path, cache).map_err(|error| error.to_string())
@@ -468,7 +505,7 @@ impl Workspace {
     }
 
     fn persist_settings(&self) -> Result<(), std::io::Error> {
-        let contents = serde_json::to_string_pretty(&self.settings).map_err(|error| {
+        let contents = serde_json::to_string_pretty(&self.settings()).map_err(|error| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 format!("failed to serialize workspace.json: {error}"),
@@ -482,6 +519,11 @@ impl Workspace {
         all_workspaces: &[Workspace],
         input: UpdateWorkspaceRequest,
     ) -> Result<WorkspaceInfo, UpdateWorkspaceError> {
+        let mut settings = self
+            .settings
+            .lock()
+            .expect("settings mutex poisoned");
+
         if let Some(title) = input.title {
             let title = title.trim().to_owned();
             if title.is_empty() {
@@ -489,7 +531,7 @@ impl Workspace {
                     "title is required".to_owned(),
                 ));
             }
-            self.settings.title = title;
+            settings.title = title;
         }
 
         if let Some(slug) = input.slug {
@@ -501,17 +543,18 @@ impl Workspace {
             }
             if all_workspaces
                 .iter()
-                .any(|workspace| workspace.id != self.id && workspace.settings.slug == slug)
+                .any(|workspace| workspace.id != self.id && workspace.settings().slug == slug)
             {
                 return Err(UpdateWorkspaceError::SlugConflict);
             }
-            self.settings.slug = slug;
+            settings.slug = slug;
         }
 
         if let Some(icon) = input.icon {
-            self.settings.icon = icon;
+            settings.icon = icon;
         }
 
+        drop(settings);
         self.persist_settings()?;
         Ok(self.info())
     }
@@ -523,6 +566,11 @@ impl Workspace {
     pub fn ensure_git(&self) -> Result<(), String> {
         self.flush_to_disk()?;
         if !git::is_git_repo(&self.path) {
+            tracing::info!(
+                workspace = %self.id,
+                path = %log_path(&self.path),
+                "initializing git repository"
+            );
             git::init_repo(&self.path)?;
             git::commit_daily(&self.path)?;
             return Ok(());
@@ -531,21 +579,87 @@ impl Workspace {
     }
 
     pub fn git_status(&self) -> Result<GitStatus, String> {
+        tracing::debug!(workspace = %self.id, "git status starting");
         self.ensure_git()?;
         self.flush_to_disk()?;
-        git::status(&self.path)
+        let status = git::status(&self.path)?;
+        tracing::debug!(
+            workspace = %self.id,
+            branch = %status.branch,
+            ahead = status.ahead,
+            behind = status.behind,
+            files = status.files.len(),
+            "git status finished"
+        );
+        Ok(status)
     }
 
     pub fn git_commit(&self) -> Result<GitStatus, String> {
+        tracing::info!(workspace = %self.id, "git commit starting");
         self.ensure_git()?;
         self.flush_to_disk()?;
-        git::commit_daily(&self.path)
+        match git::commit_daily(&self.path) {
+            Ok(status) => {
+                tracing::info!(
+                    workspace = %self.id,
+                    branch = %status.branch,
+                    commit_title = %status.commit_title,
+                    files = status.files.len(),
+                    "git commit finished"
+                );
+                Ok(status)
+            }
+            Err(error) => {
+                tracing::warn!(workspace = %self.id, %error, "git commit failed");
+                Err(error)
+            }
+        }
     }
 
     pub fn git_push(&self) -> Result<GitStatus, String> {
+        tracing::info!(workspace = %self.id, "git push starting");
         self.ensure_git()?;
         self.flush_to_disk()?;
-        git::push(&self.path)
+        match git::push(&self.path) {
+            Ok(status) => {
+                tracing::info!(
+                    workspace = %self.id,
+                    branch = %status.branch,
+                    upstream = ?status.upstream,
+                    ahead = status.ahead,
+                    behind = status.behind,
+                    "git push finished"
+                );
+                Ok(status)
+            }
+            Err(error) => {
+                tracing::warn!(workspace = %self.id, %error, "git push failed");
+                Err(error)
+            }
+        }
+    }
+
+    pub fn git_pull(&self) -> Result<GitStatus, String> {
+        tracing::info!(workspace = %self.id, "git pull starting");
+        self.ensure_git()?;
+        self.flush_to_disk()?;
+        match git::pull(&self.path) {
+            Ok(status) => {
+                tracing::info!(
+                    workspace = %self.id,
+                    branch = %status.branch,
+                    upstream = ?status.upstream,
+                    ahead = status.ahead,
+                    behind = status.behind,
+                    "git pull finished"
+                );
+                Ok(status)
+            }
+            Err(error) => {
+                tracing::warn!(workspace = %self.id, %error, "git pull failed");
+                Err(error)
+            }
+        }
     }
 }
 
@@ -560,7 +674,7 @@ pub fn find_by_id_mut<'a>(workspaces: &'a mut [Workspace], id: &str) -> Option<&
 pub fn find_by_slug<'a>(workspaces: &'a [Workspace], slug: &str) -> Option<&'a Workspace> {
     workspaces
         .iter()
-        .find(|workspace| workspace.settings.slug == slug)
+        .find(|workspace| workspace.settings().slug == slug)
 }
 
 fn slugify(text: &str) -> String {
@@ -614,7 +728,7 @@ fn open_workspace(id: String, path: PathBuf) -> Result<Workspace, String> {
     Ok(Workspace {
         id,
         path,
-        settings,
+        settings: Arc::new(Mutex::new(settings)),
         cache: Arc::new(Mutex::new(cache)),
         flush: FlushScheduler::new(),
         index_status: Arc::new(Mutex::new(IndexStatus::Pending)),
@@ -663,8 +777,8 @@ fn initialize_workspace_at_path(
 
     tracing::info!(
         workspace = %workspace.id,
-        title = %workspace.settings.title,
-        slug = %workspace.settings.slug,
+        title = %workspace.settings().title,
+        slug = %workspace.settings().slug,
         path = %log_path(path),
         "created workspace"
     );
@@ -714,7 +828,7 @@ pub fn create_workspace(
 
     if existing
         .iter()
-        .any(|workspace| workspace.settings.slug == slug)
+        .any(|workspace| workspace.settings().slug == slug)
     {
         return Err(CreateWorkspaceError::SlugConflict);
     }
@@ -750,7 +864,7 @@ pub fn clone_workspace(
             open_workspace(id, path).map_err(CreateWorkspaceError::Validation)?;
         if existing
             .iter()
-            .any(|item| item.settings.slug == workspace.settings.slug)
+            .any(|item| item.settings().slug == workspace.settings().slug)
         {
             let _ = fs::remove_dir_all(&workspace.path);
             return Err(CreateWorkspaceError::SlugConflict);
@@ -780,7 +894,7 @@ pub fn clone_workspace(
     }
     if existing
         .iter()
-        .any(|workspace| workspace.settings.slug == slug)
+        .any(|workspace| workspace.settings().slug == slug)
     {
         let _ = fs::remove_dir_all(&path);
         return Err(CreateWorkspaceError::SlugConflict);
@@ -806,7 +920,7 @@ pub fn clone_workspace(
 
     tracing::info!(
         workspace = %workspace.id,
-        title = %workspace.settings.title,
+        title = %workspace.settings().title,
         path = %log_path(&workspace.path),
         "cloned workspace"
     );
@@ -907,7 +1021,7 @@ pub fn open_workspace_at_path(
 
         if existing
             .iter()
-            .any(|item| item.settings.slug == workspace.settings.slug)
+            .any(|item| item.settings().slug == workspace.settings().slug)
         {
             return Err(OpenWorkspaceError::SlugConflict);
         }
@@ -923,7 +1037,7 @@ pub fn open_workspace_at_path(
 
         tracing::info!(
             workspace = %workspace.id,
-            title = %workspace.settings.title,
+            title = %workspace.settings().title,
             path = %log_path(&workspace.path),
             "opened workspace from path"
         );
@@ -950,7 +1064,7 @@ pub fn open_workspace_at_path(
 
     if existing
         .iter()
-        .any(|workspace| workspace.settings.slug == slug)
+        .any(|workspace| workspace.settings().slug == slug)
     {
         return Err(OpenWorkspaceError::SlugConflict);
     }
@@ -986,7 +1100,7 @@ pub fn discover_workspaces(dir: &Path) -> std::io::Result<Vec<Workspace>> {
                 }
                 tracing::info!(
                     workspace = %workspace.id,
-                    title = %workspace.settings.title,
+                    title = %workspace.settings().title,
                     "discovered workspace"
                 );
                 workspaces.push(workspace);
@@ -1011,6 +1125,7 @@ pub fn spawn_indexing(workspace: Workspace) {
 }
 
 pub fn start_indexing(workspaces: &[Workspace]) {
+    tracing::info!(count = workspaces.len(), "starting workspace indexing");
     for workspace in workspaces {
         spawn_indexing(workspace.clone());
     }
@@ -1022,6 +1137,12 @@ async fn index_workspace(workspace: Workspace) {
     let workspace_id = workspace.id.clone();
     let path = workspace.path.clone();
     let cache = workspace.cache.clone();
+
+    tracing::info!(
+        workspace = %workspace_id,
+        path = %log_path(&path),
+        "indexing workspace"
+    );
 
     let result = tokio::task::spawn_blocking(move || -> Result<crate::index::SyncStats, String> {
         let mut cache = cache

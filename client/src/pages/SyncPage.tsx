@@ -72,7 +72,9 @@ export function SyncPage() {
   const { rpc, connectionStatus } = useWorkspace();
   const [status, setStatus] = useState<GitStatus | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<"commit" | "push" | "refresh" | null>(null);
+  const [busy, setBusy] = useState<"commit" | "push" | "pull" | "refresh" | null>(
+    null,
+  );
 
   const loadStatus = useCallback(async () => {
     if (!rpc || connectionStatus !== "connected") {
@@ -130,6 +132,20 @@ export function SyncPage() {
     }
   };
 
+  const handlePull = async () => {
+    if (!rpc || connectionStatus !== "connected") return;
+    setBusy("pull");
+    setError(null);
+    try {
+      const result = await rpc.call<GitStatus>("git_pull");
+      setStatus(result);
+    } catch (err) {
+      setError(formatUnknownError(err, "Failed to fetch & pull"));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   if (connectionStatus !== "connected") {
     return (
       <div className="mx-auto w-full max-w-3xl space-y-4 p-4">
@@ -137,7 +153,9 @@ export function SyncPage() {
           Sync
         </h1>
         <p className="text-sm text-stone-600 dark:text-stone-400">
-          Connect to a workspace to view git sync status.
+          {connectionStatus === "disconnected"
+            ? "Reconnecting to the workspace…"
+            : "Connect to a workspace to view git sync status."}
         </p>
       </div>
     );
@@ -249,6 +267,17 @@ export function SyncPage() {
                 {busy === "commit"
                   ? "Committing…"
                   : `Commit as ${commitTitle}`}
+              </button>
+              <button
+                type="button"
+                disabled={busy !== null || !status.hasUpstream}
+                onClick={() => void handlePull()}
+                className={cn(
+                  "rounded-md border border-app-border px-3 py-1.5 text-sm text-stone-800",
+                  "hover:bg-stone-100 disabled:opacity-50 dark:text-stone-200 dark:hover:bg-stone-800",
+                )}
+              >
+                {busy === "pull" ? "Pulling…" : "Fetch & pull"}
               </button>
               <button
                 type="button"

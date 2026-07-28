@@ -24,7 +24,8 @@ export function isIgnorableRpcError(error: unknown): boolean {
   if (error instanceof Error) {
     return (
       error.message === "WebSocket closed" ||
-      error.message === "WebSocket connection failed"
+      error.message === "WebSocket connection failed" ||
+      error.message === "Workspace not connected"
     );
   }
   return false;
@@ -34,11 +35,45 @@ export type RpcClient = {
   call<T>(method: string, params?: unknown): Promise<T>;
   close: () => void;
   isOpen(): boolean;
+  /** Subscribe to close (unexpected or intentional). Returns unsubscribe. */
+  onClose(listener: () => void): () => void;
 };
+
+function createCloseNotifier() {
+  const listeners = new Set<() => void>();
+  let closed = false;
+
+  return {
+    isClosed: () => closed,
+    onClose(listener: () => void): () => void {
+      if (closed) {
+        listener();
+        return () => {};
+      }
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    notifyClose() {
+      if (closed) return;
+      closed = true;
+      for (const listener of listeners) {
+        try {
+          listener();
+        } catch {
+          // Ignore listener errors so all subscribers still run.
+        }
+      }
+      listeners.clear();
+    },
+  };
+}
 
 export function createRpcClient(wsUrl: string): RpcClient {
   const socket = new WebSocket(wsUrl);
   const pending = new Map<string, PendingRequest>();
+  const closeNotifier = createCloseNotifier();
   let nextId = 0;
 
   const ready = new Promise<void>((resolve, reject) => {
@@ -67,16 +102,23 @@ export function createRpcClient(wsUrl: string): RpcClient {
     request.resolve(message.result);
   });
 
-  socket.addEventListener("close", () => {
+  const handleClosed = () => {
     for (const request of pending.values()) {
       request.reject(new RpcConnectionClosedError());
     }
     pending.clear();
-  });
+    closeNotifier.notifyClose();
+  };
+
+  socket.addEventListener("close", handleClosed);
 
   return {
     async call<T>(method: string, params?: unknown): Promise<T> {
       await ready;
+
+      if (closeNotifier.isClosed() || socket.readyState !== WebSocket.OPEN) {
+        throw new RpcConnectionClosedError();
+      }
 
       const id = String(++nextId);
       const payload = {
@@ -95,20 +137,28 @@ export function createRpcClient(wsUrl: string): RpcClient {
       });
     },
     close() {
+      if (
+        socket.readyState === WebSocket.CLOSED ||
+        socket.readyState === WebSocket.CLOSING
+      ) {
+        handleClosed();
+        return;
+      }
       socket.close();
     },
     isOpen() {
       return socket.readyState === WebSocket.OPEN;
     },
+    onClose: closeNotifier.onClose,
   };
 }
 
 export function createLocalRpcClient(workspaceId: string): RpcClient {
-  let open = true;
+  const closeNotifier = createCloseNotifier();
 
   return {
     async call<T>(method: string, params?: unknown): Promise<T> {
-      if (!open) {
+      if (closeNotifier.isClosed()) {
         throw new RpcConnectionClosedError();
       }
       try {
@@ -135,10 +185,11 @@ export function createLocalRpcClient(workspaceId: string): RpcClient {
       }
     },
     close() {
-      open = false;
+      closeNotifier.notifyClose();
     },
     isOpen() {
-      return open;
+      return !closeNotifier.isClosed();
     },
+    onClose: closeNotifier.onClose,
   };
 }

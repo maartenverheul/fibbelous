@@ -8,6 +8,7 @@ use git2::{
 use serde::Serialize;
 
 use crate::cache::ensure_workspace_gitignore;
+use crate::data::log_path;
 
 const COMMIT_NAME: &str = "Fibbelous";
 const COMMIT_EMAIL: &str = "fibbelous@local";
@@ -244,8 +245,10 @@ fn set_head_to(repo: &Repository, oid: git2::Oid, log_message: &str) -> Result<(
 
 /// Stage all changes and create or amend today's `yyyy-mm-dd` commit.
 pub fn commit_daily(path: &Path) -> Result<GitStatus, String> {
-    let repo = open_repo(path)?;
     let title = today_commit_title();
+    tracing::info!(path = %log_path(path), %title, "git commit_daily starting");
+
+    let repo = open_repo(path)?;
     let sig = signature()?;
 
     stage_all(&repo)?;
@@ -256,18 +259,21 @@ pub fn commit_daily(path: &Path) -> Result<GitStatus, String> {
 
     match head_commit(&repo)? {
         None => {
+            tracing::info!(path = %log_path(path), %title, "creating initial daily commit");
             repo.commit(Some("HEAD"), &sig, &sig, &title, &tree, &[])
                 .map_err(|error| format!("failed to create commit: {error}"))?;
         }
         Some(head) => {
             if head.tree_id() == tree_oid {
                 // Nothing changed on disk relative to HEAD.
+                tracing::info!(path = %log_path(path), %title, "git commit_daily skipped (no changes)");
                 return status(path);
             }
             let head_message = head.message().unwrap_or("").trim();
             if head_message == title {
                 // Amend: libgit2 refuses commit(Some("HEAD"), …) unless the first
                 // parent is the current tip, so create the commit then move the ref.
+                tracing::info!(path = %log_path(path), %title, "amending daily commit");
                 let parents: Vec<_> = head.parents().collect();
                 let parent_refs: Vec<&Commit> = parents.iter().collect();
                 let oid = repo
@@ -276,16 +282,20 @@ pub fn commit_daily(path: &Path) -> Result<GitStatus, String> {
                 set_head_to(&repo, oid, &format!("amend: {title}"))
                     .map_err(|error| format!("failed to amend commit: {error}"))?;
             } else {
+                tracing::info!(path = %log_path(path), %title, "creating new daily commit");
                 repo.commit(Some("HEAD"), &sig, &sig, &title, &tree, &[&head])
                     .map_err(|error| format!("failed to create commit: {error}"))?;
             }
         }
     }
 
+    tracing::info!(path = %log_path(path), %title, "git commit_daily finished");
     status(path)
 }
 
 pub fn clone_repo(url: &str, dest: &Path) -> Result<(), String> {
+    tracing::info!(%url, dest = %log_path(dest), "git clone starting");
+
     if dest.exists() {
         return Err(format!(
             "destination already exists: {}",
@@ -308,6 +318,7 @@ pub fn clone_repo(url: &str, dest: &Path) -> Result<(), String> {
         .map_err(|error| format!("git clone failed: {error}"))?;
 
     ensure_workspace_gitignore(dest).map_err(|error| error.to_string())?;
+    tracing::info!(%url, dest = %log_path(dest), "git clone finished");
     Ok(())
 }
 
@@ -501,9 +512,10 @@ pub fn status(path: &Path) -> Result<GitStatus, String> {
     })
 }
 
-pub fn push(path: &Path) -> Result<GitStatus, String> {
-    let repo = open_repo(path)?;
-    let branch = branch_name(&repo)?;
+fn resolve_upstream(
+    repo: &Repository,
+) -> Result<(String, String, String, git2::Branch<'_>), String> {
+    let branch = branch_name(repo)?;
     let local = repo
         .find_branch(&branch, git2::BranchType::Local)
         .map_err(|_| format!("branch '{branch}' not found"))?;
@@ -527,6 +539,110 @@ pub fn push(path: &Path) -> Result<GitStatus, String> {
         .unwrap_or(&branch)
         .to_owned();
 
+    Ok((branch, remote_name, remote_branch, upstream))
+}
+
+fn fetch_remote_branch(
+    repo: &Repository,
+    remote_name: &str,
+    remote_branch: &str,
+) -> Result<(), String> {
+    let remote = repo
+        .find_remote(remote_name)
+        .map_err(|error| error.to_string())?;
+    let original_url = remote
+        .url()
+        .ok_or_else(|| format!("remote '{remote_name}' has no URL"))?
+        .to_owned();
+    let fetch_url = normalize_remote_url(&original_url, Some(&repo_path_base(repo)));
+
+    tracing::info!(
+        remote = %remote_name,
+        branch = %remote_branch,
+        url = %fetch_url,
+        "git fetch starting"
+    );
+
+    let mut fetch_opts = git2::FetchOptions::new();
+    fetch_opts.remote_callbacks(remote_callbacks());
+
+    if fetch_url == original_url {
+        let mut remote = remote;
+        remote
+            .fetch(&[remote_branch], Some(&mut fetch_opts), None)
+            .map_err(|error| format!("git fetch failed: {error} (remote: {fetch_url})"))?;
+    } else {
+        // Local folder remotes (esp. Windows `D:\...`) must use file:// for libgit2.
+        // Anonymous remote + explicit refspec updates the named remote-tracking branch.
+        let mut anon = repo
+            .remote_anonymous(&fetch_url)
+            .map_err(|error| format!("failed to open local remote: {error}"))?;
+        let refspec =
+            format!("+refs/heads/{remote_branch}:refs/remotes/{remote_name}/{remote_branch}");
+        anon.fetch(&[refspec.as_str()], Some(&mut fetch_opts), None)
+            .map_err(|error| format!("git fetch failed: {error} (remote: {fetch_url})"))?;
+    }
+
+    tracing::info!(
+        remote = %remote_name,
+        branch = %remote_branch,
+        "git fetch finished"
+    );
+    Ok(())
+}
+
+fn fast_forward_to(repo: &Repository, branch: &str, target: git2::Oid) -> Result<(), String> {
+    let head_oid = repo
+        .head()
+        .ok()
+        .and_then(|head| head.target())
+        .ok_or_else(|| "HEAD has no commit".to_owned())?;
+
+    if head_oid == target {
+        return Ok(());
+    }
+
+    let is_descendant = repo
+        .graph_descendant_of(target, head_oid)
+        .map_err(|error| error.to_string())?;
+    if !is_descendant {
+        return Err("cannot pull: histories have diverged (fast-forward only)".to_owned());
+    }
+
+    tracing::info!(
+        %branch,
+        from = %head_oid,
+        to = %target,
+        "git fast-forward starting"
+    );
+
+    let commit = repo
+        .find_commit(target)
+        .map_err(|error| error.to_string())?;
+    let mut checkout = git2::build::CheckoutBuilder::new();
+    checkout.safe();
+    repo.checkout_tree(commit.as_object(), Some(&mut checkout))
+        .map_err(|error| {
+            format!("cannot pull: working tree conflicts with upstream changes ({error})")
+        })?;
+
+    let mut local = repo
+        .find_branch(branch, git2::BranchType::Local)
+        .map_err(|error| error.to_string())?;
+    local
+        .get_mut()
+        .set_target(target, "pull: fast-forward")
+        .map_err(|error| format!("failed to fast-forward: {error}"))?;
+
+    tracing::info!(%branch, to = %target, "git fast-forward finished");
+    Ok(())
+}
+
+pub fn push(path: &Path) -> Result<GitStatus, String> {
+    tracing::info!(path = %log_path(path), "git push starting");
+    let repo = open_repo(path)?;
+    let (branch, remote_name, remote_branch, upstream) = resolve_upstream(&repo)?;
+
     let head_oid = repo
         .head()
         .ok()
@@ -540,6 +656,17 @@ pub fn push(path: &Path) -> Result<GitStatus, String> {
     };
 
     let (_, ahead, behind, _) = ahead_behind(&repo)?;
+    tracing::info!(
+        path = %log_path(path),
+        %branch,
+        remote = %remote_name,
+        remote_branch = %remote_branch,
+        ahead,
+        behind,
+        force = use_force,
+        "git push resolved upstream"
+    );
+
     if !use_force && !(ahead > 0 && behind == 0) {
         return Err(
             "cannot push: remote has commits we don't have (not a same-day amend)"
@@ -547,6 +674,7 @@ pub fn push(path: &Path) -> Result<GitStatus, String> {
         );
     }
     if ahead == 0 && !use_force {
+        tracing::info!(path = %log_path(path), %branch, "git push skipped (already up to date)");
         return status(path);
     }
 
@@ -566,6 +694,14 @@ pub fn push(path: &Path) -> Result<GitStatus, String> {
         .ok_or_else(|| format!("remote '{remote_name}' has no URL"))?
         .to_owned();
     let push_url = normalize_remote_url(&original_url, Some(&repo_path_base(&repo)));
+
+    tracing::info!(
+        path = %log_path(path),
+        %refspec,
+        url = %push_url,
+        force = use_force,
+        "git push transferring"
+    );
 
     let callbacks = remote_callbacks();
     let mut options = PushOptions::new();
@@ -593,16 +729,55 @@ pub fn push(path: &Path) -> Result<GitStatus, String> {
 
     // Refresh remote-tracking ref so status no longer shows behind after amend push.
     if push_url == original_url {
-        if let Ok(mut remote) = repo.find_remote(&remote_name) {
-            let mut fetch_opts = git2::FetchOptions::new();
-            fetch_opts.remote_callbacks(remote_callbacks());
-            let _ = remote.fetch(&[remote_branch.as_str()], Some(&mut fetch_opts), None);
-        }
+        let _ = fetch_remote_branch(&repo, &remote_name, &remote_branch);
     } else {
         let tracking = format!("refs/remotes/{remote_name}/{remote_branch}");
         let _ = repo.reference(&tracking, head_oid, true, "update after local push");
     }
 
+    tracing::info!(path = %log_path(path), %branch, force = use_force, "git push finished");
+    status(path)
+}
+
+/// Fetch the configured upstream, then fast-forward the current branch if behind.
+pub fn pull(path: &Path) -> Result<GitStatus, String> {
+    tracing::info!(path = %log_path(path), "git pull starting");
+    let repo = open_repo(path)?;
+    let (branch, remote_name, remote_branch, _) = resolve_upstream(&repo)?;
+
+    tracing::info!(
+        path = %log_path(path),
+        %branch,
+        remote = %remote_name,
+        remote_branch = %remote_branch,
+        "git pull resolved upstream"
+    );
+
+    fetch_remote_branch(&repo, &remote_name, &remote_branch)?;
+
+    let (_, ahead, behind, upstream_oid) = ahead_behind(&repo)?;
+    tracing::info!(
+        path = %log_path(path),
+        %branch,
+        ahead,
+        behind,
+        "git pull after fetch"
+    );
+
+    if behind == 0 {
+        tracing::info!(path = %log_path(path), %branch, "git pull skipped (already up to date)");
+        return status(path);
+    }
+    if ahead > 0 {
+        return Err(
+            "cannot pull: branch has diverged from upstream (fast-forward only)".to_owned(),
+        );
+    }
+
+    let target = upstream_oid.ok_or_else(|| "upstream has no commit".to_owned())?;
+    fast_forward_to(&repo, &branch, target)?;
+
+    tracing::info!(path = %log_path(path), %branch, "git pull finished");
     status(path)
 }
 

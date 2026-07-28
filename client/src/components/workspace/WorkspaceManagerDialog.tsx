@@ -285,7 +285,10 @@ export function WorkspaceManagerDialog({
       isLocalWorkspace(settingsWorkspace) ? "" : settingsWorkspace.serverUrl,
     );
     setSettingsError(null);
-  }, [settingsWorkspace]);
+    // Reset the form when switching workspace or reopening the dialog, not when
+    // the bookmark is patched in place (e.g. after reindex reloads workspace.json).
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
+  }, [settingsWorkspaceId, open]);
 
   const parsedServer = parseServerUrl(serverAddress);
   const serverUrl =
@@ -693,6 +696,22 @@ export function WorkspaceManagerDialog({
           workspace.id === updated.id ? updated : workspace,
         ),
       );
+
+      setSettingsName(updated.title);
+      setSettingsSlug(updated.slug);
+      setSettingsIcon(updated.icon ?? "");
+
+      updateWorkspace(settingsWorkspace.id, {
+        slug: updated.slug,
+        icon: updated.icon,
+      });
+
+      if (
+        activeWorkspaceId === settingsWorkspace.id &&
+        updated.slug !== settingsWorkspace.slug
+      ) {
+        navigate(`/${updated.slug}`, { replace: true });
+      }
 
       if (
         workspaceContext &&
