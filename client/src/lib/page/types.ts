@@ -36,7 +36,7 @@ export type ReferencedPage = {
   parentId?: string | null;
   name: string;
   icon: string | null;
-  /** Workspace-relative path used as the full internal link. */
+  /** Resolved workspace path from `get_page` (not written into MDX hrefs). */
   link: string;
 };
 

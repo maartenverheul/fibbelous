@@ -6,6 +6,16 @@ export function normalizePageHref(href: string): string {
 }
 
 /**
+ * Basename written into MDX (`{id}-{slug}.mdx`). Full workspace paths are
+ * resolved via `get_page` → `referencedPages[].link`.
+ */
+export function pageLinkFilename(href: string): string {
+  const normalized = normalizePageHref(href);
+  const slash = normalized.lastIndexOf("/");
+  return slash >= 0 ? normalized.slice(slash + 1) : normalized;
+}
+
+/**
  * Internal page links are relative paths to `.mdx` files, e.g.
  * `94618e3a-nummers.mdx`, `pages/94618e3a-nummers.mdx`, `./foo.mdx`.
  */
@@ -89,7 +99,10 @@ export function internalPageLinksToMarkers(
     const meta = resolve(normalized, pageId);
     const marker = doc.createElement("span");
     marker.setAttribute("data-inline-content-type", "pageLink");
-    marker.setAttribute("data-href", meta?.link ?? normalized);
+    marker.setAttribute(
+      "data-href",
+      pageLinkFilename(meta?.link ?? normalized),
+    );
     marker.setAttribute("data-page-id", pageId);
     marker.setAttribute(
       "data-name",
@@ -134,7 +147,7 @@ export function pageLinkMarkersToAnchors(html: string): string {
       href;
 
     const anchor = doc.createElement("a");
-    anchor.setAttribute("href", normalizePageHref(href));
+    anchor.setAttribute("href", pageLinkFilename(href));
     anchor.textContent = name;
     node.replaceWith(anchor);
   }

@@ -1,4 +1,5 @@
 import type { BlockNoteEditor } from "@blocknote/core";
+import { formatMentionDate } from "../mentionDate";
 import { mdxTagWriteName } from "../mdxPlaceholders";
 
 export function tocDefaultRaw(): string {
@@ -30,6 +31,23 @@ function inlineContentToPlainText(content: unknown): string {
       ) {
         const props = node.props as Record<string, unknown>;
         return typeof props.name === "string" ? props.name : "";
+      }
+
+      if (
+        node.type === "mentionDate" &&
+        node.props &&
+        typeof node.props === "object"
+      ) {
+        const props = node.props as {
+          start?: string;
+          startTime?: string;
+          timeZone?: string;
+        };
+        return `@${formatMentionDate({
+          start: typeof props.start === "string" ? props.start : "",
+          startTime: typeof props.startTime === "string" ? props.startTime : "",
+          timeZone: typeof props.timeZone === "string" ? props.timeZone : "",
+        })}`;
       }
 
       if (typeof node.text === "string") return node.text;

@@ -4,7 +4,7 @@ import type { WorkspacePage, WorkspacePageDetail } from "../../page/types";
 import { pageLabel } from "../../page/types";
 import { htmlToMarkdown } from "../markdownPipeline";
 import type { PageEditor } from "../schema";
-import { pageLinkMarkersToAnchors } from "../pageLinks";
+import { pageLinkFilename, pageLinkMarkersToAnchors } from "../pageLinks";
 import { openWorkspacePage } from "../../page/navigate";
 
 async function serializePageBody(editor: PageEditor): Promise<string> {
@@ -41,7 +41,7 @@ export function insertNewPageSlashMenuItem(
             {
               type: "pageLink",
               props: {
-                href: detail.path,
+                href: pageLinkFilename(detail.path),
                 pageId: detail.id,
                 name: pageLabel(detail),
                 icon: detail.icon ?? "",

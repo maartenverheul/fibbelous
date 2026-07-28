@@ -1,5 +1,6 @@
+/** Ignore only a trailing EOF newline; keep intentional blank lines in the body. */
 function normalizeStoredBody(body: string): string {
-  return body.replace(/\n{3,}/g, "\n\n").trimEnd();
+  return body.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trimEnd();
 }
 
 export function bodyMatchesStored(

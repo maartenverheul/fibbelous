@@ -7,7 +7,7 @@ import { cn } from "../utils";
 import type { WorkspacePage } from "../page/types";
 import { pageLabel } from "../page/types";
 import { openWorkspacePage } from "../page/navigate";
-import { normalizePageHref, pageIdFromInternalLink } from "./pageLinks";
+import { normalizePageHref, pageIdFromInternalLink, pageLinkFilename } from "./pageLinks";
 
 function parsePageLinkProps(element: HTMLElement) {
   const isMarker =
@@ -202,7 +202,7 @@ export const pageLink = createReactInlineContentSpec(
       const { href, name, pageId, icon } = props.inlineContent.props;
       const page = pageFromLinkProps({ href, pageId, name, icon });
       const label = name || pageLabel(page);
-      return <a href={normalizePageHref(href)}>{label}</a>;
+      return <a href={pageLinkFilename(href)}>{label}</a>;
     },
   },
 );

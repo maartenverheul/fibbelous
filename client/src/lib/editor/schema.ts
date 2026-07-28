@@ -27,6 +27,7 @@ import {
 import { openExternalUrl } from "../api/tauri";
 import { bookmarkRawFromUrl } from "./blocks/bookmark";
 import { pageLink } from "./pageLinkInline";
+import { mentionDate } from "./mentionDateInline";
 import { renderTocDom, tocDefaultRaw } from "./blocks/toc";
 
 export {
@@ -582,6 +583,7 @@ export const pageEditorSchema = BlockNoteSchema.create({
   inlineContentSpecs: {
     ...defaultInlineContentSpecs,
     pageLink,
+    mentionDate,
   },
 });
 

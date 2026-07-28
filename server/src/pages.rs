@@ -301,9 +301,6 @@ fn format_page_content(frontmatter: &PageFrontmatter, body: &str) -> String {
     let mut content = frontmatter.to_yaml();
     content.push('\n');
     content.push_str(body);
-    if !body.is_empty() {
-        content.push('\n');
-    }
     content
 }
 
@@ -751,9 +748,6 @@ pub(crate) fn format_database_row_content(
     let mut content = frontmatter.to_yaml();
     content.push('\n');
     content.push_str(body);
-    if !body.is_empty() {
-        content.push('\n');
-    }
     content
 }
 

@@ -18,6 +18,11 @@ import {
   mdxTagsToBlockNoteMarkers,
   sanitizeMdxPlaceholderHtml,
 } from "./mdxPlaceholders";
+import {
+  mentionDateTagsToMarkers,
+  MENTION_DATE_TAG_RE,
+  unescapeHtmlAttr,
+} from "./mentionDate";
 
 const markdownToHtmlProcessor = unified()
   .use(remarkParse)
@@ -57,23 +62,36 @@ export function protectMdxPlaceholderTags(html: string): {
 } {
   const tags: string[] = [];
 
-  // Prefer export carriers — they keep the exact written casing from data-raw.
+  const pushEscapedTag = (escaped: string) => {
+    const index = tags.length;
+    tags.push(unescapeHtmlAttr(escaped));
+    return index;
+  };
+
+  // Inline MDX carriers (e.g. MentionDate) — keep mid-paragraph placement.
   let next = html.replace(
-    /<span\b[^>]*\bdata-mdx-export\b[^>]*>([\s\S]*?)<\/span>/gi,
+    /<span\b[^>]*\bdata-mdx-export-inline\b[^>]*>([\s\S]*?)<\/span>/gi,
     (_match, escaped: string) => {
-      const index = tags.length;
-      tags.push(
-        escaped
-          .replace(/&lt;/g, "<")
-          .replace(/&gt;/g, ">")
-          .replace(/&quot;/g, '"')
-          .replace(/&amp;/g, "&"),
-      );
-      return `<p>MDXPLACEHOLDER${index}ENDMDX</p>`;
+      return `MDXPLACEHOLDER${pushEscapedTag(escaped)}ENDMDX`;
     },
   );
 
-  // Bare tags (legacy export): keep the matched spelling, do not re-case.
+  // Prefer export carriers — they keep the exact written casing from data-raw.
+  next = next.replace(
+    /<span\b[^>]*\bdata-mdx-export\b[^>]*>([\s\S]*?)<\/span>/gi,
+    (_match, escaped: string) => {
+      return `<p>MDXPLACEHOLDER${pushEscapedTag(escaped)}ENDMDX</p>`;
+    },
+  );
+
+  // Bare MentionDate tags that skipped the carrier path (inline token).
+  next = next.replace(MENTION_DATE_TAG_RE, (match) => {
+    const index = tags.length;
+    tags.push(match.trim());
+    return `MDXPLACEHOLDER${index}ENDMDX`;
+  });
+
+  // Bare block tags (legacy export): keep the matched spelling, do not re-case.
   next = next.replace(MDX_PLACEHOLDER_TAG_RE, (match) => {
     const index = tags.length;
     tags.push(match.trim());
@@ -97,9 +115,11 @@ export async function markdownToHtml(markdown: string): Promise<string> {
     return "<p></p>";
   }
 
-  // Turn <Database … /> into closed div markers before HTML5 parsing, otherwise
-  // custom self-closing tags are treated as open and can swallow following blocks.
-  const prepared = mdxTagsToBlockNoteMarkers(markdown);
+  // Turn <Database … /> / <MentionDate … /> into closed markers before HTML5
+  // parsing, otherwise custom self-closing tags can swallow following content.
+  const prepared = mentionDateTagsToMarkers(
+    mdxTagsToBlockNoteMarkers(markdown),
+  );
   const file = await markdownToHtmlProcessor.process(prepared);
   return String(file);
 }

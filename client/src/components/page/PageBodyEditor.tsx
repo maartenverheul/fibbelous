@@ -3,6 +3,7 @@ import "@blocknote/ariakit/style.css";
 import { filterSuggestionItems } from "@blocknote/core/extensions";
 import {
   getDefaultReactSlashMenuItems,
+  GridSuggestionMenuController,
   SideMenuController,
   SuggestionMenuController,
   useCreateBlockNote,
@@ -24,6 +25,7 @@ import { pageEditorSchema } from "../../lib/editor/schema";
 import { PageEditorSideMenu } from "../../lib/editor/sideMenu";
 import { insertNewPageSlashMenuItem } from "../../lib/editor/slash/page";
 import { insertTocSlashMenuItem } from "../../lib/editor/slash/toc";
+import { getMentionMenuItems } from "../../lib/editor/mentionMenu";
 import {
   focusEditorDocumentStart,
   isCursorAtDocumentStart,
@@ -35,9 +37,11 @@ import {
   isValidEditorLink,
   normalizePageHref,
   pageIdFromInternalLink,
+  pageLinkFilename,
   pageLinkMarkersToAnchors,
   type PageLinkMeta,
 } from "../../lib/editor/pageLinks";
+import { mentionDateMarkersToMdxTags } from "../../lib/editor/mentionDate";
 import {
   getPasteLinkChoiceOptions,
   insertPastedInlineLink,
@@ -81,10 +85,12 @@ function buildReferencedPageLookup(referencedPages: ReferencedPage[]) {
       id: page.id,
       name: page.name,
       icon: page.icon,
-      link: page.link,
+      // Stored in MDX as basename; `page.link` is the resolved workspace path.
+      link: pageLinkFilename(page.link),
     };
     byId.set(page.id, meta);
     byLink.set(normalizePageHref(page.link), meta);
+    byLink.set(pageLinkFilename(page.link), meta);
   }
 
   return { byId, byLink };
@@ -107,7 +113,9 @@ async function parseBodyToBlocks(
 async function serializeBody(editor: PageEditor): Promise<string> {
   // BlockNote's markdown exporter strips unknown tags; go HTML → markdown so
   // custom MDX tags (`<Database />`, `<Bookmark />`, `<Callout />`, …) survive.
-  const html = pageLinkMarkersToAnchors(editor.blocksToHTMLLossy());
+  const html = mentionDateMarkersToMdxTags(
+    pageLinkMarkersToAnchors(editor.blocksToHTMLLossy()),
+  );
   return htmlToMarkdown(html);
 }
 
@@ -139,9 +147,18 @@ export const PageBodyEditor = forwardRef<
   ref,
 ) {
   const { navigateInTab } = useTabs();
-  const { createPage, findPageById } = useWorkspacePages();
+  const {
+    createPage,
+    findPageById,
+    searchPages,
+    favoritePages,
+    rootPages,
+  } = useWorkspacePages();
   const findPageByIdRef = useRef(findPageById);
   const createPageRef = useRef(createPage);
+  const searchPagesRef = useRef(searchPages);
+  const favoritePagesRef = useRef(favoritePages);
+  const rootPagesRef = useRef(rootPages);
   const navigateInTabRef = useRef(navigateInTab);
   const onExitToTitleRef = useRef(onExitToTitle);
   const openPasteChoiceRef = useRef<(choice: PasteLinkChoice) => void>(
@@ -151,6 +168,9 @@ export const PageBodyEditor = forwardRef<
 
   findPageByIdRef.current = findPageById;
   createPageRef.current = createPage;
+  searchPagesRef.current = searchPages;
+  favoritePagesRef.current = favoritePages;
+  rootPagesRef.current = rootPages;
   navigateInTabRef.current = navigateInTab;
   onExitToTitleRef.current = onExitToTitle;
 
@@ -183,7 +203,7 @@ export const PageBodyEditor = forwardRef<
         id: page.id,
         name: pageLabel(page),
         icon: page.icon,
-        link: page.path,
+        link: pageLinkFilename(page.path),
       };
     },
     [],
@@ -428,6 +448,7 @@ export const PageBodyEditor = forwardRef<
         editable={!readOnly}
         slashMenu={false}
         sideMenu={false}
+        emojiPicker={false}
         aria-label="Page content"
         className="[&_.bn-editor]:min-h-6"
       >
@@ -450,6 +471,31 @@ export const PageBodyEditor = forwardRef<
               query,
             )
           }
+        />
+        <SuggestionMenuController
+          triggerCharacter="@"
+          getItems={async (query) =>
+            getMentionMenuItems(editor, query, {
+              searchPages: (q) => searchPagesRef.current(q),
+              getSuggestedPages: () => {
+                const favorites = favoritePagesRef.current ?? [];
+                if (favorites.length > 0) return favorites;
+                return rootPagesRef.current ?? [];
+              },
+            })
+          }
+        />
+        {/* Default `:` emoji picker steals the colon from `@today 14:00`. */}
+        <GridSuggestionMenuController
+          triggerCharacter=":"
+          columns={10}
+          minQueryLength={2}
+          shouldOpen={(tr) => {
+            const pos = tr.selection.from;
+            if (pos <= 0) return true;
+            const before = tr.doc.textBetween(pos - 1, pos);
+            return !/\d/.test(before);
+          }}
         />
         <SideMenuController sideMenu={PageEditorSideMenu} />
       </BlockNoteView>

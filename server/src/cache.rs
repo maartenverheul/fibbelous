@@ -98,7 +98,8 @@ pub struct ReferencedPage {
     pub id: String,
     pub name: String,
     pub icon: Option<String>,
-    /// Workspace-relative path used as the full internal link, e.g. `pages/{id}-{slug}.mdx`.
+    /// Resolved workspace-relative path (e.g. `pages/{id}-{slug}.mdx`).
+    /// Bodies store basename-only hrefs; this is the resolved location.
     pub link: String,
 }
 
@@ -1760,18 +1761,11 @@ pub fn replace_body_preserving_frontmatter(content: &str, new_body: &str) -> Str
             let body_start = close_end + body_trim;
             let mut out = content[..body_start].to_owned();
             out.push_str(new_body);
-            if !new_body.is_empty() {
-                out.push('\n');
-            }
             return out;
         }
     }
 
-    let mut out = new_body.to_owned();
-    if !new_body.is_empty() {
-        out.push('\n');
-    }
-    out
+    new_body.to_owned()
 }
 
 fn escape_like(value: &str) -> String {
@@ -1947,7 +1941,7 @@ mod tests {
     fn replace_body_preserves_frontmatter() {
         let content = "---\nid: abc\ntitle: Test\n---\n\nOld body\n";
         let replaced = replace_body_preserving_frontmatter(content, "New body");
-        assert_eq!(replaced, "---\nid: abc\ntitle: Test\n---\n\nNew body\n");
+        assert_eq!(replaced, "---\nid: abc\ntitle: Test\n---\n\nNew body");
     }
 }
 
