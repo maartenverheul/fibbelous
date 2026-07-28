@@ -13,7 +13,8 @@ pub fn workspaces_dir() -> PathBuf {
 
 pub fn ensure_workspaces_dir() -> std::io::Result<PathBuf> {
     let path = workspaces_dir();
-    std::fs::create_dir_all(&path)?;
+    std::fs::create_dir_all(&path)
+        .inspect_err(|error| log_fs_error(&path, "create_dir_all", error))?;
     Ok(path)
 }
 
@@ -26,4 +27,15 @@ pub fn log_path(path: &Path) -> String {
         ),
         Err(_) => path.to_string_lossy().replace('\\', "/"),
     }
+}
+
+/// Log a filesystem I/O failure (permissions, missing path, etc.) to the console.
+pub fn log_fs_error(path: &Path, op: &str, error: &std::io::Error) {
+    tracing::error!(
+        path = %log_path(path),
+        op,
+        %error,
+        kind = ?error.kind(),
+        "filesystem error"
+    );
 }

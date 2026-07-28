@@ -13,6 +13,7 @@ use crate::cache::{
     children_dir, hash_body, page_body_from_content, page_id_from_mdx_href, parse_row_cache_fields,
     CacheDb, PageDetail,
 };
+use crate::data::log_fs_error;
 use crate::index::sync_workspace;
 
 const TRASH_ROOT: &str = ".fibbelous/trash";
@@ -1010,13 +1011,19 @@ pub fn purge_page(
 
     let trash_file = trash_root(workspace_path).join(&trashed.original_path);
     if trash_file.is_file() {
-        fs::remove_file(&trash_file).map_err(|error| error.to_string())?;
+        fs::remove_file(&trash_file).map_err(|error| {
+            log_fs_error(&trash_file, "remove_file", &error);
+            error.to_string()
+        })?;
     }
 
     let children_rel = children_dir(&trashed.original_path, &trashed.id);
     let child_trash = trash_root(workspace_path).join(&children_rel);
     if child_trash.is_dir() {
-        fs::remove_dir_all(&child_trash).map_err(|error| error.to_string())?;
+        fs::remove_dir_all(&child_trash).map_err(|error| {
+            log_fs_error(&child_trash, "remove_dir_all", &error);
+            error.to_string()
+        })?;
     }
 
     Ok((updated_pages, updated_rows))
@@ -1071,10 +1078,16 @@ fn move_to_trash(workspace_path: &Path, relative_path: &str) -> Result<(), Strin
     }
 
     if let Some(parent) = dest.parent() {
-        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        fs::create_dir_all(parent).map_err(|error| {
+            log_fs_error(parent, "create_dir_all", &error);
+            error.to_string()
+        })?;
     }
 
-    fs::rename(&source, &dest).map_err(|error| error.to_string())
+    fs::rename(&source, &dest).map_err(|error| {
+        log_fs_error(&source, "rename", &error);
+        error.to_string()
+    })
 }
 
 fn restore_from_trash(workspace_path: &Path, relative_path: &str) -> Result<(), String> {
@@ -1089,10 +1102,16 @@ fn restore_from_trash(workspace_path: &Path, relative_path: &str) -> Result<(), 
     }
 
     if let Some(parent) = live_path.parent() {
-        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        fs::create_dir_all(parent).map_err(|error| {
+            log_fs_error(parent, "create_dir_all", &error);
+            error.to_string()
+        })?;
     }
 
-    fs::rename(&trash_path, &live_path).map_err(|error| error.to_string())
+    fs::rename(&trash_path, &live_path).map_err(|error| {
+        log_fs_error(&trash_path, "rename", &error);
+        error.to_string()
+    })
 }
 
 fn find_trashed_summary_by_id(

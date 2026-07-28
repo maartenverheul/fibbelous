@@ -7,6 +7,7 @@ use std::time::Duration;
 use tokio::sync::Notify;
 
 use crate::cache::CacheDb;
+use crate::data::{log_fs_error, log_path};
 
 #[derive(Debug, Clone)]
 pub enum DirtyKey {
@@ -54,8 +55,24 @@ pub fn spawn_flush(workspace_path: PathBuf, cache: Arc<Mutex<CacheDb>>, schedule
                 };
                 std::mem::take(&mut *pending)
             };
-            let _ =
-                tokio::task::spawn_blocking(move || flush_pending(&path, &cache, &deletes)).await;
+            match tokio::task::spawn_blocking(move || flush_pending(&path, &cache, &deletes)).await
+            {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => {
+                    tracing::error!(
+                        path = %log_path(&workspace_path),
+                        %error,
+                        "flush to disk failed"
+                    );
+                }
+                Err(error) => {
+                    tracing::error!(
+                        path = %log_path(&workspace_path),
+                        %error,
+                        "flush task panicked"
+                    );
+                }
+            }
         }
     });
 }
@@ -68,7 +85,9 @@ pub fn flush_pending(
     for relative in pending_deletes {
         let path = workspace_path.join(relative);
         if path.is_file() {
-            let _ = fs::remove_file(&path);
+            if let Err(error) = fs::remove_file(&path) {
+                log_fs_error(&path, "remove_file", &error);
+            }
         }
     }
 
@@ -95,7 +114,14 @@ pub fn flush_pending(
 fn write(workspace_path: &PathBuf, relative_path: &str, content: &str) -> Result<(), String> {
     let path = workspace_path.join(relative_path);
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        if let Err(error) = fs::create_dir_all(parent) {
+            log_fs_error(parent, "create_dir_all", &error);
+            return Err(error.to_string());
+        }
     }
-    fs::write(path, content).map_err(|e| e.to_string())
+    if let Err(error) = fs::write(&path, content) {
+        log_fs_error(&path, "write", &error);
+        return Err(error.to_string());
+    }
+    Ok(())
 }

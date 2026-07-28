@@ -304,7 +304,10 @@ pub fn clone_repo(url: &str, dest: &Path) -> Result<(), String> {
     }
 
     if let Some(parent) = dest.parent() {
-        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        std::fs::create_dir_all(parent).map_err(|error| {
+            crate::data::log_fs_error(parent, "create_dir_all", &error);
+            error.to_string()
+        })?;
     }
 
     let clone_url = normalize_remote_url(url, None);

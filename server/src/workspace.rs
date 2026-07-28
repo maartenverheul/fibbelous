@@ -8,7 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 
 use crate::cache::{ensure_runtime_dir, CacheDb};
-use crate::data::log_path;
+use crate::data::{log_fs_error, log_path};
 use crate::databases;
 use crate::flush::{self, spawn_flush, DirtyKey, FlushScheduler};
 use crate::git::{self, GitStatus};
@@ -573,7 +573,8 @@ impl Workspace {
                 format!("failed to serialize workspace.json: {error}"),
             )
         })?;
-        fs::write(self.path.join("workspace.json"), contents)
+        let path = self.path.join("workspace.json");
+        fs::write(&path, contents).inspect_err(|error| log_fs_error(&path, "write", error))
     }
 
     pub fn update_settings(
@@ -817,8 +818,15 @@ fn initialize_workspace_at_path(
     slug: String,
     icon: String,
 ) -> Result<Workspace, String> {
-    fs::create_dir_all(path).map_err(|error| error.to_string())?;
-    fs::create_dir_all(path.join("pages")).map_err(|error| error.to_string())?;
+    fs::create_dir_all(path).map_err(|error| {
+        log_fs_error(path, "create_dir_all", &error);
+        error.to_string()
+    })?;
+    let pages_dir = path.join("pages");
+    fs::create_dir_all(&pages_dir).map_err(|error| {
+        log_fs_error(&pages_dir, "create_dir_all", &error);
+        error.to_string()
+    })?;
 
     let settings = WorkspaceSettings {
         slug: slug.clone(),
@@ -830,7 +838,10 @@ fn initialize_workspace_at_path(
     let workspace_json = path.join("workspace.json");
     let contents = serde_json::to_string_pretty(&settings)
         .map_err(|error| format!("failed to serialize workspace.json: {error}"))?;
-    fs::write(&workspace_json, contents).map_err(|error| error.to_string())?;
+    fs::write(&workspace_json, contents).map_err(|error| {
+        log_fs_error(&workspace_json, "write", &error);
+        error.to_string()
+    })?;
 
     let workspace = open_workspace(id, path.to_path_buf())?;
     seed_welcome_page(&workspace)?;
@@ -973,8 +984,12 @@ pub fn clone_workspace(
     let contents = serde_json::to_string_pretty(&settings).map_err(|error| {
         CreateWorkspaceError::Validation(format!("failed to serialize workspace.json: {error}"))
     })?;
-    fs::write(path.join("workspace.json"), contents)?;
-    fs::create_dir_all(path.join("pages"))?;
+    let workspace_json = path.join("workspace.json");
+    fs::write(&workspace_json, contents)
+        .inspect_err(|error| log_fs_error(&workspace_json, "write", error))?;
+    let pages_dir = path.join("pages");
+    fs::create_dir_all(&pages_dir)
+        .inspect_err(|error| log_fs_error(&pages_dir, "create_dir_all", error))?;
 
     let workspace = open_workspace(id, path).map_err(CreateWorkspaceError::Validation)?;
     workspace
@@ -1030,8 +1045,14 @@ pub fn clone_workspace_to_parent(
         let contents = serde_json::to_string_pretty(&settings).map_err(|error| {
             OpenWorkspaceError::Validation(format!("failed to serialize workspace.json: {error}"))
         })?;
-        fs::write(dest.join("workspace.json"), contents).map_err(OpenWorkspaceError::Io)?;
-        fs::create_dir_all(dest.join("pages")).map_err(OpenWorkspaceError::Io)?;
+        let workspace_json = dest.join("workspace.json");
+        fs::write(&workspace_json, contents)
+            .inspect_err(|error| log_fs_error(&workspace_json, "write", error))
+            .map_err(OpenWorkspaceError::Io)?;
+        let pages_dir = dest.join("pages");
+        fs::create_dir_all(&pages_dir)
+            .inspect_err(|error| log_fs_error(&pages_dir, "create_dir_all", error))
+            .map_err(OpenWorkspaceError::Io)?;
     }
 
     match open_workspace_at_path(existing, &dest.to_string_lossy())? {

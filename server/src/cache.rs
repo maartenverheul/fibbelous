@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 
-use crate::data::log_path;
+use crate::data::{log_fs_error, log_path};
 
 pub const FIBBELOUS_DIR: &str = ".fibbelous";
 const CACHE_DB_FILE: &str = "cache.db";
@@ -1905,7 +1905,8 @@ pub fn runtime_dir(workspace_path: &Path) -> PathBuf {
 
 pub fn ensure_runtime_dir(workspace_path: &Path) -> std::io::Result<PathBuf> {
     let path = runtime_dir(workspace_path);
-    fs::create_dir_all(&path)?;
+    fs::create_dir_all(&path)
+        .inspect_err(|error| log_fs_error(&path, "create_dir_all", error))?;
     ensure_workspace_gitignore(workspace_path)?;
     Ok(path)
 }
@@ -1915,7 +1916,8 @@ pub(crate) fn ensure_workspace_gitignore(workspace_path: &Path) -> std::io::Resu
     let gitignore_path = workspace_path.join(".gitignore");
 
     if gitignore_path.is_file() {
-        let contents = fs::read_to_string(&gitignore_path)?;
+        let contents = fs::read_to_string(&gitignore_path)
+            .inspect_err(|error| log_fs_error(&gitignore_path, "read", error))?;
         let already_ignored = contents.lines().any(|line| {
             let trimmed = line.trim();
             trimmed == ENTRY
@@ -1933,10 +1935,12 @@ pub(crate) fn ensure_workspace_gitignore(workspace_path: &Path) -> std::io::Resu
         }
         updated.push_str(ENTRY);
         updated.push('\n');
-        return fs::write(gitignore_path, updated);
+        return fs::write(&gitignore_path, updated)
+            .inspect_err(|error| log_fs_error(&gitignore_path, "write", error));
     }
 
-    fs::write(gitignore_path, format!("{ENTRY}\n"))
+    fs::write(&gitignore_path, format!("{ENTRY}\n"))
+        .inspect_err(|error| log_fs_error(&gitignore_path, "write", error))
 }
 
 #[cfg(test)]
